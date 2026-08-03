@@ -2,6 +2,7 @@
 human Guided AI assisted Traceable Engineering
 
 Presentation : https://docs.google.com/presentation/d/1Rlt7gmf7c9DqZFTiga4myCYpJbLtBvQvo3i-W0Aq9dw/edit?slide=id.g3f455ea9a55_0_95#slide=id.g3f455ea9a55_0_95
+
 Video Recording : https://www.youtube.com/watch?v=oNJZR_BFW-c
 
 hGATE should not be treated as an all-or-nothing process. If I'm building a weekend project, an internal tool, or a quick MVP, I probably wouldn't go through every phase. The overhead wouldn't be justified.
