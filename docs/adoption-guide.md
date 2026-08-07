@@ -126,6 +126,13 @@ Every Gherkin Scenario and Scenario Outline uses a repository-unique tag such as
 `[BDD:CART-SUBMIT-001]` in their name or framework metadata. Reviews check both
 uncovered scenarios and test references that no longer resolve.
 
+`bc-enhancement` includes a triviality gate. A change with no observable
+behavior, contract, or scenario impact may skip the ghost-behavior audit,
+consequence interview, and skill-file sync only after explicit human
+confirmation of the classification; it still requires passing existing tests,
+a stale-reference grep, and a one-line `decisions.md` note. Any doubt defaults
+to the full pipeline.
+
 ## Starting a New Project
 
 1. Run `domain-exploration` in a fork.
