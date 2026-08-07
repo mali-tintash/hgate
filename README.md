@@ -211,6 +211,8 @@ completion checks.
 9. Decisions and lifecycle state stay local to their owner.
 10. Every BDD scenario has a stable ID referenced by meaningful executable
     tests.
+11. A trivial, no-spec-impact change may take `bc-enhancement`'s fast path only
+    with explicit human confirmation; default to the full pipeline otherwise.
 
 ## Why hGATE
 
