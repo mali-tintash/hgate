@@ -88,7 +88,7 @@ already be committed.
 3. Check for local commits not present on the branch upstream:
 
    ```bash
-   git log @{upstream}..HEAD --oneline
+   git log @{upstream}..HEAD --oneline 2>/dev/null || echo "No upstream configured for this branch"
    ```
 
 4. If the branch has no upstream, state that clearly and compare against the
