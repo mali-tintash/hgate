@@ -296,7 +296,9 @@ Bullet per decision: what was decided AND why.
 ```
 
 ### 5c. `bdd-scenarios.md`
-Gherkin specification. Must contain one `Feature:` block per significant capability. For each feature:
+Gherkin specification. Use `assets/bdd-scenarios-template.md` as the starting
+shape. Must contain one `Feature:` block per significant capability. For each
+feature:
 
 - **Happy path**: normal successful flow
 - **Idempotency**: running the same operation twice produces the same outcome
@@ -305,6 +307,34 @@ Gherkin specification. Must contain one `Feature:` block per significant capabil
 - **Integration path**: how an external system's response is handled
 
 Scenarios must use ubiquitous language terms — never use raw column names or API field names in scenario text.
+
+Every `Scenario` and `Scenario Outline` must have a stable repository-unique ID
+using a Gherkin tag immediately above it:
+
+```gherkin
+@scenario:CART-SUBMIT-001
+Scenario: Submit a valid cart
+```
+
+ID format:
+
+```text
+<BC>-<CAPABILITY>-<three-digit-sequence>
+```
+
+Rules:
+
+- Use uppercase kebab-case, for example `CART-SUBMIT-001`.
+- Search all BC `bdd-scenarios.md` files before assigning an ID; IDs must be
+  unique across the repository.
+- Never renumber or reuse an ID.
+- Wording clarifications that preserve the same behavior retain the ID.
+- A materially different business outcome gets a new ID. Remove the old
+  scenario from the current specification and record its retired ID and
+  replacement, if any, in this BC's `decisions.md`.
+- `Background` blocks do not receive scenario IDs.
+- Each scenario ID must later appear in at least one meaningful executable test
+  as `[BDD:<scenario-id>]`.
 
 ### 5d. `*-acl.md` files
 One file per external integration. Must contain:
@@ -390,6 +420,8 @@ After updating all files, self-check:
    `decisions.md`; cross-cutting decisions link to standalone ADRs.
 10. The BC-local `status.md` reflects `REFINED` only after user approval and all
     validation checks pass.
+11. Every Scenario/Scenario Outline has one valid, repository-unique
+    `@scenario:<ID>` tag; no ID is duplicated or reused.
 
 Report any violations to the user after completing the update.
 

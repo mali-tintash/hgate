@@ -113,7 +113,7 @@ docs/
 .github/skills/<bc-name>/
   SKILL.md                      # BC purpose, rules, lifecycle, module design
   domain-model.md               # aggregates, values, ports, and persistence
-  bdd-scenarios.md              # executable business specification
+  bdd-scenarios.md              # business scenarios with stable traceability IDs
   decisions.md                  # decisions owned by this BC
   status.md                     # lifecycle state owned by this BC
   *-acl.md                      # external contract translation
@@ -209,6 +209,8 @@ completion checks.
 7. Cross-BC dependencies use published contracts, ports, events, and ACLs.
 8. Cross-BC validation is read-only; fixes return to the owning BC.
 9. Decisions and lifecycle state stay local to their owner.
+10. Every BDD scenario has a stable ID referenced by meaningful executable
+    tests.
 
 ## Why hGATE
 

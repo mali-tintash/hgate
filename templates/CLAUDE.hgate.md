@@ -6,6 +6,11 @@ Specifications lead implementation. Source-code behavior must not diverge from
 the owning BC's approved `SKILL.md`, `domain-model.md`, `bdd-scenarios.md`,
 decisions, and ACL contracts.
 
+Every BDD Scenario and Scenario Outline has a stable
+`@scenario:<BC>-<CAPABILITY>-<NNN>` ID. Executable tests that protect the
+scenario reference it as `[BDD:<scenario-id>]`. IDs are never renumbered or
+reused.
+
 Before starting new work, reconcile any code changed outside an agent-governed
 hGATE session. Do not silently treat manually changed code as the new
 specification. The user must confirm whether each behavioral change is intended,
