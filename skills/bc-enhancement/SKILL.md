@@ -45,6 +45,8 @@ Read **every file** in `.github/skills/<bc-name>/`:
 - `SKILL.md` — the canonical description of what this BC should do
 - `domain-model.md` — aggregates, entities, enums, DB tables
 - `bdd-scenarios.md` — acceptance scenarios that define correct behaviour
+- `decisions.md` — concluded decisions and links to cross-cutting ADRs
+- `status.md` — current BC lifecycle state and transition history
 - All `*-acl.md` files
 
 ### 0b. Identify affected BC source files
@@ -72,6 +74,16 @@ Phase 0 complete. Read:
 ```
 
 **Do not proceed to Phase 1 until this is complete.**
+
+After Phase 0 confirms this is an already-built BC, update local lifecycle
+status:
+
+```text
+IMPLEMENTED | VERIFIED -> CHANGING
+```
+
+If the BC is not in an eligible state, stop and resolve the status/code mismatch
+before implementation.
 
 ---
 
@@ -204,6 +216,7 @@ Files that commonly need updates:
 | A request/response field added/removed | `bdd-scenarios.md` → update `When` steps that supply the field and `Then` steps that assert what is stored or returned |
 | An external API call moved or added | relevant `*-acl.md` |
 | A port method added/removed | `domain-model.md` → port interface block |
+| A business or architectural choice is concluded | `decisions.md` → add one Asked / Findings / Decision/Action entry |
 
 ### Skill files are specs, not changelogs
 
@@ -254,6 +267,10 @@ Skill files: already up to date — this change implements the design already do
 ```
 
 **Do not proceed to Phase 4 until skill files match the new design.**
+
+Keep decisions local to this BC's `decisions.md`. If a decision affects multiple
+BCs, create one standalone ADR under `docs/adr/` and link to it from each
+affected BC. Do not use a global append-only decisions file.
 
 ---
 
@@ -421,6 +438,16 @@ End every enhancement session with:
 ### Open items
 - [anything deferred or blocked — none if clean]
 ```
+
+After the enhancement, tests, and ghost-behavior sweep pass, update:
+
+```text
+CHANGING -> IMPLEMENTED
+```
+
+This intentionally makes any previous `VERIFIED` status stale. Run
+`bc-review full` for independent verification. If blocked, record
+`CHANGING -> BLOCKED` with the owner and intended return state.
 
 ---
 

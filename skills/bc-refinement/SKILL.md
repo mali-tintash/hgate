@@ -13,7 +13,9 @@ context: fork
 This document defines the repeatable process used to bring a Bounded Context (BC) skill into alignment with its actual business behaviour.
 
 **Input**: An existing skill directory at `.github/skills/<bc-name>/`  
-**Output**: Fully updated `SKILL.md`, `domain-model.md`, `bdd-scenarios.md`, one or more `*-acl.md` files, and any new ACL files needed.
+**Output**: Fully updated `SKILL.md`, `domain-model.md`, `bdd-scenarios.md`,
+`decisions.md`, `status.md`, one or more `*-acl.md` files, and any new ACL files
+needed.
 
 **Golden rule: one BC per session.** If conversation drifts toward another BC, warn the developer, note it in the Deferred Items log, and suggest redirecting. The developer has final authority — but the risk of cross-BC contamination must be clearly stated before proceeding.
 
@@ -43,6 +45,11 @@ and addressed in a separate session. It will NOT be designed or implemented here
 ```
 
 **Do not generate any other output until Phase 0 is complete.**
+
+At session start, update this BC's `status.md` from `DISCOVERED`, `REFINED`, or
+`SPEC_REVIEWED` to `REFINING`. If the file does not exist, create it from
+`assets/status-template.md` and record why lifecycle tracking was initialized
+late.
 
 ---
 
@@ -333,6 +340,38 @@ Numbered list of unresolved contract questions (marked [OPEN]).
 
 If the external API contract is not yet known, create a **placeholder ACL** with a stub adapter and mark all questions `[OPEN]`.
 
+### 5e. `decisions.md`
+
+Record concluded decisions owned by this BC. Use one entry per decision:
+
+```text
+## <Decision title>
+
+**Asked:** <Question or ambiguity that required a decision>
+
+**Findings:** <Evidence, constraints, and tradeoffs considered>
+
+**Decision/Action:** <Confirmed decision and resulting action>
+```
+
+Do not record in-progress deliberation. Do not copy cross-cutting decisions into
+this file; create a standalone ADR under `docs/adr/` and link to it instead.
+Never append BC decisions to a global decisions log.
+
+### 5f. `status.md`
+
+After the user approves the refined specification and Phase 6 validation passes,
+update the BC-local lifecycle status:
+
+```text
+REFINING -> REFINED
+```
+
+Record the approval evidence, clear resolved blockers, recommend
+`bc-review spec-only` or `bc-implementation`, and append the transition history.
+If refinement cannot complete, use `REFINING -> BLOCKED` and record the blocker,
+owner, and return state.
+
 ---
 
 ## Phase 6 — Validation
@@ -347,6 +386,10 @@ After updating all files, self-check:
 6. All ubiquitous language terms in `bdd-scenarios.md` match the glossary in `SKILL.md`.
 7. **BC Isolation check**: Does any port, method, service, or aggregate in this BC exist solely to serve an adjacent BC? If yes, flag as cross-BC contamination and move to the Deferred Items log.
 8. **YAGNI check**: Does any port, method, or concept only make sense once a BC that does not yet exist is built? If yes, flag as YAGNI contamination and move to the Deferred Items log.
+9. Every concluded BC decision from the session is recorded in this BC's
+   `decisions.md`; cross-cutting decisions link to standalone ADRs.
+10. The BC-local `status.md` reflects `REFINED` only after user approval and all
+    validation checks pass.
 
 Report any violations to the user after completing the update.
 

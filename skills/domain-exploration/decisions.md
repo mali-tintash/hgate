@@ -1,6 +1,10 @@
-# Agent Decisions
+# Domain Exploration Decisions
 
-## Guided hGATE workflow and domain exploration
+## Cross-Cutting References
+
+- [Localized decisions and lifecycle state](../../docs/adr/2026-08-07-localized-workflow-artifacts.md)
+
+## Keep hGATE workflow progression user-driven
 
 **Asked:** Should hGATE automate orchestration, and how should users discover
 domains and bounded contexts before BC refinement?
@@ -10,8 +14,8 @@ The existing BC refinement and enhancement skills can define cross-BC ports and
 events when each affected BC is handled in a separate context. A preceding
 discovery step was missing.
 
-**Decision/Action:** Keep workflow progression user-driven. Add the
-`domain-exploration` skill as an interactive, confirmation-gated process for
+**Decision/Action:** Keep workflow progression user-driven. Use
+`domain-exploration` as an interactive, confirmation-gated process for
 understanding the problem, discovering capabilities, and identifying one or
 multiple bounded contexts. Use `architecture-decision-exploration` only for
 unresolved technical or cross-system architecture decisions.

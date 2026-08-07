@@ -50,9 +50,21 @@ This guide captures everything Claude needs to work effectively in this codebase
 
 Minor manual changes are a legitimate part of the workflow — not every fix needs a full BDD cycle. But the agent's context (skill files, BDD scenarios) must always reflect the actual code. This protocol ensures the two never silently diverge.
 
-### Agent decisions log
+### Decision records
 
-All concluded discussions — methodology decisions, workflow rules, architectural choices — are logged in `docs/agent-decisions.md`. Format per entry: **Asked → Findings → Decision/Action**. Append to this file whenever a notable discussion concludes. Do not log in-progress deliberation — only final conclusions.
+Keep decisions with the context that owns them so parallel work on different BCs
+does not create conflicts in one global file:
+
+- **BC-specific decisions** -> `.github/skills/<bc-name>/decisions.md`
+- **Workflow-skill decisions** -> `decisions.md` beside that skill's `SKILL.md`
+- **Cross-cutting architecture decisions** -> one standalone ADR per decision in
+  `docs/adr/YYYY-MM-DD-<decision-slug>.md`
+
+Do not maintain a global append-only decisions file. Format local entries as
+**Asked -> Findings -> Decision/Action**. Record only concluded decisions, not
+in-progress deliberation. If a decision affects several BCs, create an ADR and
+link to it from each affected BC's `decisions.md` rather than copying the full
+decision into multiple files.
 
 ---
 
@@ -117,6 +129,11 @@ There is no `tenants` table. A tenant's existence = their schema existing in the
 ## Bounded Context Skills
 
 Each bounded context or cross-cutting concern has a skill file with its full design, flows, and invariants. **Always read the relevant skill before touching code in that area.**
+
+Project-level domain boundaries live in `docs/domain-map.md` and relationships
+in `docs/context-map.md`. Mutable lifecycle state is BC-local at
+`.github/skills/<bc-name>/status.md`; do not duplicate it in a global status
+table.
 
 | Area | Skill file |
 |---|---|

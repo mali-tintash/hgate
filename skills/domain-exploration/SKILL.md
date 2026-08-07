@@ -60,6 +60,18 @@ A confirmed Domain Exploration Report containing:
 The report is a discovery handoff. It is not a replacement for the specification
 files produced by `bc-refinement`.
 
+When repository access is available, persist the confirmed output as:
+
+- `docs/domain-map.md`, created from
+  `assets/domain-map-template.md`
+- `docs/context-map.md`, created from
+  `assets/context-map-template.md`
+- `.github/skills/<bc-name>/status.md` for each confirmed BC, created from the
+  `bc-refinement` status template with lifecycle `DISCOVERED`
+
+If an artifact already exists, update only confirmed boundary changes. Do not
+overwrite unrelated BC entries or lifecycle history.
+
 ## Non-Negotiable Rules
 
 1. Ask questions instead of silently filling gaps.
@@ -411,6 +423,11 @@ Every BC handoff should include:
 - Adjacent BC relationships
 - Relevant open or deferred gaps
 
+Persist the confirmed domain and context maps before closing the session. Create
+or update each confirmed BC's local `status.md` and record the transition to
+`DISCOVERED`. The domain map must link to local status files instead of
+duplicating mutable lifecycle state.
+
 ## Recommendation Protocol
 
 When the AI has a preferred interpretation:
@@ -450,6 +467,7 @@ explicit response.
 | `bc-refinement` | Produce detailed specification artifacts for one BC |
 | `bc-review` | Audit one BC's specifications and implementation |
 | `bc-enhancement` | Update specifications, code, and tests for an already-built BC |
+| `cross-bc-validation` | Validate one completed journey across several implemented BCs without implementing fixes |
 
 ## Completion Criteria
 
@@ -465,6 +483,8 @@ Domain exploration is complete only when:
 - No boundary-changing gap is silently treated as resolved
 - Remaining open items are visible and assigned a disposition
 - The user explicitly confirms the final report
+- Confirmed maps are persisted when repository access is available
+- Every confirmed BC has a local lifecycle status artifact
 
 If these conditions are not met, produce an interim report and clearly label the
 affected boundaries as provisional.
