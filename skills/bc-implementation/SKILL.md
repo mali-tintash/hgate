@@ -35,6 +35,7 @@ The BC skill directory should contain:
 - `SKILL.md`
 - `domain-model.md`
 - `bdd-scenarios.md`
+- `decisions.md`
 - One `*-acl.md` file for each external integration
 
 ## Output
@@ -85,6 +86,9 @@ Before generating code:
 
 Do not copy business rules from another BC. Existing code is evidence of project
 conventions, not a substitute for the target BC specification.
+
+Read the target BC's `decisions.md` as supporting rationale. The current
+behavioral contract remains the complete set of approved BC specification files.
 
 Declare:
 
@@ -192,6 +196,11 @@ When a blocking gap exists:
 
 Do not edit the specification ad hoc inside this skill. Do not mark a gap closed
 until the user confirms it and the approved specification reflects the answer.
+
+Implementation-only decisions concluded during this session belong in the
+target BC's `decisions.md`. Decisions affecting several BCs require a standalone
+ADR under `docs/adr/`, linked from each affected BC. Never append to a global
+decisions file.
 
 ### Phase 2 - Build the Traceability Matrix
 
