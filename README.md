@@ -5,6 +5,16 @@ Presentation : https://docs.google.com/presentation/d/1Rlt7gmf7c9DqZFTiga4myCYpJ
 
 Video Recording : https://www.youtube.com/watch?v=oNJZR_BFW-c
 
+## Skills
+
+Start new problem discovery with `domain-exploration`. It guides an interactive,
+confirmation-gated discussion to determine whether the requirement belongs to
+one bounded context or multiple bounded contexts. Its confirmed output is then
+used as input to a separate `bc-refinement` session for each affected BC.
+
+Use `architecture-decision-exploration` when the remaining uncertainty is about
+technical or cross-system architecture rather than business boundaries.
+
 hGATE should not be treated as an all-or-nothing process. If I'm building a weekend project, an internal tool, or a quick MVP, I probably wouldn't go through every phase. The overhead wouldn't be justified.
 
 Where I think it starts paying for itself is when one or more of these become true:
