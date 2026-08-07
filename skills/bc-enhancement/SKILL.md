@@ -218,6 +218,16 @@ Files that commonly need updates:
 | A port method added/removed | `domain-model.md` → port interface block |
 | A business or architectural choice is concluded | `decisions.md` → add one Asked / Findings / Decision/Action entry |
 
+Scenario ID rules during enhancement:
+
+- New scenarios receive a new repository-unique `@scenario:<ID>`.
+- Unchanged behavior retains its existing ID, even when wording is clarified.
+- A materially changed business outcome receives a new ID.
+- Removed scenarios are deleted from the current specification; record the
+  retired ID and replacement, if any, in `decisions.md`.
+- Remove or update every test reference to a retired ID.
+- Never renumber or reuse IDs to make the sequence look contiguous.
+
 ### Skill files are specs, not changelogs
 
 Every skill file (`SKILL.md`, `domain-model.md`, `bdd-scenarios.md`, `*-acl.md`) describes the
@@ -385,6 +395,9 @@ Read every `*.spec.ts` file in the BC. Confirm:
 - No test still mocks a method that no longer exists on the service
 - No test asserts old behaviour (e.g., "should create ProductActivation on approve")
 - Every new behaviour has at least one test covering it
+- Every current scenario ID has at least one meaningful `[BDD:<scenario-id>]`
+  test reference
+- No test references a retired, unknown, or malformed scenario ID
 
 ### 5d. Sweep report
 
@@ -403,6 +416,8 @@ Test audit:
   Files reviewed: [list]
   Removed stale mocks: [list]
   Removed stale assertions: [list]
+  Retired scenario IDs removed from tests: [list]
+  Current scenario IDs mapped to tests: [count/total]
   New tests covering new behaviour: [list]
 
 Ghost behavior status: CLEAR ✓ / FOUND ✗

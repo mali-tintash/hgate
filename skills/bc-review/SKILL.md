@@ -150,6 +150,18 @@ Compare:
 - Stated parity versus unsupported or omitted capabilities
 - Target BC assumptions against adjacent BC contracts
 
+### Lens 4a — Scenario traceability
+
+Check the specification for:
+
+- A valid `@scenario:<BC>-<CAPABILITY>-<NNN>` tag on every Scenario and
+  Scenario Outline
+- Duplicate scenario IDs within the BC or across all BC specifications
+- Reused or renumbered IDs
+- Business rules without a scenario ID that protects them
+- Materially different outcomes sharing one ID
+- Retired IDs that remain in the current specification
+
 ### Lens 5 — Authorization and tenant isolation
 
 Check separately:
@@ -295,6 +307,21 @@ For each finding, determine:
 - Are concurrency and retry semantics genuinely exercised or merely mocked?
 - Does a DTO test bypass the actual validation pipeline?
 
+Build a bidirectional scenario traceability map:
+
+```text
+| Scenario ID | Scenario | Executable tests | Test level | Coverage assessment |
+|---|---|---|---|---|
+```
+
+Report:
+
+- Scenario IDs with no meaningful executable test
+- `[BDD:<scenario-id>]` test references with no current scenario
+- Duplicate or malformed IDs
+- Tests carrying an ID but asserting a different outcome
+- Scenarios covered only by mocks that bypass the relevant runtime boundary
+
 Absence of a test does not prove absence of behavior. Presence of a test does not eliminate
 uncovered races or integration failures.
 
@@ -345,6 +372,13 @@ Each row must contain:
 - Test evidence, or explicitly “No meaningful test found”
 - Residual risk
 
+Include a scenario traceability summary:
+
+- Current scenario IDs
+- IDs with meaningful executable coverage
+- Uncovered IDs
+- Unknown or retired IDs referenced by tests
+
 Finish with:
 
 1. Counts by status
@@ -378,6 +412,8 @@ Before returning the final report, verify:
 - [ ] External failures include timeout, rate limit, `5xx`, malformed response, and eventual consistency
 - [ ] Observability includes both traceability and redaction
 - [ ] Tests were treated as supporting evidence, not conclusive proof
+- [ ] Every current scenario ID was mapped to executable tests
+- [ ] Unknown and retired test references were reported
 - [ ] Undocumented safeguards were reported
 - [ ] Cross-BC concerns were deferred, not redesigned
 - [ ] No specification, source, migration, or test files were modified

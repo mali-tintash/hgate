@@ -114,11 +114,17 @@ docs/
 - `docs/context-map.md`: relationships and business information exchanged
 - BC `decisions.md`: decisions owned by one BC
 - BC `status.md`: mutable lifecycle state for one BC
+- BDD scenario IDs: stable links from approved scenarios to executable tests
 - `docs/adr/`: one file per cross-cutting architectural decision
 - Feature `validation.md`: one cross-BC journey validation report
 
 Do not create global append-only decision or lifecycle files. They become
 conflict hotspots when teams work on separate BCs.
+
+Every Gherkin Scenario and Scenario Outline uses a repository-unique tag such as
+`@scenario:CART-SUBMIT-001`. Tests that claim coverage include
+`[BDD:CART-SUBMIT-001]` in their name or framework metadata. Reviews check both
+uncovered scenarios and test references that no longer resolve.
 
 ## Starting a New Project
 

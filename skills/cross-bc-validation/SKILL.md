@@ -230,6 +230,10 @@ For each test distinguish:
 - What is mocked
 - Which real boundary remains unverified
 
+Record the participating BC scenario IDs that support each journey hop. Report
+an uncovered scenario ID or unknown `[BDD:<scenario-id>]` test reference as a
+finding owned by that BC; do not repair it in this session.
+
 ### Phase 7 - Classify Every Hop
 
 Use exactly one status:

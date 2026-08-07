@@ -218,7 +218,7 @@ Map each approved behavior to executable evidence before writing tests:
 | ID | Spec source | Behavior | Test level | Planned test | Production components |
 |----|-------------|----------|------------|--------------|-----------------------|
 | R1 | SKILL rule 1 | [...] | Unit | [...] | Aggregate, service |
-| S1 | BDD scenario | [...] | Integration | [...] | Controller -> repository |
+| CART-SUBMIT-001 | BDD scenario | [...] | Integration | [BDD:CART-SUBMIT-001] [...] | Controller -> repository |
 ```
 
 Include:
@@ -243,6 +243,21 @@ Use the smallest meaningful test level:
 
 Avoid duplicating the same assertion at every layer. Each test should protect the
 layer's responsibility.
+
+Use the scenario IDs already defined in `bdd-scenarios.md`; do not invent
+implementation-local aliases such as `S1`. Every executable test that claims
+scenario coverage must include `[BDD:<scenario-id>]` in its test name or
+equivalent framework metadata:
+
+```typescript
+it('[BDD:CART-SUBMIT-001] submits a valid cart', async () => {
+  // ...
+});
+```
+
+One scenario may map to several tests and one integration test may reference
+several scenario IDs, but every approved scenario ID needs at least one
+meaningful executable test.
 
 ### Phase 3 - Implementation Plan and Approval
 
@@ -299,7 +314,8 @@ Implement one approved slice at a time using red-green-refactor.
 
 #### 4a. Red
 
-1. Write tests derived from the traceability matrix.
+1. Write tests derived from the traceability matrix, including the applicable
+   `[BDD:<scenario-id>]` marker.
 2. Run the smallest targeted test command.
 3. Confirm the test fails for the expected missing behavior.
 4. If it passes before implementation, determine whether:
@@ -424,7 +440,9 @@ Read every test file created or changed for the BC and confirm:
 - Tests assert outcomes, not logs or implementation trivia
 - Mocks represent port boundaries rather than bypassing business logic
 - Integration tests exercise real mappings and constraints where required
-- Critical BDD scenarios have executable coverage
+- Every approved BDD scenario ID has meaningful executable coverage
+- Every `[BDD:<scenario-id>]` test reference resolves to a current scenario
+- No test claims coverage using a retired, unknown, or malformed scenario ID
 - Tests are isolated and deterministic
 
 #### 6c. Validation order
@@ -446,7 +464,7 @@ them.
 ## Specification Conformance
 
 Business rules: <implemented>/<total>
-BDD scenarios: <covered>/<total>
+BDD scenario IDs: <covered>/<total>
 Ports and adapters: <implemented>/<specified>
 Migrations and constraints: <implemented>/<specified>
 
@@ -482,7 +500,7 @@ End with:
 
 ### Traceability
 - <implemented>/<total> business rules
-- <covered>/<total> BDD scenarios
+- <covered>/<total> BDD scenario IDs
 
 ### Open or deferred items
 - None | [...]
@@ -560,7 +578,8 @@ Implementation is complete only when:
 - Specification readiness was confirmed before coding
 - The user approved the implementation plan
 - Every approved business rule is implemented
-- Every critical BDD scenario has executable coverage
+- Every approved BDD scenario ID has executable coverage
+- No executable test references an unknown or retired scenario ID
 - Tests were observed failing before their production behavior was added
 - Domain, application, infrastructure, and presentation layers are fully wired
 - Specified migrations, constraints, ports, adapters, and events are present
