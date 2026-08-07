@@ -12,6 +12,10 @@ confirmation-gated discussion to determine whether the requirement belongs to
 one bounded context or multiple bounded contexts. Its confirmed output is then
 used as input to a separate `bc-refinement` session for each affected BC.
 
+After refinement is approved, use `bc-implementation` in a separate forked
+session to build one BC from its specifications using test-first vertical
+slices. Use `bc-enhancement` instead when changing a BC that is already built.
+
 Use `architecture-decision-exploration` when the remaining uncertainty is about
 technical or cross-system architecture rather than business boundaries.
 
