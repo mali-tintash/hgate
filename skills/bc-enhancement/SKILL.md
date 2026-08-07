@@ -33,6 +33,11 @@ discovery and elimination of old code paths that contradict the updated design.
 that implemented the old behaviour must be provably gone — deleted, replaced, or
 explicitly blocked by the new logic.
 
+**Fast path:** a change with no observable behavior impact (null-guard, log line,
+rename, perf tweak, dependency bump) does not need the full pipeline below. Phase 0.5
+classifies the change and, with human confirmation, routes genuinely trivial changes
+through a lightweight fast path instead.
+
 ---
 
 ## Phase 0 — Full State Read (Non-Negotiable)
@@ -73,17 +78,107 @@ Phase 0 complete. Read:
   Source files read: [every file surfaced — not a summary]
 ```
 
-**Do not proceed to Phase 1 until this is complete.**
+**Do not proceed to Phase 0.5 until this is complete.**
 
-After Phase 0 confirms this is an already-built BC, update local lifecycle
-status:
+---
+
+## Phase 0.5 — Triviality Gate
+
+Before doing anything else, classify the change. This gate exists so a small
+AI-authored fix does not pay the same ceremony cost as a business-rule change
+— but it must default to the full pipeline whenever there is any doubt.
+
+### Classification checklist
+
+Classify as **Implementation-detail** only if **every** item holds:
+
+- No `Given`/`When`/`Then` observable outcome changes for any user, external
+  system, or API consumer
+- No business rule, validation, or error/edge case is added, removed, or
+  changed
+- No request/response shape, DB schema, port/interface signature, or event
+  contract changes
+- No scenario is added or removed, and no scenario's expected outcome changes
+- Existing tests will keep passing without changing their assertions (only
+  mechanical updates, e.g. import paths, are allowed)
+- The fix stays confined to this one BC
+
+Classify as **Behavioral** if **any** of the following is true:
+
+- Any checklist item above fails, or you are not fully certain it holds
+- The change description uses change-intent language ("should now", "add
+  support for", "change how", "the requirement is")
+- The change touches authorization, tenant isolation, or an external contract
+
+**When uncertain, classify as Behavioral.** This gate is conservative by
+design.
+
+### State the classification and confirm
+
+Output the checklist with a pass/fail per item and a proposed classification,
+then ask the user a single yes/no question:
+
+```
+Proposed classification: Implementation-detail — no spec impact.
+[checklist with pass/fail per item]
+
+Confirm fast path (skip ghost-behavior audit, consequence interview, and
+skill-file sync)? [yes / no — or explain why this is behavioral]
+```
+
+Do not proceed on your own judgment. If the user disagrees, declines, or does
+not answer this exact question, treat the change as Behavioral.
+
+### Behavioral path
+
+Proceed to Phase 1. First update local lifecycle status:
 
 ```text
 IMPLEMENTED | VERIFIED -> CHANGING
 ```
 
-If the BC is not in an eligible state, stop and resolve the status/code mismatch
-before implementation.
+If the BC is not in an eligible state, stop and resolve the status/code
+mismatch before implementation.
+
+### Implementation-detail path (fast path)
+
+Do not transition `status.md`. Do not touch `bdd-scenarios.md`, scenario IDs,
+`domain-model.md`, or any `*-acl.md` file — any such edit means the change was
+misclassified and must move to the Behavioral path instead.
+
+1. Apply the fix.
+2. Run the existing targeted tests for the touched files/methods. They must
+   pass without any assertion changes.
+3. Run a scoped stale-reference grep for anything renamed or removed by the
+   fix:
+   ```bash
+   grep -rn "oldIdentifier" src/<bc-name>/
+   ```
+4. Append one dated, one-line entry to this BC's `decisions.md`, for example:
+   ```
+   - 2026-08-07: Fast path — null-guard added in `cart.service.ts` around
+     `getActiveCart`; no spec impact.
+   ```
+5. Close with a minimal report:
+   ```
+   ## Fast-Path Patch Complete — [bc-name] BC
+
+   ### Change
+   [one sentence]
+
+   ### Files modified
+   - [file] — [what changed]
+
+   ### Tests
+   [targeted test command] → PASS
+
+   ### Stale-reference grep
+   [command] → 0 results ✓
+
+   ### Spec impact
+   None — decisions.md updated with a one-line note.
+   ```
+6. Stop here. Do not run Phases 1–7.
 
 ---
 
