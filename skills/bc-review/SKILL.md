@@ -14,8 +14,9 @@ Perform a repeatable, evidence-based review of one Bounded Context (BC):
 2. **Code verification** — determine whether each reported concern is covered, partially covered,
    missing, or intentionally deferred in implementation and tests.
 
-This is a read-only review. Do not modify skill files or source code unless the user starts a
-separate refinement or implementation task.
+This is a read-only review of specifications and source code. Do not modify
+specification, source, migration, or test files. The only permitted write is the
+target BC's local `status.md` after the final report is complete.
 
 ## Inputs
 
@@ -41,7 +42,8 @@ If the BC or mode is unclear, ask one focused question using the question tool.
 8. Prioritize correctness, security, data isolation, financial duplication, and recoverability.
 9. Never expose credentials, tokens, PII, gift-card secrets, or raw sensitive log contents in the
    report.
-10. Do not edit files during either review phase.
+10. Do not edit specification, source, migration, or test files during either
+    review phase. Lifecycle metadata may be updated only after reporting.
 
 ## Phase 0 — Scope and Context
 
@@ -236,6 +238,15 @@ Use the Phase 1 table from [report-template.md](./references/report-template.md)
 - Deferred cross-BC items
 - Cohesion result
 
+For `spec-only`, update local lifecycle metadata after reporting:
+
+- Use `REFINED -> SPEC_REVIEWED` only when no unresolved Critical or High
+  specification finding blocks implementation.
+- Otherwise use `REFINED -> BLOCKED` and record the findings, owner, and return
+  state.
+
+Modify only `.github/skills/<bc-name>/status.md`.
+
 For `spec-only`, stop here.
 
 ## Phase 2 — Code Verification
@@ -340,7 +351,17 @@ Finish with:
 2. Top three to five implementation priorities
 3. Safeguards present in code but missing from documentation
 4. Deferred cross-BC items
-5. Explicit statement that no files were modified
+5. Explicit statement that no specification, source, migration, or test files
+   were modified
+
+### Lifecycle status update
+
+After the full final report, use `IMPLEMENTED -> VERIFIED` only when all
+material requirements are covered and no unresolved Critical or High finding
+remains; otherwise use `IMPLEMENTED -> BLOCKED`.
+
+Update only `.github/skills/<bc-name>/status.md`. Record report evidence,
+blockers, recommended next skill, and transition history.
 
 ## Quality Checklist
 
@@ -359,5 +380,5 @@ Before returning the final report, verify:
 - [ ] Tests were treated as supporting evidence, not conclusive proof
 - [ ] Undocumented safeguards were reported
 - [ ] Cross-BC concerns were deferred, not redesigned
-- [ ] No files were modified
-
+- [ ] No specification, source, migration, or test files were modified
+- [ ] Any lifecycle update was limited to the target BC's `status.md`

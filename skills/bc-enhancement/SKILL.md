@@ -46,6 +46,7 @@ Read **every file** in `.github/skills/<bc-name>/`:
 - `domain-model.md` — aggregates, entities, enums, DB tables
 - `bdd-scenarios.md` — acceptance scenarios that define correct behaviour
 - `decisions.md` — concluded decisions and links to cross-cutting ADRs
+- `status.md` — current BC lifecycle state and transition history
 - All `*-acl.md` files
 
 ### 0b. Identify affected BC source files
@@ -73,6 +74,16 @@ Phase 0 complete. Read:
 ```
 
 **Do not proceed to Phase 1 until this is complete.**
+
+After Phase 0 confirms this is an already-built BC, update local lifecycle
+status:
+
+```text
+IMPLEMENTED | VERIFIED -> CHANGING
+```
+
+If the BC is not in an eligible state, stop and resolve the status/code mismatch
+before implementation.
 
 ---
 
@@ -427,6 +438,16 @@ End every enhancement session with:
 ### Open items
 - [anything deferred or blocked — none if clean]
 ```
+
+After the enhancement, tests, and ghost-behavior sweep pass, update:
+
+```text
+CHANGING -> IMPLEMENTED
+```
+
+This intentionally makes any previous `VERIFIED` status stale. Run
+`bc-review full` for independent verification. If blocked, record
+`CHANGING -> BLOCKED` with the owner and intended return state.
 
 ---
 

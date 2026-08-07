@@ -130,6 +130,11 @@ There is no `tenants` table. A tenant's existence = their schema existing in the
 
 Each bounded context or cross-cutting concern has a skill file with its full design, flows, and invariants. **Always read the relevant skill before touching code in that area.**
 
+Project-level domain boundaries live in `docs/domain-map.md` and relationships
+in `docs/context-map.md`. Mutable lifecycle state is BC-local at
+`.github/skills/<bc-name>/status.md`; do not duplicate it in a global status
+table.
+
 | Area | Skill file |
 |---|---|
 | Auth (middleware, Firebase, Identity Service, cookies) | `.github/skills/auth/SKILL.md` |

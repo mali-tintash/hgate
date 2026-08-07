@@ -90,6 +90,14 @@ conventions, not a substitute for the target BC specification.
 Read the target BC's `decisions.md` as supporting rationale. The current
 behavioral contract remains the complete set of approved BC specification files.
 
+Read `status.md` and require lifecycle `REFINED` or `SPEC_REVIEWED`. After
+eligibility and specification readiness pass and the user approves the plan,
+record:
+
+```text
+REFINED | SPEC_REVIEWED -> IMPLEMENTING
+```
+
 Declare:
 
 ```text
@@ -482,6 +490,16 @@ End with:
 ### Recommended next step
 - Run `bc-review full` for an independent specification and implementation audit.
 ```
+
+After all completion criteria pass, update the BC-local status:
+
+```text
+IMPLEMENTING -> IMPLEMENTED
+```
+
+If implementation is blocked, record `IMPLEMENTING -> BLOCKED` with the blocker,
+owner, and intended return state. Never set `IMPLEMENTED` while traceability
+contains a `Missing` item.
 
 ## Standing Rules
 

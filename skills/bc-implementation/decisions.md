@@ -1,5 +1,9 @@
 # BC Implementation Decisions
 
+## Cross-Cutting References
+
+- [Localized decisions and lifecycle state](../../docs/adr/2026-08-07-localized-workflow-artifacts.md)
+
 ## Separate initial implementation from enhancement
 
 **Asked:** How should an approved BC specification be turned into its initial
