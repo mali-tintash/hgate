@@ -90,28 +90,9 @@ AI-authored fix does not pay the same ceremony cost as a business-rule change
 
 ### Classification checklist
 
-Classify as **Implementation-detail** only if **every** item holds:
-
-- No `Given`/`When`/`Then` observable outcome changes for any user, external
-  system, or API consumer
-- No business rule, validation, or error/edge case is added, removed, or
-  changed
-- No request/response shape, DB schema, port/interface signature, or event
-  contract changes
-- No scenario is added or removed, and no scenario's expected outcome changes
-- Existing tests will keep passing without changing their assertions (only
-  mechanical updates, e.g. import paths, are allowed)
-- The fix stays confined to this one BC
-
-Classify as **Behavioral** if **any** of the following is true:
-
-- Any checklist item above fails, or you are not fully certain it holds
-- The change description uses change-intent language ("should now", "add
-  support for", "change how", "the requirement is")
-- The change touches authorization, tenant isolation, or an external contract
-
-**When uncertain, classify as Behavioral.** This gate is conservative by
-design.
+Classify against the shared checklist in `docs/change-classification.md`
+(Implementation-detail vs. Behavioral). **When uncertain, classify as
+Behavioral.** This gate is conservative by design.
 
 ### State the classification and confirm
 

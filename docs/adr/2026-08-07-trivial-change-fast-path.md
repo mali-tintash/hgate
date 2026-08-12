@@ -52,10 +52,10 @@ qualifies.
 ## Decision
 
 `bc-enhancement` gains a **Phase 0.5 — Triviality Gate** immediately after
-Phase 0's full state read. The agent classifies the change against a fixed
-checklist and states its reasoning. The change is **Implementation-detail**
-only if every criterion holds; any single failure, or any uncertainty, makes it
-**Behavioral**.
+Phase 0's full state read. The agent classifies the change against the
+shared checklist in `docs/change-classification.md` and states its
+reasoning. The change is **Implementation-detail** only if every criterion
+holds; any single failure, or any uncertainty, makes it **Behavioral**.
 
 Implementation-detail changes skip the ghost-behavior audit, consequence
 interview, skill-file sync, and full sweep. They still require: the fix, a
@@ -85,7 +85,9 @@ full pipeline unchanged.
 - Small AI-authored fixes made inside governed sessions get proportionate
   process cost.
 - The existing manual-change classification concept (ADR-002) is reused instead
-  of duplicated with different rules.
+  of duplicated with different rules; both ADRs now point to a single shared
+  checklist (`docs/change-classification.md`) instead of maintaining separate
+  prose criteria.
 - Reviews can still audit fast-path decisions from the one-line `decisions.md`
   trail.
 
@@ -94,9 +96,10 @@ full pipeline unchanged.
 - A misclassified change could hide a small behavioral drift; the strict,
   human-confirmed, default-to-Behavioral criteria mitigate but do not eliminate
   this risk.
-- Two classification mechanisms now exist (ADR-002 for out-of-band manual
-  edits, this ADR for in-session AI edits) that must be kept conceptually
-  aligned.
+- Two entry points still exist (out-of-band manual edits via ADR-002,
+  in-session AI edits via this ADR), but both now classify against the same
+  shared checklist (`docs/change-classification.md`), so there is no separate
+  criteria set to keep aligned.
 
 ## Validation
 

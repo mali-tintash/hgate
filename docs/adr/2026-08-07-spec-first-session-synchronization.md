@@ -46,8 +46,9 @@ Every project session begins by asking whether code changed manually outside a
 synchronized agent session.
 
 - When yes, inspect the complete committed range from the first manual commit
-  through `HEAD`, classify changes, confirm behavioral intent, and reconcile each
-  affected BC through `bc-enhancement`.
+  through `HEAD`, classify changes using the shared checklist in
+  `docs/change-classification.md`, confirm behavioral intent, and reconcile
+  each affected BC through `bc-enhancement`.
 - When no, verify the working tree and local/unpushed commits. Any unexplained
   change returns to the manual-change path.
 - Do not start unrelated work while an intended behavioral change remains absent

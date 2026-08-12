@@ -22,30 +22,74 @@ This guide captures everything Claude needs to work effectively in this codebase
 
 ## Session Start Protocol
 
-**At the start of every session, before doing any work, ask the developer:**
+**At the start of every session, before doing any project work, ask the
+developer:**
 
-> "Have there been any manual code changes made directly (outside of an agent session) since our last session?"
+> "Have there been any manual code changes made directly outside an agent
+> session since the last synchronized session?"
+
+Ask this even when the working tree appears clean — manual changes may
+already be committed.
 
 ### If the developer says YES:
 
-1. **Require a commit hash** — the hash of the first commit that contains the manual changes. All commits from that hash to `HEAD` are in scope.
-   - Run `git log --oneline -10` and show the output to help the developer identify the correct hash.
-   - **Hard boundary: if no commit hash is provided, do not proceed.** Ask the developer to commit any uncommitted changes first, then provide the hash.
-2. **Inspect the diff** — run `git diff <hash>^..HEAD` to see exactly what changed. Do not rely solely on the developer's description.
-3. **Classify each change:**
-   - **Implementation detail** (null guard, rename, refactor, comment) → note it, no doc update needed.
-   - **Behavioral change** (new condition, new rule, new edge case, new API contract) → update the relevant BC skill file (`SKILL.md`, `bdd-scenarios.md`, `domain-model.md`, etc.) before proceeding with any new work.
-4. **Confirm sync is complete** before moving on.
+1. **Require the commit hash** of the first commit containing manual
+   changes. All commits from that hash to `HEAD` are in scope.
+   - Run `git log --oneline -10` and show the output to help identify the
+     boundary.
+   - **Hard boundary:** if manual changes are uncommitted, stop and ask the
+     developer to commit them first. Do not inspect a partial, moving diff
+     as the synchronization baseline.
+2. **Inspect the complete committed range** — run
+   `git diff <first-manual-commit>^..HEAD` to see exactly what changed. Do
+   not rely solely on the developer's description.
+3. **Inventory every affected BC and classify each change** using the
+   shared checklist in `docs/change-classification.md`
+   (Implementation-detail vs. Behavioral). When uncertain, classify as
+   Behavioral.
+4. **For every possible behavioral change:**
+   - Explain the observed behavior difference with file and diff evidence.
+   - Ask the developer whether the behavior is intended. Do not infer
+     intent from the fact that the code was committed.
+5. **Reconcile each affected BC separately** through `bc-enhancement`:
+   - If intended, update the specification first (`SKILL.md`,
+     `bdd-scenarios.md`, `domain-model.md`, `decisions.md`, etc.), then
+     verify the implementation and tests.
+   - If not intended, restore implementation conformance with the approved
+     specification.
+   - If several BCs are affected, use one reconciliation pass per BC.
+6. **Do not start unrelated new work** until every behavioral change is
+   reconciled or explicitly deferred with an owner and risk accepted by the
+   developer.
+7. **State that synchronization is complete** and list:
+   - Commit range inspected
+   - Affected BCs
+   - Implementation-only changes
+   - Behavioral changes and developer confirmations
+   - Specification/test files synchronized
+   - Explicitly deferred items
 
 ### If the developer says NO:
 
-1. **Check for uncommitted changes** — run `git status` to verify the working tree is clean.
-   - **Hard boundary: if uncommitted changes are detected, do not proceed.** Ask the developer to commit them first, then re-answer the opening question.
-2. **Check for unpushed local commits** — run `git log origin/<current-branch>..HEAD --oneline` to see if any committed-but-not-yet-pushed commits exist.
-   - If unpushed commits are found, show them to the developer and ask whether they contain manual changes that need to be classified before proceeding.
-   - If the developer confirms they are agent-session commits (not manual), accept and proceed.
-3. If the working tree is clean and there are no unreviewed unpushed commits, accept the confirmation and proceed.
-   
+1. **Check for uncommitted changes** — run `git status --short` to verify
+   the working tree is clean.
+   - **Hard boundary:** if uncommitted changes are detected, do not
+     proceed. Ask the developer to commit them first, then re-answer the
+     opening question. Do not assume the changes came from an agent
+     session.
+2. **Check for local commits not yet pushed upstream:**
+   ```bash
+   git log @{upstream}..HEAD --oneline 2>/dev/null || echo "No upstream configured for this branch"
+   ```
+   If there is no upstream, compare against the confirmed base branch
+   instead: `git log origin/<base-branch>..HEAD --oneline`.
+3. If unpushed/local commits exist, show them and ask whether they were
+   produced entirely by synchronized agent sessions.
+   - If any commit includes manual work, return to the **developer says
+     YES** protocol above and require the first manual commit hash.
+4. Proceed only when the working tree is clean, local commits have been
+   classified, and no unreviewed manual behavioral change remains.
+
 ### Why this protocol exists
 
 Minor manual changes are a legitimate part of the workflow — not every fix needs a full BDD cycle. But the agent's context (skill files, BDD scenarios) must always reflect the actual code. This protocol ensures the two never silently diverge.
