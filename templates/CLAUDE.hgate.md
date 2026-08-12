@@ -43,14 +43,9 @@ already be committed.
    git diff <first-manual-commit>^..HEAD
    ```
 
-5. Inventory every affected BC and classify each change:
-
-   - **Implementation detail:** Refactor, rename, comment, defensive guard, or
-     equivalent change that does not alter observable business behavior or a
-     published contract.
-   - **Behavioral change:** New or changed rule, lifecycle transition,
-     validation, failure outcome, API/event/port contract, authorization,
-     persistence invariant, integration behavior, or BDD outcome.
+5. Inventory every affected BC and classify each change using the shared
+   checklist in `docs/change-classification.md` (Implementation-detail vs.
+   Behavioral). When uncertain, classify as Behavioral.
 
 6. For every possible behavioral change:
 
