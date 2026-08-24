@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>hGATE — human Guided AI assisted Traceable Engineering</title>
+
+<meta name="description" content="hGATE is a manual, guided workflow for specification-driven development with an AI coding agent — domain-driven design, behavior-driven development, and test-driven development, held together by local decision and lifecycle artifacts so generated code can't quietly drift from what was agreed.">
+<link rel="canonical" href="https://hgate.org/">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="hGATE">
+<meta property="og:title" content="hGATE — human Guided AI assisted Traceable Engineering">
+<meta property="og:description" content="Spec-first, domain-driven engineering for AI coding agents. Eight markdown skills and a session-start sync protocol that keep generated code from drifting away from what was agreed.">
+<meta property="og:url" content="https://hgate.org/">
+<meta property="og:image" content="https://hgate.org/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="hGATE — human Guided AI assisted Traceable Engineering">
+<meta name="twitter:description" content="Spec-first, domain-driven engineering for AI coding agents.">
+<meta name="twitter:image" content="https://hgate.org/og-image.png">
+
+<!-- Favicons -->
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="site.webmanifest">
+<meta name="theme-color" content="#223A2B">
+
+<style>
+
+  @font-face { font-family: 'Bricolage'; src: url('fonts/BricolageGrotesque-Bold.woff2') format('woff2'); font-weight: 700; }
+  @font-face { font-family: 'PlexMono'; src: url('fonts/IBMPlexMono-Regular.woff2') format('woff2'); font-weight: 400; }
+  @font-face { font-family: 'PlexMono'; src: url('fonts/IBMPlexMono-Bold.woff2') format('woff2'); font-weight: 700; }
+  @font-face { font-family: 'Instrument'; src: url('fonts/InstrumentSans-Regular.woff2') format('woff2'); font-weight: 400; }
+  @font-face { font-family: 'Instrument'; src: url('fonts/InstrumentSans-Bold.woff2') format('woff2'); font-weight: 700; }
+
+  :root{
+    --bg:        #FAFAF6;
+    --surface:   #EFF4EA;
+    --surface-2: #E4ECDC;
+    --sage:      #5E8267;
+    --sage-dim:  #7C9A84;
+    --pine:      #223A2B;
+    --pine-dark: #14211A;
+    --ink:       #171B16;
+    --muted:     #5B655A;
+    --border:    #DCE4D2;
+    --max: 1120px;
+  }
+
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  html{ scroll-behavior:smooth; }
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:'Instrument', sans-serif; font-size:17px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{ max-width:var(--max); margin:0 auto; padding:0 32px; }
+  a{ color:inherit; text-decoration:none; }
+  h1,h2,h3{ font-family:'Bricolage', sans-serif; font-weight:700; color:var(--pine); letter-spacing:-0.01em; }
+  .mono{ font-family:'PlexMono', monospace; }
+  .eyebrow{
+    font-family:'PlexMono', monospace; font-size:12.5px; font-weight:700;
+    letter-spacing:0.14em; text-transform:uppercase; color:var(--sage);
+  }
+  section{ padding:96px 0; }
+  .section-head{ max-width:640px; margin-bottom:56px; }
+  .section-head h2{ font-size:34px; margin-top:14px; }
+  .section-head p{ color:var(--muted); margin-top:14px; font-size:17px; }
+
+  /* nav */
+  header{
+    position:sticky; top:0; z-index:50; background:rgba(250,250,246,0.88);
+    backdrop-filter:blur(8px); border-bottom:1px solid var(--border);
+  }
+  nav.wrap{ display:flex; align-items:center; justify-content:space-between; height:72px; }
+  .brand{ display:flex; align-items:baseline; gap:10px; }
+  .brand .word{ font-family:'Bricolage'; font-weight:700; font-size:21px; color:var(--pine); }
+  .brand .tag{ font-family:'PlexMono'; font-size:10.5px; color:var(--sage-dim); letter-spacing:0.04em; }
+  .navlinks{ display:flex; gap:34px; font-family:'PlexMono'; font-size:13px; color:var(--muted); }
+  .navlinks a:hover{ color:var(--pine); }
+  .btn{
+    font-family:'PlexMono'; font-size:13px; font-weight:700; padding:10px 18px;
+    border-radius:7px; display:inline-flex; align-items:center; gap:8px; white-space:nowrap;
+  }
+  .btn-primary{ background:var(--pine); color:var(--bg); }
+  .btn-primary:hover{ background:var(--pine-dark); }
+  .btn-ghost{ border:1px solid var(--border); color:var(--pine); }
+  .btn-ghost:hover{ border-color:var(--sage); }
+  @media (max-width:800px){ .navlinks{ display:none; } }
+
+  /* hero */
+  .hero{ padding:110px 0 80px; }
+  .hero h1{ font-size:56px; line-height:1.08; margin-top:20px; max-width:780px; }
+  .hero p.lede{ margin-top:24px; font-size:19px; color:var(--muted); max-width:600px; }
+  .hero .ctas{ margin-top:36px; display:flex; gap:14px; flex-wrap:wrap; }
+  .hero .meta{ margin-top:26px; font-family:'PlexMono'; font-size:12.5px; color:var(--sage-dim); }
+  @media (max-width:640px){ .hero h1{ font-size:38px; } }
+
+  /* principles */
+  .principles{ background:var(--surface); }
+  .p-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:28px; }
+  .p-card{
+    background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:30px 26px;
+  }
+  .p-card .num{ font-family:'PlexMono'; font-size:13px; font-weight:700; color:var(--sage); }
+  .p-card h3{ font-size:19px; margin-top:14px; }
+  .p-card p{ margin-top:10px; color:var(--muted); font-size:15.5px; }
+  @media (max-width:840px){ .p-grid{ grid-template-columns:1fr; } }
+
+  /* workflow */
+  .flow{ display:flex; align-items:stretch; gap:0; }
+  .fnode{
+    flex:1 1 0; background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    padding:14px 12px; min-width:0; position:relative;
+  }
+  .fnode.gate{ border-color:var(--sage); }
+  .fnode .tag{ font-family:'PlexMono'; font-size:10px; font-weight:700; letter-spacing:0.1em; color:var(--sage); }
+  .fnode .title{ font-family:'PlexMono'; font-weight:700; font-size:14px; margin-top:8px; color:var(--pine); }
+  .arrow{ display:flex; align-items:center; justify-content:center; width:34px; color:var(--sage); font-size:18px; flex:0 0 34px; }
+  @media (max-width:900px){
+    .flow{ flex-direction:column; }
+    .arrow{ width:auto; height:26px; transform:rotate(90deg); }
+  }
+  .loop{
+    margin-top:26px; padding-top:18px; border-top:1px dashed var(--border);
+    font-family:'PlexMono'; font-size:13px; color:var(--muted); display:flex; gap:8px; align-items:center;
+  }
+  .loop b{ color:var(--pine); }
+  .flow-note{ margin-top:18px; color:var(--muted); font-size:15px; max-width:640px; }
+
+  /* skills table */
+  .skills{ background:var(--surface); }
+  table{ width:100%; border-collapse:collapse; background:var(--bg); border-radius:10px; overflow:hidden; border:1px solid var(--border); }
+  th,td{ text-align:left; padding:16px 20px; border-bottom:1px solid var(--border); font-size:14.5px; vertical-align:top; }
+  th{ font-family:'PlexMono'; font-size:11.5px; letter-spacing:0.08em; text-transform:uppercase; color:var(--sage-dim); font-weight:700; }
+  tr:last-child td{ border-bottom:none; }
+  td.skillname{ font-family:'PlexMono'; font-weight:700; color:var(--pine); white-space:nowrap; }
+  td.desc{ color:var(--muted); }
+  @media (max-width:700px){
+    table, thead, tbody, th, td, tr{ display:block; }
+    thead{ display:none; }
+    tr{ border-bottom:1px solid var(--border); padding:14px 0; }
+    td{ border:none; padding:4px 20px; }
+  }
+
+  /* adoption */
+  .a-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:24px; }
+  .a-card{ border:1px solid var(--border); border-radius:12px; padding:28px; background:var(--bg); }
+  .a-card.mid{ background:var(--surface-2); border-color:var(--sage-dim); }
+  .a-card .eyebrow{ display:block; }
+  .a-card h3{ font-size:21px; margin-top:10px; }
+  .a-card p{ color:var(--muted); margin-top:12px; font-size:15px; }
+  .a-card ul{ margin-top:16px; padding-left:18px; color:var(--muted); font-size:14.5px; }
+  .a-card li{ margin-bottom:6px; }
+  @media (max-width:840px){ .a-grid{ grid-template-columns:1fr; } }
+
+  /* quickstart — the one dark, bold section */
+  .quickstart{ background:var(--pine-dark); color:#EAF0E6; }
+  .quickstart .section-head h2{ color:#F5F8F2; }
+  .quickstart .section-head p{ color:#9BB0A0; }
+  .quickstart .eyebrow{ color:#8FC29A; }
+  .steps{ display:flex; flex-direction:column; gap:22px; }
+  .step{ display:grid; grid-template-columns:36px 1fr; gap:18px; align-items:start; }
+  .step .n{
+    width:36px; height:36px; border-radius:50%; border:1px solid #3C5647; display:flex;
+    align-items:center; justify-content:center; font-family:'PlexMono'; font-size:13px; color:#8FC29A;
+  }
+  .step h4{ font-family:'PlexMono'; font-size:15px; color:#F5F8F2; font-weight:700; }
+  pre{
+    margin-top:10px; background:#0E1712; border:1px solid #2C4136; border-radius:8px;
+    padding:16px 18px; overflow-x:auto; font-family:'PlexMono'; font-size:13.5px; color:#C9E0CE; line-height:1.65;
+  }
+  .cmt{ color:#5E7A67; }
+
+  footer{ padding:48px 0; border-top:1px solid var(--border); }
+  footer .wrap{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; }
+  footer .word{ font-family:'Bricolage'; font-weight:700; color:var(--pine); }
+  footer .fine{ font-family:'PlexMono'; font-size:12.5px; color:var(--muted); }
+
+</style>
+</head>
+<body>
+
+<header>
+  <nav class="wrap">
+    <div class="brand">
+      <span class="word">hGATE</span>
+      <span class="tag">human Guided &middot; AI assisted &middot; Traceable Engineering</span>
+    </div>
+    <div class="navlinks">
+      <a href="#principles">Principles</a>
+      <a href="#workflow">Workflow</a>
+      <a href="#skills">Skills</a>
+      <a href="#adoption">Adoption</a>
+      <a href="#quickstart">Quickstart</a>
+    </div>
+    <a class="btn btn-primary" href="https://github.com/mali-tintash/hGATE" target="_blank">GitHub &rarr;</a>
+  </nav>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <span class="eyebrow">Human guided &middot; AI assisted &middot; Traceable engineering</span>
+    <h1>Specs first. Boundaries held. Nothing drifts.</h1>
+    <p class="lede">hGATE is a manual, guided workflow for specification-driven development with an AI coding
+      agent — domain-driven design, behavior-driven development, and test-driven development, held together
+      by local decision and lifecycle artifacts so generated code can't quietly drift from what was agreed.</p>
+    <div class="ctas">
+      <a class="btn btn-primary" href="https://github.com/mali-tintash/hGATE" target="_blank">View on GitHub</a>
+      <a class="btn btn-ghost" href="#quickstart">Read the quickstart</a>
+    </div>
+    <div class="meta">Eight markdown skills + a session-start sync protocol &middot; MIT License</div>
+  </div>
+</section>
+
+<section class="principles" id="principles">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">How it works</span>
+      <h2>Three rules, all the way through.</h2>
+      <p>The agent recommends and executes one specialist skill at a time. Humans confirm requirements,
+        boundaries, plans, and every workflow transition.</p>
+    </div>
+    <div class="p-grid">
+      <div class="p-card"><span class="num">01</span>
+        <h3>Spec before code</h3>
+        <p>Every stage traces back to an approved specification, not an improvised prompt. Generation never
+          runs ahead of what's been agreed.</p></div>
+      <div class="p-card"><span class="num">02</span>
+        <h3>Domain boundaries hold</h3>
+        <p>Bounded contexts are established before behavior is written. Review checks that nothing generated
+          implements behavior outside an approved spec.</p></div>
+      <div class="p-card"><span class="num">03</span>
+        <h3>Nothing drifts silently</h3>
+        <p>A mandatory session-start protocol reconciles code against specs before new work continues, so
+          manual edits and AI output can't quietly diverge.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="workflow">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">What actually happens</span>
+      <h2>One recommended skill at a time.</h2>
+      <p><code class="mono">hgate-guide</code> inspects your artifacts and recommends exactly one next skill —
+        it never starts that skill or advances lifecycle state on its own.</p>
+    </div>
+
+    <div>
+      <div class="flow">
+        <div class="fnode"><span class="tag">MAP</span><div class="title">Domain Exploration</div></div>
+        <div class="arrow">&rarr;</div>
+        <div class="fnode"><span class="tag">SPEC</span><div class="title">BC Refinement</div></div>
+        <div class="arrow">&rarr;</div>
+        <div class="fnode gate"><span class="tag">GATE</span><div class="title">BC Review</div></div>
+        <div class="arrow">&rarr;</div>
+        <div class="fnode"><span class="tag">BUILD</span><div class="title">BC Implementation</div></div>
+        <div class="arrow">&rarr;</div>
+        <div class="fnode gate"><span class="tag">GATE</span><div class="title">BC Review</div></div>
+        <div class="arrow">&rarr;</div>
+        <div class="fnode gate"><span class="tag">VERIFY</span><div class="title">Cross-BC Validation</div></div>
+      </div>
+      <div class="loop"><span>&#8635;</span> <b>bc-enhancement</b> — a governed loop back in for any bug or changed requirement on a shipped BC, always closed out with a full BC review.</div>
+      <p class="flow-note">Already know your domain boundaries? <code class="mono">architecture-decision-exploration</code>
+        handles a cross-system technical decision on its own, without repeating domain mapping.</p>
+    </div>
+  </div>
+</section>
+
+<section class="skills" id="skills">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Skill catalog</span>
+      <h2>Eight skills. Each with one job.</h2>
+      <p>Every skill produces a specific, checkable artifact — never just code.</p>
+    </div>
+    <div>
+      <table>
+        <thead><tr><th>Skill</th><th>Use it when</th><th>Main output</th></tr></thead>
+        <tbody>
+          <tr><td class="skillname">hgate-guide</td><td class="desc">You don't know the next workflow step</td><td class="desc">One recommended skill, never auto-started</td></tr>
+          <tr><td class="skillname">domain-exploration</td><td class="desc">Problem, language, or BC boundaries are unclear</td><td class="desc">Confirmed domain map and context map</td></tr>
+          <tr><td class="skillname">architecture-decision-exploration</td><td class="desc">A cross-system technical decision is unresolved</td><td class="desc">ADR or design report</td></tr>
+          <tr><td class="skillname">bc-refinement</td><td class="desc">One BC needs an approved specification</td><td class="desc">Domain model, BDD scenarios, decisions, ACLs</td></tr>
+          <tr><td class="skillname">bc-review</td><td class="desc">One BC needs a read-only audit</td><td class="desc">Evidence-based findings</td></tr>
+          <tr><td class="skillname">bc-implementation</td><td class="desc">A refined BC has no material implementation</td><td class="desc">Tested implementation + traceability report</td></tr>
+          <tr><td class="skillname">bc-enhancement</td><td class="desc">An implemented BC has a bug or changed requirement</td><td class="desc">Synchronized spec + code, ghost behavior removed</td></tr>
+          <tr><td class="skillname">cross-bc-validation</td><td class="desc">A completed journey crosses several implemented BCs</td><td class="desc">Feature-local contract + validation report</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="adoption">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Who it's for</span>
+      <h2>The workflow doesn't change. The ceremony does.</h2>
+      <p>Startup, scale-up, or enterprise client — the same eight skills apply. What flexes is how much
+        gets formally signed off.</p>
+    </div>
+    <div class="a-grid">
+      <div class="a-card">
+        <span class="eyebrow">Startup</span>
+        <h3>Move fast, keep the gates</h3>
+        <p>Compress documentation and skip formal sign-off meetings.</p>
+        <ul>
+          <li>Session-start sync stays mandatory</li>
+          <li>BC review still gates every merge</li>
+          <li>Lighter artifacts for throwaway prototype code</li>
+        </ul>
+      </div>
+      <div class="a-card mid">
+        <span class="eyebrow">Scale-up</span>
+        <h3>Full catalog, async</h3>
+        <p>Every skill in play, without scheduled ceremony.</p>
+        <ul>
+          <li>Specs live in the repo next to the code</li>
+          <li>Gates exist but run on pull requests, not meetings</li>
+          <li>Decision and status artifacts stay per-BC</li>
+        </ul>
+      </div>
+      <div class="a-card">
+        <span class="eyebrow">Enterprise</span>
+        <h3>Full ceremony, audited</h3>
+        <p>Traceability treated as a compliance artifact, not a courtesy.</p>
+        <ul>
+          <li>Independent review required before lifecycle transitions</li>
+          <li>Decision and status artifacts audited on a cadence</li>
+          <li>Scenario-to-test traceability checked, not assumed</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="quickstart" id="quickstart">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Quickstart</span>
+      <h2>Three steps. Then talk to your agent.</h2>
+      <p>Copy the skills in, install the session-start protocol, then hand it to your AI agent.</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="n">1</div>
+        <div>
+          <h4>Add hGATE to your project</h4>
+          <pre>mkdir -p /path/to/your-project/.github/skills
+cp -R skills/* /path/to/your-project/.github/skills/
+<span class="cmt"># preserve each skill's SKILL.md, assets/, references/, decisions.md</span></pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">2</div>
+        <div>
+          <h4>Install the project instructions</h4>
+          <pre>cp templates/CLAUDE.hgate.md /path/to/your-project/CLAUDE.md
+<span class="cmt"># already have a CLAUDE.md? append the template, keep your conventions</span></pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">3</div>
+        <div>
+          <h4>Start with the guide</h4>
+          <pre>Use hgate-guide. I want to start using hGATE for this project.</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span class="word">hGATE</span>
+    <span class="fine">&copy; 2026 Muhammad Ali &middot; MIT License &middot; <a href="https://github.com/mali-tintash/hGATE" target="_blank">github.com/mali-tintash/hGATE</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
