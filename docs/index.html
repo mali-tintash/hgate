@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>hGATE — human Guided AI assisted Traceable Engineering</title>
 
-<meta name="description" content="hGATE is a manual, guided workflow for specification-driven development with an AI coding agent — domain-driven design, behavior-driven development, and test-driven development, held together by local decision and lifecycle artifacts so generated code can't quietly drift from what was agreed.">
+<meta name="description" content="hGATE is a manual, guided workflow for specification-driven development with an AI coding agent — domain-driven design, behavior-driven development, and test-driven development, connected by a full traceability chain from spec to generated code to test to shipped change, so nothing can drift without leaving a trace.">
 <link rel="canonical" href="https://hgate.org/">
 
 <!-- Open Graph -->
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="hGATE">
 <meta property="og:title" content="hGATE — human Guided AI assisted Traceable Engineering">
-<meta property="og:description" content="Spec-first, domain-driven engineering for AI coding agents. Eight markdown skills and a session-start sync protocol that keep generated code from drifting away from what was agreed.">
+<meta property="og:description" content="Spec-first, domain-driven engineering for AI coding agents. Eight markdown skills and a traceability chain — spec to code to test — that keep generated code from drifting away from what was agreed.">
 <meta property="og:url" content="https://hgate.org/">
 <meta property="og:image" content="https://hgate.org/og-image.png">
 <meta property="og:image:width" content="1200">
@@ -134,6 +134,17 @@
   .loop b{ color:var(--pine); }
   .flow-note{ margin-top:18px; color:var(--muted); font-size:15px; max-width:640px; }
 
+  /* features */
+  .feat-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:24px; }
+  .feat-card{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:26px 24px; }
+  .feat-card .tag{
+    display:inline-block; font-family:'PlexMono'; font-size:10px; font-weight:700; letter-spacing:0.1em;
+    color:var(--sage); border:1px solid var(--sage-dim); border-radius:5px; padding:3px 7px;
+  }
+  .feat-card h3{ font-size:17.5px; margin-top:14px; }
+  .feat-card p{ margin-top:9px; color:var(--muted); font-size:14.5px; line-height:1.55; }
+  @media (max-width:840px){ .feat-grid{ grid-template-columns:1fr; } }
+
   /* skills table */
   .skills{ background:var(--surface); }
   table{ width:100%; border-collapse:collapse; background:var(--bg); border-radius:10px; overflow:hidden; border:1px solid var(--border); }
@@ -191,11 +202,11 @@
   <nav class="wrap">
     <div class="brand">
       <span class="word">hGATE</span>
-      <span class="tag">human Guided &middot; AI assisted &middot; Traceable Engineering</span>
     </div>
     <div class="navlinks">
       <a href="#principles">Principles</a>
       <a href="#workflow">Workflow</a>
+      <a href="#features">Features</a>
       <a href="#skills">Skills</a>
       <a href="#adoption">Adoption</a>
       <a href="#quickstart">Quickstart</a>
@@ -207,10 +218,11 @@
 <section class="hero">
   <div class="wrap">
     <span class="eyebrow">Human guided &middot; AI assisted &middot; Traceable engineering</span>
-    <h1>Specs first. Boundaries held. Nothing drifts.</h1>
+    <h1>Specs first. Every step traced. Nothing drifts.</h1>
     <p class="lede">hGATE is a manual, guided workflow for specification-driven development with an AI coding
-      agent — domain-driven design, behavior-driven development, and test-driven development, held together
-      by local decision and lifecycle artifacts so generated code can't quietly drift from what was agreed.</p>
+      agent — domain-driven design, behavior-driven development, and test-driven development, connected by
+      a traceability chain from spec to generated code to test to shipped change, so nothing can drift
+      without leaving a trace.</p>
     <div class="ctas">
       <a class="btn btn-primary" href="https://github.com/mali-tintash/hGATE" target="_blank">View on GitHub</a>
       <a class="btn btn-ghost" href="#quickstart">Read the quickstart</a>
@@ -234,12 +246,12 @@
           runs ahead of what's been agreed.</p></div>
       <div class="p-card"><span class="num">02</span>
         <h3>Domain boundaries hold</h3>
-        <p>Bounded contexts are established before behavior is written. Review checks that nothing generated
+        <p>Bounded contexts (BCs) are established before behavior is written. Review checks that nothing generated
           implements behavior outside an approved spec.</p></div>
       <div class="p-card"><span class="num">03</span>
-        <h3>Nothing drifts silently</h3>
-        <p>A mandatory session-start protocol reconciles code against specs before new work continues, so
-          manual edits and AI output can't quietly diverge.</p></div>
+        <h3>Traced end to end</h3>
+        <p>Every stage leaves a record — spec, decision, test, shipped code — reconciled by a mandatory
+          session-start protocol before new work continues, so nothing can drift without leaving a trace.</p></div>
     </div>
   </div>
 </section>
@@ -274,6 +286,55 @@
   </div>
 </section>
 
+<section class="features" id="features">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">What you actually get</span>
+      <h2>Not process for its own sake — checkable artifacts.</h2>
+      <p>Every guardrail below produces something you can point at, not just a convention everyone's
+        supposed to remember.</p>
+    </div>
+    <div class="feat-grid">
+      <div class="feat-card">
+        <span class="tag">ADR</span>
+        <h3>Architecture Decision Records</h3>
+        <p>Every non-trivial technical or domain decision gets a durable record — context, alternatives
+          considered, and consequences — not just the decision that won.</p>
+      </div>
+      <div class="feat-card">
+        <span class="tag">GHOST CHECK</span>
+        <h3>Ghost-behavior detection</h3>
+        <p>Review flags any generated code implementing behavior that isn't traceable to an approved spec
+          line. The agent doesn't get to quietly add scope.</p>
+      </div>
+      <div class="feat-card">
+        <span class="tag">TRACE</span>
+        <h3>Scenario-to-test traceability</h3>
+        <p>Every BDD scenario is linked to a real test. No orphaned tests, no untested scenarios sitting
+          in a spec no one implemented.</p>
+      </div>
+      <div class="feat-card">
+        <span class="tag">FAST PATH</span>
+        <h3>Trivial-change fast path</h3>
+        <p>A conservative triviality gate lets no-spec-impact changes — a rename, a perf tweak — skip
+          the full pipeline. It still leaves an audit entry; it's a fast path, not a bypass.</p>
+      </div>
+      <div class="feat-card">
+        <span class="tag">PER-BC</span>
+        <h3>Per-BC decision &amp; status logs</h3>
+        <p>Decisions and lifecycle status live next to the bounded context they describe, not in one
+          global file every parallel agent collides on.</p>
+      </div>
+      <div class="feat-card">
+        <span class="tag">ACL</span>
+        <h3>Anti-corruption layers</h3>
+        <p>Each bounded context gets an explicit ACL at its integration points, so an external system's
+          model can't quietly leak into yours.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section class="skills" id="skills">
   <div class="wrap">
     <div class="section-head">
@@ -287,8 +348,8 @@
         <tbody>
           <tr><td class="skillname">hgate-guide</td><td class="desc">You don't know the next workflow step</td><td class="desc">One recommended skill, never auto-started</td></tr>
           <tr><td class="skillname">domain-exploration</td><td class="desc">Problem, language, or BC boundaries are unclear</td><td class="desc">Confirmed domain map and context map</td></tr>
-          <tr><td class="skillname">architecture-decision-exploration</td><td class="desc">A cross-system technical decision is unresolved</td><td class="desc">ADR or design report</td></tr>
-          <tr><td class="skillname">bc-refinement</td><td class="desc">One BC needs an approved specification</td><td class="desc">Domain model, BDD scenarios, decisions, ACLs</td></tr>
+          <tr><td class="skillname">architecture-decision-exploration</td><td class="desc">A cross-system technical decision is unresolved</td><td class="desc">An ADR (Architecture Decision Record) or design report</td></tr>
+          <tr><td class="skillname">bc-refinement</td><td class="desc">One BC needs an approved specification</td><td class="desc">Domain model, BDD scenarios, decisions, ACLs (anti-corruption layers)</td></tr>
           <tr><td class="skillname">bc-review</td><td class="desc">One BC needs a read-only audit</td><td class="desc">Evidence-based findings</td></tr>
           <tr><td class="skillname">bc-implementation</td><td class="desc">A refined BC has no material implementation</td><td class="desc">Tested implementation + traceability report</td></tr>
           <tr><td class="skillname">bc-enhancement</td><td class="desc">An implemented BC has a bug or changed requirement</td><td class="desc">Synchronized spec + code, ghost behavior removed</td></tr>
