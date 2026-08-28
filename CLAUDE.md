@@ -136,7 +136,7 @@ in `docs/context-map.md`. Mutable lifecycle state is BC-local at
 table.
 
 | Area | Skill file |
-|---|---|
+| --- | --- |
 | Auth (middleware, Firebase, Identity Service, cookies) | `.github/skills/auth/SKILL.md` |
 | Catalog (product browsing proxy, eCommerce Core ACL, channel token management) | `.github/skills/catalog/SKILL.md` |
 | Activations (activation requests, LiveOps approval/rejection/revocation, product activations) | `.github/skills/activations/SKILL.md` |
@@ -221,7 +221,7 @@ User identity is owned by the Identity Service. All `*_user_id` fields throughou
 ## Naming Conventions
 
 | Thing | Convention | Example |
-|---|---|---|
+| --- | --- | --- |
 | File names | kebab-case | `tenant-schema.service.ts` |
 | Classes, Interfaces | PascalCase | `TenantSchemaService` |
 | Functions, methods | camelCase | `createTenantSchema()` |
@@ -258,7 +258,7 @@ User identity is owned by the Identity Service. All `*_user_id` fields throughou
 Every new bounded context must have spec files covering all of these layers before the PR is merged:
 
 | Layer | What to cover |
-|---|---|
+| --- | --- |
 | `application/services` | All public methods — happy path + every exception branch |
 | `application/jobs` | Each `@Cron` method — verifies it calls the repository and completes without error |
 | `infrastructure/repositories` | All public methods — mock the Sequelize model, assert correct calls and return values |
@@ -351,7 +351,7 @@ Secrets files use GCP Secret Manager references (`SECRET_NAME:latest`), not lite
 ### Key variables
 
 | Variable | Purpose |
-|---|---|
+| --- | --- |
 | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME` | PostgreSQL connection |
 | `DB_POOL_SIZE`, `DB_ACQUIRE`, `DB_IDLE_TIME`, `DB_IDLE_IN_TRANSACTION` | Connection pool tuning |
 | `APP_PORT` | Server port (default 3000) |
@@ -370,7 +370,7 @@ Secrets files use GCP Secret Manager references (`SECRET_NAME:latest`), not lite
 ## Key File Locations
 
 | What | Where |
-|---|---|
+| --- | --- |
 | CLS namespace init | `src/shared/cls-namespace.ts` |
 | Sequelize config + beforeQuery hook | `src/database/sequelize.config.ts` |
 | Tenant schema creation + Umzug | `src/tenant-schema/tenant-schema.service.ts` |

@@ -73,15 +73,25 @@ bounded contexts.
 
 ```text
 domain-exploration
-  -> bc-refinement              (one fork per BC)
+  -> bc-refinement              (one BC, thin first slice is enough)
   -> bc-review spec-only        (recommended)
   -> bc-implementation          (one fork per BC)
   -> bc-review full
+  -> bc-enhancement             (iterative: new capability, changed rule, bug, gap)
+  -> bc-review full             (after each significant enhancement)
   -> cross-bc-validation        (when a journey spans implemented BCs)
+```
 
-Existing behavior change or bug
-  -> bc-enhancement             (one fork per BC)
-  -> bc-review full
+You do not need a complete specification before first delivery. Refine and
+implement a thin first slice, then extend the BC iteratively through
+`bc-enhancement` as the domain is better understood.
+
+```text
+Brownfield (existing codebase, no hGATE artifacts)
+  -> domain-exploration         (code, APIs, schemas, journeys as evidence)
+  -> bc-refinement              (produce first-draft spec from existing code)
+  -> bc-review full             (surface drift between spec and code)
+  -> bc-enhancement             (close drift, bugs, and gaps)
 ```
 
 Use `architecture-decision-exploration` when business boundaries are already
@@ -97,7 +107,7 @@ understood but a technical or cross-system architecture decision remains open.
 | `bc-refinement` | One BC needs an approved specification | BC skill, domain model, BDD scenarios, decisions, status, and ACLs | Yes |
 | `bc-review` | One BC needs a read-only specification or implementation audit | Evidence-based findings | One BC per invocation |
 | `bc-implementation` | One refined BC has no material implementation | Tested implementation and traceability report | Yes |
-| `bc-enhancement` | An implemented BC has a bug, changed requirement, or gap | Synchronized specification and code with ghost behavior removed | Yes |
+| `bc-enhancement` | An implemented BC needs new capability, a changed rule, a bug fix, or a gap closed — including iterative slices after first delivery | Synchronized specification and code with ghost behavior removed | Yes |
 | `cross-bc-validation` | One completed journey crosses several implemented BCs | Feature-local contract and journey validation report | Yes |
 
 ## Persistent Artifacts
@@ -177,6 +187,29 @@ after seven days. Update the specification first and remove contradictory old
 behavior.
 ```
 
+### Add a new capability slice to an existing BC
+
+```text
+Use bc-enhancement for the Refund Decisions BC. We now need to support partial
+refunds. The initial implementation only handled full refunds. Update the
+specification first, then implement the new slice.
+```
+
+### Onboard a brownfield codebase
+
+```text
+Use domain-exploration. This is an existing e-commerce platform with no hGATE
+artifacts. Use the current codebase, API routes, database schema, and team
+knowledge as evidence to identify the domains and bounded contexts.
+```
+
+```text
+Use bc-refinement for the Order Management BC. There is no existing
+specification. Read the current source code, API contracts, and database schema
+as evidence and produce a first-draft specification of what the BC currently
+does and is intended to do.
+```
+
 ### Validate a cross-BC journey
 
 ```text
@@ -226,6 +259,11 @@ hGATE is most valuable when:
 It optimizes for **time to reliable change**, not PR count. The framework reduces
 forgotten decisions, contradictory requirements, duplicated business rules,
 ghost behavior, context drift, and tribal knowledge.
+
+It works equally well on greenfield and brownfield projects. On brownfield
+codebases, `domain-exploration` and `bc-refinement` use the existing code,
+APIs, and schemas as evidence to produce first-draft specifications; `bc-review
+full` then surfaces drift between the spec and the code.
 
 Presentation:
 [Google Slides](https://docs.google.com/presentation/d/1Rlt7gmf7c9DqZFTiga4myCYpJbLtBvQvo3i-W0Aq9dw/edit?slide=id.g3f455ea9a55_0_95#slide=id.g3f455ea9a55_0_95)
