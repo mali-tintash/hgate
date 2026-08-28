@@ -135,6 +135,12 @@ to the full pipeline.
 
 ## Starting a New Project
 
+You do not need a complete specification before first delivery. Refine and
+implement a thin first slice per BC, then extend it iteratively through
+`bc-enhancement` as the domain is better understood. `bc-enhancement` handles
+net-new capability additions just as well as behavior changes and bug fixes —
+it updates the spec first, then implements, then sweeps for ghost behavior.
+
 1. Run `domain-exploration` in a fork.
 2. Confirm the problem, language, capabilities, domains, and BC boundaries.
 3. Persist `docs/domain-map.md` and `docs/context-map.md`.
@@ -151,17 +157,27 @@ Do not refine or implement several BCs in one session.
 
 ## Adopting hGATE in an Existing Codebase
 
+On a brownfield project there are no hGATE artifacts yet — the existing code,
+APIs, schemas, and team knowledge become the input evidence for producing them.
 Do not treat existing modules or services as confirmed BC boundaries.
 
 1. Run `domain-exploration` using current journeys, code, APIs, schemas, and
    team knowledge as evidence.
 2. Confirm the domain and context maps with business and engineering owners.
 3. For each existing BC, run `bc-refinement` to create its current intended
-   specification.
-4. Run `bc-review full` to compare the specification with existing code.
+   specification. The AI reads the existing code as evidence — it does not
+   generate specs from thin air. The output is a first-draft specification the
+   team then confirms and corrects.
+4. Run `bc-review full` to compare the specification with existing code and
+   surface drift, bugs, and missing safeguards.
 5. Route behavior drift, bugs, and missing safeguards to `bc-enhancement`.
 6. Use `bc-implementation` only for a refined BC that has no material
    implementation.
+
+The session-start synchronization protocol is not the right tool for brownfield
+onboarding. It classifies *committed changes against existing specs* — without
+specs there is nothing to compare against. Start with `domain-exploration`
+and `bc-refinement` first.
 
 Do not generate a new implementation over existing behavior simply because the
 existing code lacks hGATE artifacts.

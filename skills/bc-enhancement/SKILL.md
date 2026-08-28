@@ -1,10 +1,13 @@
 ---
 name: bc-enhancement
 description: >
-  Use this skill when implementing a change, enhancement, or PR feedback fix to an
-  already-built Bounded Context. Trigger phrases: "change how X works", "update the
-  behaviour of", "the requirement changed", "PR feedback", "fix the logic in",
-  "enhance this feature", "the flow changed", "rework", "update to now do".
+  Use this skill when adding new capability to, or changing existing behaviour
+  in, an already-built Bounded Context. Covers: iterative delivery of a new
+  slice after first implementation, changed business rules, bug fixes, PR
+  feedback, gap closure, and requirement changes. Trigger phrases: "add X to
+  this BC", "change how X works", "update the behaviour of", "the requirement
+  changed", "PR feedback", "fix the logic in", "enhance this feature", "the
+  flow changed", "rework", "update to now do".
   Do NOT use bc-refinement for this — bc-refinement updates skill docs only.
   This skill operates on live source code with ghost-behavior detection.
 context: fork
@@ -16,9 +19,17 @@ context: fork
 
 ## Overview
 
-This skill is used when a behavioural change must be applied to a BC that is already
-implemented in code. Its primary guard is **ghost behavior detection** — the systematic
-discovery and elimination of old code paths that contradict the updated design.
+This skill is used when behaviour must be added to or changed in a BC that is
+already implemented in code. It covers two equally common scenarios:
+
+- **Iterative delivery** — adding a new capability slice to a BC after its
+  first implementation. The spec did not need to be complete on day one; new
+  slices are refined and implemented incrementally through this skill.
+- **Behavior change** — a business rule, bug, requirement, or gap is being
+  corrected or replaced in existing code.
+
+Its primary guard is **ghost behavior detection** — the systematic discovery
+and elimination of old code paths that contradict the updated design.
 
 **The incident this skill prevents:**
 
@@ -544,11 +555,18 @@ This intentionally makes any previous `VERIFIED` status stale. Run
 
 ## Standing Rules
 
-### Never partial-implement
+### Never partial-implement a behavior change
 
-If the change requires removing old behaviour and adding new behaviour, both must happen
-in the same session. Leaving old behaviour in place "for now" is not acceptable — it
-creates the exact ghost behavior problem this skill exists to prevent.
+When a change requires removing old behaviour and adding new behaviour, both
+must happen in the same session. Leaving old behaviour in place "for now" is
+not acceptable — it creates the exact ghost behavior problem this skill exists
+to prevent.
+
+This rule applies to behavior *changes and replacements*. Iterative delivery
+is different: deliberately scoping a thin new slice (adding capability that did
+not exist before) is not partial implementation — it is intentional incremental
+delivery. The scope of each slice is confirmed with the user in Phase 2 before
+coding begins.
 
 ### Tests must reflect the new reality
 
