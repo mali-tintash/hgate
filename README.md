@@ -133,6 +133,29 @@ Decision and status files are local to their owning skill or BC. hGATE does not
 use global append-only decision or lifecycle files because they create merge
 conflicts during parallel work.
 
+## BDD Scenario Viewer
+
+`tools/gherkin-viewer/index.html` is a standalone, dependency-free page for
+reading `bdd-scenarios.md` files without parsing raw Gherkin/Markdown by eye.
+
+Open it directly in a browser (no server or build step required):
+
+```bash
+open tools/gherkin-viewer/index.html
+```
+
+Then click **Load file** and select a BC's `bdd-scenarios.md`. The viewer:
+
+- extracts fenced ` ```gherkin ` blocks from the Markdown and renders each
+  `Feature` as a collapsible section
+- renders `Background` steps in a distinct highlighted block per feature
+- renders each `Scenario`/`Scenario Outline` as its own card with
+  color-coded `Given`/`When`/`Then`/`And`/`But` steps
+- shows each scenario's `@scenario:<id>` tag as a pill for quick traceability
+  back to tests
+- supports live filtering by tag, scenario title, or step text, and a
+  "Collapse all features" control for scanning large files
+
 ## Lifecycle
 
 ```text
