@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>hGATE viewer</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        margin: 0;
+        padding: 24px;
+        line-height: 1.4;
+        background: #f0f9ff;
+        color: #0f172a;
+      }
+
+      h1 {
+        margin-top: 0;
+        color: #0c4a6e;
+      }
+
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      textarea {
+        width: 100%;
+        min-height: 220px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        border: 1px solid #bae6fd;
+        border-radius: 10px;
+        background: #f8fdff;
+        color: #0f172a;
+        padding: 12px;
+      }
+
+      .muted {
+        color: #475569;
+      }
+
+      .summary-card {
+        margin-top: 12px;
+        margin-bottom: 6px;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        border: 1px solid #bfdbfe;
+        border-radius: 999px;
+        background: #eff6ff;
+        color: #1e3a8a;
+        font-size: 13px;
+      }
+
+      .summary-pill {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: #dbeafe;
+        color: #1d4ed8;
+        font-weight: 600;
+      }
+
+      .feature {
+        border: 1px solid #8884;
+        border-radius: 10px;
+        padding: 12px;
+        margin-top: 12px;
+        background: #f3f4f6;
+      }
+
+      .feature summary {
+        display: list-item;
+        cursor: pointer;
+      }
+
+      .feature summary h2 {
+        display: inline;
+        margin: 0;
+      }
+
+      .scenario {
+        border: 1px solid #93c5fd;
+        border-radius: 8px;
+        padding: 10px;
+        margin-top: 10px;
+        background: #e0f2fe;
+        transition: background-color 120ms ease-in-out;
+      }
+
+      .scenario:hover {
+        background: #bae6fd;
+      }
+
+      .background-block {
+        border: 1px solid #fde68a;
+        border-radius: 8px;
+        background: #fef9c3;
+        padding: 10px;
+        margin-top: 10px;
+      }
+
+      .tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .tag {
+        display: inline-block;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 12px;
+        opacity: 0.95;
+        padding: 2px 8px;
+        border-radius: 999px;
+      }
+
+      .tag-scenario-id {
+        background: #dcfce7;
+        color: #166534;
+        border: 1px solid #86efac;
+      }
+
+      .step {
+        margin: 4px 0;
+        padding-left: 8px;
+        border-left: 3px solid transparent;
+      }
+
+      .step.Given {
+        border-left-color: #3b82f6;
+      }
+
+      .step.When {
+        border-left-color: #f59e0b;
+      }
+
+      .step.Then {
+        border-left-color: #10b981;
+      }
+
+      .step.And,
+      .step.But {
+        border-left-color: #a78bfa;
+      }
+
+      input[type="text"] {
+        padding: 6px 8px;
+        min-width: 280px;
+        border: 1px solid #93c5fd;
+        border-radius: 8px;
+        background: #f8fdff;
+        color: #0f172a;
+      }
+
+      button {
+        padding: 6px 10px;
+        cursor: pointer;
+        border: 1px solid #7dd3fc;
+        border-radius: 8px;
+        background: #e0f2fe;
+        color: #0c4a6e;
+      }
+
+      button:hover {
+        background: #bae6fd;
+      }
+
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>hGATE viewer</h1>
+    <p class="muted">Paste a Markdown BDD scenario file.</p>
+
+    <div class="row">
+      <input id="filterInput" type="text" placeholder="Filter by tag/title/step..." />
+      <button id="renderBtn">Render</button>
+      <button id="loadFileBtn">Load file</button>
+      <input id="fileInput" type="file" accept=".md,.txt,.feature" style="display: none" />
+    </div>
+
+    <textarea id="sourceInput" aria-label="BDD scenario markdown input"></textarea>
+
+    <div class="row" style="align-items: center">
+      <div id="summary" class="summary-card" aria-live="polite"></div>
+      <button id="collapseAllBtn" type="button">Collapse all features</button>
+    </div>
+    <div id="results"></div>
+
+    <script>
+      const sample = `# Auth BDD Scenarios
+
+## Feature: Portal User Authentication (AdminAuthMiddleware)
+
+\`\`\`gherkin
+Feature: Portal User Authentication (AdminAuthMiddleware)
+
+ Background:
+ Given Firebase Admin SDK is initialised with a valid service account
+ And the Merit Identity Service is reachable
+ And the AES-256-GCM key is configured via MERIT_COOKIE_SECRET
+
+ Scenario: User logs in with a valid merit_session cookie (preferred flow)
+ Given a request with valid merit_session and merit_rewards_platform cookies
+ And FirebaseTokenVerifierPort.verifySessionCookie() succeeds
+ And IdentityServicePort.resolveAppAccessToken() returns a valid token
+ When AdminAuthMiddleware processes the request
+ Then the session cookie is trimmed and verified via FirebaseTokenVerifierPort.verifySessionCookie()
+ And merit_rewards_platform is decrypted to extract tenantId and user identity
+ And req.user is set as AuthenticatedAdmin with adminId, tenantId, and appAccessToken
+ And req['isAdminRoute'] is true
+ And the CLS namespace is entered with the correct tenant schema
+ And next() is called
+\`\`\``;
+
+      const sourceInput = document.getElementById("sourceInput");
+      const filterInput = document.getElementById("filterInput");
+      const renderBtn = document.getElementById("renderBtn");
+      const loadFileBtn = document.getElementById("loadFileBtn");
+      const collapseAllBtn = document.getElementById("collapseAllBtn");
+      const fileInput = document.getElementById("fileInput");
+      const summary = document.getElementById("summary");
+      const results = document.getElementById("results");
+
+      function escapeHtml(text) {
+        return text
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+
+      function extractGherkinBlocks(markdown) {
+        const blocks = [];
+        const regex = /```gherkin\s*([\s\S]*?)```/gi;
+        let match;
+        while ((match = regex.exec(markdown)) !== null) {
+          blocks.push(match[1]);
+        }
+        return blocks;
+      }
+
+      function parseBlocks(blocks) {
+        const parsed = [];
+        for (const block of blocks) {
+          const lines = block.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+          let currentFeature = null;
+          let pendingTags = [];
+          for (const line of lines) {
+            if (line.startsWith("@")) {
+              pendingTags = line.split(/\s+/).filter(Boolean);
+              continue;
+            }
+            if (line.startsWith("Feature:")) {
+              currentFeature = {
+                title: line.slice("Feature:".length).trim(),
+                description: [],
+                backgroundSteps: [],
+                scenarios: [],
+              };
+              parsed.push(currentFeature);
+              continue;
+            }
+            if (!currentFeature) {
+              continue;
+            }
+            if (line.startsWith("Background:")) {
+              currentFeature.backgroundSteps.push({
+                keyword: "Background",
+                text: "",
+              });
+              continue;
+            }
+            if (line.startsWith("Scenario:") || line.startsWith("Scenario Outline:")) {
+              currentFeature.scenarios.push({
+                title: line.replace(/^Scenario( Outline)?:/, "").trim(),
+                kind: line.startsWith("Scenario Outline:") ? "Scenario Outline" : "Scenario",
+                tags: pendingTags,
+                steps: [],
+              });
+              pendingTags = [];
+              continue;
+            }
+            const stepMatch = line.match(/^(Given|When|Then|And|But)\s+(.*)$/);
+            if (stepMatch && currentFeature.scenarios.length > 0) {
+              currentFeature.scenarios[currentFeature.scenarios.length - 1].steps.push({
+                keyword: stepMatch[1],
+                text: stepMatch[2],
+              });
+              continue;
+            }
+            if (stepMatch && currentFeature.backgroundSteps.length > 0) {
+              currentFeature.backgroundSteps.push({
+                keyword: stepMatch[1],
+                text: stepMatch[2],
+              });
+              continue;
+            }
+            if (currentFeature.scenarios.length === 0) {
+              currentFeature.description.push(line);
+            }
+          }
+        }
+        return parsed;
+      }
+
+      function render() {
+        const markdown = sourceInput.value;
+        const blocks = extractGherkinBlocks(markdown);
+        const features = parseBlocks(blocks);
+        const filter = filterInput.value.trim().toLowerCase();
+
+        let featureCount = 0;
+        let scenarioCount = 0;
+        let html = "";
+
+        for (const feature of features) {
+          const filteredScenarios = feature.scenarios.filter((scenario) => {
+            if (!filter) return true;
+            const text = [
+              feature.title,
+              scenario.title,
+              scenario.tags.join(" "),
+              ...scenario.steps.map((s) => s.text),
+            ]
+              .join(" ")
+              .toLowerCase();
+            return text.includes(filter);
+          });
+
+          if (filteredScenarios.length === 0) {
+            continue;
+          }
+
+          featureCount += 1;
+          scenarioCount += filteredScenarios.length;
+
+          html += `<details class="feature" open>`;
+          html += `<summary><h2>Feature: ${escapeHtml(feature.title)}</h2></summary>`;
+          if (feature.description.length > 0) {
+            html += `<p class="muted">${escapeHtml(feature.description.join(" "))}</p>`;
+          }
+          if (feature.backgroundSteps.length > 0) {
+            html += `<section class="background-block">`;
+            html += `<h3>Background</h3>`;
+            for (const step of feature.backgroundSteps) {
+              if (step.keyword === "Background") {
+                continue;
+              }
+              html += `<div class="step ${escapeHtml(step.keyword)}"><strong>${escapeHtml(step.keyword)}</strong> ${escapeHtml(step.text)}</div>`;
+            }
+            html += `</section>`;
+          }
+
+          for (const scenario of filteredScenarios) {
+            html += `<article class="scenario">`;
+            if (scenario.tags.length > 0) {
+              html += `<div class="tags">`;
+              for (const tag of scenario.tags) {
+                const isScenarioIdTag = tag.toLowerCase().startsWith("@scenario:");
+                const className = isScenarioIdTag ? "tag tag-scenario-id" : "tag";
+                html += `<span class="${className}">${escapeHtml(tag)}</span>`;
+              }
+              html += `</div>`;
+            }
+            html += `<h3>${escapeHtml(scenario.kind)}: ${escapeHtml(scenario.title)}</h3>`;
+            for (const step of scenario.steps) {
+              html += `<div class="step ${escapeHtml(step.keyword)}"><strong>${escapeHtml(step.keyword)}</strong> ${escapeHtml(step.text)}</div>`;
+            }
+            html += `</article>`;
+          }
+
+          html += `</details>`;
+        }
+
+        summary.innerHTML =
+          `<span class="summary-pill">${blocks.length} block${blocks.length === 1 ? "" : "s"}</span>` +
+          `<span class="summary-pill">${featureCount} feature${featureCount === 1 ? "" : "s"}</span>` +
+          `<span class="summary-pill">${scenarioCount} scenario${scenarioCount === 1 ? "" : "s"}</span>`;
+        results.innerHTML = html || `<p class="muted">No scenarios matched.</p>`;
+      }
+
+      loadFileBtn.addEventListener("click", () => {
+        fileInput.click();
+      });
+
+      fileInput.addEventListener("change", async () => {
+        const [file] = fileInput.files || [];
+        if (!file) {
+          return;
+        }
+        const fileContent = await file.text();
+        sourceInput.value = fileContent;
+        render();
+      });
+
+      renderBtn.addEventListener("click", render);
+      collapseAllBtn.addEventListener("click", () => {
+        const featureSections = results.querySelectorAll("details.feature");
+        for (const featureSection of featureSections) {
+          featureSection.open = false;
+        }
+      });
+      filterInput.addEventListener("input", render);
+
+      sourceInput.value = sample;
+      render();
+    </script>
+  </body>
+</html>
