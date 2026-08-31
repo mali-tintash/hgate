@@ -92,6 +92,8 @@ docs/
   adoption-guide.md
   domain-map.md
   context-map.md
+  hgate-project.json
+  hgate-project.schema.json
   adr/
     YYYY-MM-DD-<decision-slug>.md
   features/
@@ -112,6 +114,8 @@ docs/
 
 - `docs/domain-map.md`: confirmed domains, BCs, capabilities, and boundaries
 - `docs/context-map.md`: relationships and business information exchanged
+- `docs/hgate-project.json`: deterministic schema-versioned projection for the
+  project viewer and automation; derived from the authoritative Markdown
 - BC `decisions.md`: decisions owned by one BC
 - BC `status.md`: mutable lifecycle state for one BC
 - BDD scenario IDs: stable links from approved scenarios to executable tests
@@ -120,6 +124,32 @@ docs/
 
 Do not create global append-only decision or lifecycle files. They become
 conflict hotspots when teams work on separate BCs.
+
+The project projection is global but is neither a decision log nor a lifecycle
+authority. BC-local `status.md` remains authoritative for lifecycle. Keep
+localized decisions and status updates in their owners, then synchronize the
+projection only when those changes affect projected fields.
+
+### Project projection synchronization
+
+Use `docs/hgate-project.json` as the one canonical machine-readable projection.
+Schema version 1 contains `project`, `domains`, `boundedContexts`,
+`relationships`, and `journeys`. BCs include stable kebab-case identity,
+classification, boundary role, lifecycle, ownership, capabilities, structured
+ports, ACLs, and source paths. Relationships and journeys also use stable IDs.
+
+After an authoritative projected change:
+
+1. Update the owning Markdown artifact first.
+2. Regenerate or surgically synchronize the affected projection entries without
+   changing unrelated entries.
+3. Read lifecycle only from the BC's `status.md`.
+4. Omit timestamps and sort arrays deterministically by stable ID; sort nested
+   ports and ACLs by name.
+5. Validate against `docs/hgate-project.schema.json`.
+
+Do not block viewing older projects that only have Markdown maps. The viewer
+prefers valid JSON when present and falls back to legacy Markdown.
 
 Every Gherkin Scenario and Scenario Outline uses a repository-unique tag such as
 `@scenario:CART-SUBMIT-001`. Tests that claim coverage include
@@ -144,13 +174,14 @@ it updates the spec first, then implements, then sweeps for ghost behavior.
 1. Run `domain-exploration` in a fork.
 2. Confirm the problem, language, capabilities, domains, and BC boundaries.
 3. Persist `docs/domain-map.md` and `docs/context-map.md`.
-4. Initialize one local `status.md` per confirmed BC.
-5. Choose one BC and run `bc-refinement` in a separate fork.
-6. Optionally run `bc-review spec-only`.
-7. Run `bc-implementation` in a separate fork.
-8. Run `bc-review full`.
-9. Repeat for the next BC.
-10. When a business journey crosses implemented BCs, run
+4. Create and validate the synchronized `docs/hgate-project.json` projection.
+5. Initialize one local `status.md` per confirmed BC.
+6. Choose one BC and run `bc-refinement` in a separate fork.
+7. Optionally run `bc-review spec-only`.
+8. Run `bc-implementation` in a separate fork.
+9. Run `bc-review full`.
+10. Repeat for the next BC.
+11. When a business journey crosses implemented BCs, run
     `cross-bc-validation`.
 
 Do not refine or implement several BCs in one session.
@@ -229,11 +260,13 @@ Coordination rules:
 2. Keep decisions and status in the owning BC directory.
 3. Change domain/context maps only when confirmed boundaries or relationships
    change.
-4. Define provider contracts in the owning BC and consumer behavior in the
+4. Synchronize `docs/hgate-project.json` only when projected authoritative
+   information changes; deterministic updates must preserve unrelated entries.
+5. Define provider contracts in the owning BC and consumer behavior in the
    consuming BC.
-5. Link both BCs to one ADR when a decision is genuinely cross-cutting.
-6. Validate a cross-BC journey only after participating BCs are implemented.
-7. Fix validation findings through separate owning-BC enhancement sessions.
+6. Link both BCs to one ADR when a decision is genuinely cross-cutting.
+7. Validate a cross-BC journey only after participating BCs are implemented.
+8. Fix validation findings through separate owning-BC enhancement sessions.
 
 ## Lifecycle
 
@@ -281,6 +314,8 @@ boundaries remain unclear.
 - [ ] The complete `templates/CLAUDE.hgate.md` protocol is installed
 - [ ] Every session reconciles manual code changes before new work
 - [ ] Domain and context maps exist
+- [ ] `docs/hgate-project.json` is synchronized, deterministic, timestamp-free,
+      and schema-valid
 - [ ] Every active BC has local specification, decisions, and status artifacts
 - [ ] Cross-cutting decisions use standalone ADRs
 - [ ] Initial implementation and enhancement use different skills

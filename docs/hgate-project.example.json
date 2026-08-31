@@ -1,0 +1,115 @@
+{
+  "$schema": "./hgate-project.schema.json",
+  "schemaVersion": 1,
+  "project": {
+    "name": "Example commerce project",
+    "description": "Illustrates the hGATE machine-readable project projection."
+  },
+  "domains": [
+    {
+      "id": "commerce",
+      "name": "Commerce",
+      "classification": "CORE",
+      "purpose": "Turn an approved customer selection into a fulfilled order."
+    }
+  ],
+  "boundedContexts": [
+    {
+      "id": "catalog",
+      "name": "Catalog",
+      "domainId": "commerce",
+      "classification": "SUPPORTING",
+      "role": "SHARED",
+      "lifecycle": "VERIFIED",
+      "purpose": "Expose purchasable products.",
+      "owns": ["Product browsing"],
+      "doesNotOwn": ["Order submission"],
+      "capabilities": [
+        {
+          "name": "Browse products",
+          "trigger": "Customer opens the catalog",
+          "outcome": "Available products are returned",
+          "status": "CONFIRMED"
+        }
+      ],
+      "ports": [
+        {
+          "name": "EcommerceCatalogPort",
+          "direction": "OUTBOUND",
+          "purpose": "Retrieve products from the external catalog",
+          "contract": ".github/skills/catalog/domain-model.md"
+        }
+      ],
+      "acls": [
+        {
+          "name": "eCommerce Catalog ACL",
+          "system": "eCommerce Core",
+          "direction": "OUTBOUND",
+          "purpose": "Translate the external catalog into Catalog language",
+          "file": ".github/skills/catalog/ecommerce-catalog-acl.md"
+        }
+      ],
+      "sources": {
+        "skill": ".github/skills/catalog/SKILL.md",
+        "domainModel": ".github/skills/catalog/domain-model.md",
+        "status": ".github/skills/catalog/status.md"
+      }
+    },
+    {
+      "id": "ordering",
+      "name": "Ordering",
+      "domainId": "commerce",
+      "classification": "CORE",
+      "role": "PRIMARY",
+      "lifecycle": "IMPLEMENTED",
+      "purpose": "Submit and retrieve customer orders.",
+      "owns": ["Order submission"],
+      "doesNotOwn": ["Product catalog"],
+      "capabilities": [
+        {
+          "name": "Create order",
+          "trigger": "Customer submits an approved cart",
+          "outcome": "OMS accepts the order",
+          "status": "CONFIRMED"
+        }
+      ],
+      "ports": [
+        {
+          "name": "OrdersPort",
+          "direction": "INBOUND",
+          "purpose": "Accept order creation commands",
+          "contract": ".github/skills/orders/domain-model.md"
+        }
+      ],
+      "acls": [],
+      "sources": {
+        "skill": ".github/skills/orders/SKILL.md",
+        "domainModel": ".github/skills/orders/domain-model.md",
+        "status": ".github/skills/orders/status.md"
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "id": "catalog-to-ordering-product-selection",
+      "from": "catalog",
+      "to": "ordering",
+      "information": "Selected product identity",
+      "sourceOfTruth": "Catalog",
+      "consistency": "Immediate",
+      "interaction": "Request-response",
+      "translationAcl": "No",
+      "status": "Confirmed"
+    }
+  ],
+  "journeys": [
+    {
+      "id": "place-order",
+      "name": "Place order",
+      "boundedContextIds": ["catalog", "ordering"],
+      "entryPoint": "Customer browses the catalog",
+      "outcome": "An order is accepted",
+      "validationArtifact": "docs/features/place-order/validation.md"
+    }
+  ]
+}

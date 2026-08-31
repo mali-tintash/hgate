@@ -117,6 +117,42 @@ already be committed.
 
 Do not maintain a global append-only decisions file or mutable lifecycle table.
 
+## Canonical Project Projection
+
+Authoritative Markdown remains the source of truth:
+
+- `docs/domain-map.md` owns confirmed domains, BC identities, classifications,
+  boundary roles, capabilities, and ownership.
+- `docs/context-map.md` owns relationships and cross-BC journeys.
+- `.github/skills/<bc-name>/` owns the BC specification, domain model, ACLs,
+  decisions, and lifecycle `status.md`.
+
+Maintain one derived machine-readable projection at
+`docs/hgate-project.json`. Viewer and automation tooling should prefer this
+file, while continuing to support legacy Markdown projects. The projection is
+not an independent decision or lifecycle artifact.
+
+Schema version 1 has top-level `project`, `domains`, `boundedContexts`,
+`relationships`, and `journeys`. Use stable repository-unique kebab-case IDs.
+Each BC projects its name, domain ID, classification
+(`CORE|SUPPORTING|GENERIC|UNCONFIRMED`), boundary role
+in `role` (`PRIMARY|SHARED|SUPPORTING|UNCONFIRMED`), lifecycle from `status.md`,
+`owns`, `doesNotOwn`, capabilities, structured ports
+(`name`, `direction`, `purpose`, `contract`), ACLs
+(`name`, `system`, `direction`, `file`), and source artifact paths.
+Relationships project `id`, `from`, `to`, `information`, `sourceOfTruth`,
+`consistency`, `interaction`, `translationAcl`, and `status`. Journeys project
+`id`, `name`, `boundedContextIds`, `entryPoint`, `outcome`, and
+`validationArtifact`.
+
+Synchronize the projection only when projected authoritative information
+changes. Preserve unrelated entries and stable IDs, omit timestamps, order
+collections deterministically by stable ID (nested ports and ACLs by name), and
+validate against `docs/hgate-project.schema.json`. Do not report the workflow
+complete with a stale or invalid projection. When information is undecided,
+resolve it in the owning Markdown artifact or use an allowed `UNCONFIRMED`
+value; never decide it directly in JSON.
+
 ## Guided Workflow
 
 Use `hgate-guide` when the correct workflow stage is unclear. It recommends one

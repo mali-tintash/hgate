@@ -129,6 +129,9 @@ Proceed to Phase 1. First update local lifecycle status:
 IMPLEMENTED | VERIFIED -> CHANGING
 ```
 
+Immediately synchronize that lifecycle into `docs/hgate-project.json` and
+validate it; the transition remains owned by `status.md`.
+
 If the BC is not in an eligible state, stop and resolve the status/code
 mismatch before implementation.
 
@@ -171,6 +174,9 @@ misclassified and must move to the Behavioral path instead.
    None — decisions.md updated with a one-line note.
    ```
 6. Stop here. Do not run Phases 1–7.
+
+The fast path does not synchronize `docs/hgate-project.json`: by definition it
+changes no projected authoritative information or lifecycle state.
 
 ---
 
@@ -303,6 +309,7 @@ Files that commonly need updates:
 | A request/response field added/removed | `bdd-scenarios.md` → update `When` steps that supply the field and `Then` steps that assert what is stored or returned |
 | An external API call moved or added | relevant `*-acl.md` |
 | A port method added/removed | `domain-model.md` → port interface block |
+| A port added/removed or its purpose/contract changes | `domain-model.md` → structured Ports table |
 | A business or architectural choice is concluded | `decisions.md` → add one Asked / Findings / Decision/Action entry |
 
 Scenario ID rules during enhancement:
@@ -546,6 +553,14 @@ After the enhancement, tests, and ghost-behavior sweep pass, update:
 ```text
 CHANGING -> IMPLEMENTED
 ```
+
+After authoritative specifications and `status.md` are final, synchronize
+`docs/hgate-project.json` only if projected information changed. Preserve stable
+BC/relationship/journey IDs and unrelated entries; derive lifecycle from
+`status.md`; include structured ports, ACLs, and source paths; omit timestamps;
+sort deterministically; and validate against
+`docs/hgate-project.schema.json`. The projection records confirmed truth but
+never decides it independently.
 
 This intentionally makes any previous `VERIFIED` status stale. Run
 `bc-review full` for independent verification. If blocked, record

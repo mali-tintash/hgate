@@ -66,11 +66,18 @@ When repository access is available, persist the confirmed output as:
   `assets/domain-map-template.md`
 - `docs/context-map.md`, created from
   `assets/context-map-template.md`
+- `docs/hgate-project.json`, the deterministic machine-readable projection of
+  the confirmed maps and BC-local authoritative artifacts
 - `.github/skills/<bc-name>/status.md` for each confirmed BC, created from the
   `bc-refinement` status template with lifecycle `DISCOVERED`
 
 If an artifact already exists, update only confirmed boundary changes. Do not
 overwrite unrelated BC entries or lifecycle history.
+
+The Markdown maps, BC specifications, decisions, ACLs, and BC-local `status.md`
+files remain authoritative. `docs/hgate-project.json` is one global, derived
+projection for tools such as the project viewer; it is not a place to make or
+approve decisions.
 
 ## Non-Negotiable Rules
 
@@ -428,6 +435,15 @@ or update each confirmed BC's local `status.md` and record the transition to
 `DISCOVERED`. The domain map must link to local status files instead of
 duplicating mutable lifecycle state.
 
+Then synchronize `docs/hgate-project.json` because confirmed boundaries,
+relationships, journeys, and lifecycle values changed. Project schema version 1
+contains `project`, `domains`, `boundedContexts`, `relationships`, and
+`journeys`. Use stable IDs from the maps, read lifecycle only from each BC's
+`status.md`, include source artifact paths, omit timestamps, and sort every
+collection deterministically by stable ID (and nested ports/ACLs by name).
+Validate the result against `docs/hgate-project.schema.json`. Do not complete
+the handoff if the projection is stale or invalid.
+
 ## Recommendation Protocol
 
 When the AI has a preferred interpretation:
@@ -485,6 +501,9 @@ Domain exploration is complete only when:
 - The user explicitly confirms the final report
 - Confirmed maps are persisted when repository access is available
 - Every confirmed BC has a local lifecycle status artifact
+- Stable IDs exist for every projected BC, relationship, and journey
+- `docs/hgate-project.json` matches the authoritative artifacts, has
+  deterministic ordering and no timestamps, and passes schema validation
 
 If these conditions are not met, produce an interim report and clearly label the
 affected boundaries as provisional.

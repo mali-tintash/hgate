@@ -116,6 +116,8 @@ understood but a technical or cross-system architecture decision remains open.
 docs/
   domain-map.md                 # confirmed domains, BCs, and ownership
   context-map.md                # relationships between BCs
+  hgate-project.json            # derived machine-readable project projection
+  hgate-project.schema.json     # schema for projection validation
   adr/                          # one file per cross-cutting decision
   features/<feature>/
     validation.md               # one cross-BC journey report
@@ -132,6 +134,14 @@ docs/
 Decision and status files are local to their owning skill or BC. hGATE does not
 use global append-only decision or lifecycle files because they create merge
 conflicts during parallel work.
+
+`docs/hgate-project.json` is the single canonical machine-readable projection
+used by the project viewer. Authoritative Markdown remains the source of truth,
+and BC-local `status.md` remains authoritative for lifecycle. Specialist
+workflows synchronize the projection only when projected information changes,
+using stable IDs, deterministic ordering, no timestamps, and schema validation.
+Projects without the projection remain supported through their legacy Markdown
+maps.
 
 ## BDD Scenario Viewer
 
@@ -155,6 +165,20 @@ Then click **Load file** and select a BC's `bdd-scenarios.md`. The viewer:
   back to tests
 - supports live filtering by tag, scenario title, or step text, and a
   "Collapse all features" control for scanning large files
+
+## hGATE Project Viewer
+
+The viewer prefers `docs/hgate-project.json` to render a project-wide view of
+domains, bounded contexts, relationships, and journeys, while retaining legacy
+Markdown support. Schema version 1 projects stable BC, relationship, and journey
+IDs; classification and boundary role; lifecycle; ownership and capabilities;
+ports and ACLs; relationship contracts; journey outcomes; and source artifact
+paths.
+
+The JSON is derived, not a place to decide boundaries or status. Update the
+owning Markdown first, synchronize only affected projected information,
+preserve unrelated entries, omit timestamps, sort deterministically, and
+validate against `docs/hgate-project.schema.json`.
 
 ## Lifecycle
 
@@ -269,6 +293,8 @@ completion checks.
     tests.
 11. A trivial, no-spec-impact change may take `bc-enhancement`'s fast path only
     with explicit human confirmation; default to the full pipeline otherwise.
+12. The global project projection is derived from localized authoritative
+    artifacts and must be synchronized and validated after projected changes.
 
 ## Why hGATE
 

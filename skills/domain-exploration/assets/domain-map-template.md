@@ -33,15 +33,20 @@ avoid merge conflicts between teams working on different BCs.
 
 ## Domain Inventory
 
-| Domain/Subdomain | Classification | Business purpose | Owner | Status |
-|---|---|---|---|---|
-| [...] | Core / Supporting / Generic | [...] | [...] | Confirmed / Provisional |
+Domain IDs are stable, repository-unique kebab-case identifiers.
+
+| Domain ID | Domain/Subdomain | Classification | Business purpose | Owner | Status |
+|---|---|---|---|---|---|
+| `[...]` | [...] | Core / Supporting / Generic | [...] | [...] | Confirmed / Provisional |
 
 ## Bounded Context Inventory
 
-| Bounded context | Domain/Subdomain | Owns | Does not own | Local status |
-|---|---|---|---|---|
-| [...] | [...] | [...] | [...] | `.github/skills/<bc-name>/status.md` |
+BC IDs are stable, repository-unique kebab-case identifiers. Never derive a new
+ID merely because a display name changes.
+
+| BC ID | Bounded context | Domain/Subdomain | Classification | Boundary role | Owns | Does not own | Local status | Source artifacts |
+|---|---|---|---|---|---|---|---|---|
+| `[...]` | [...] | [...] | CORE / SUPPORTING / GENERIC / UNCONFIRMED | PRIMARY / SHARED / SUPPORTING / UNCONFIRMED | [...] | [...] | `.github/skills/<bc-name>/status.md` | `.github/skills/<bc-name>/SKILL.md`, `.github/skills/<bc-name>/domain-model.md` |
 
 ## Business Capabilities
 
