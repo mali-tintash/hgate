@@ -127,11 +127,23 @@
     .flow{ flex-direction:column; }
     .arrow{ width:auto; height:26px; transform:rotate(90deg); }
   }
-  .loop{
-    margin-top:26px; padding-top:18px; border-top:1px dashed var(--border);
-    font-family:'PlexMono'; font-size:13px; color:var(--muted); display:flex; gap:8px; align-items:center;
+  .iterate-note{
+    margin-bottom:22px; padding:14px 18px; background:var(--surface-2); border-left:3px solid var(--sage);
+    border-radius:6px; font-size:15px; color:var(--pine);
   }
-  .loop b{ color:var(--pine); }
+  .loopwrap{ margin-top:8px; position:relative; }
+  .loop-arc{ width:100%; height:64px; display:block; }
+  .loop-panel{
+    margin-top:2px; background:var(--surface-2); border:1px solid var(--sage-dim); border-radius:10px;
+    padding:16px 20px; display:flex; gap:12px; align-items:flex-start;
+  }
+  .loop-panel .tag-pill{
+    flex:0 0 auto; font-family:'PlexMono'; font-size:10px; font-weight:700; letter-spacing:0.1em;
+    color:var(--bg); background:var(--sage); border-radius:5px; padding:4px 8px; margin-top:2px;
+  }
+  .loop-panel p{ font-family:'PlexMono'; font-size:13.5px; color:var(--pine); line-height:1.6; }
+  .loop-panel p b{ color:var(--pine); }
+  @media (max-width:900px){ .loop-arc{ display:none; } }
   .flow-note{ margin-top:18px; color:var(--muted); font-size:15px; max-width:640px; }
 
   /* features */
@@ -266,6 +278,9 @@
     </div>
 
     <div>
+      <div class="iterate-note">A BC's first pass only needs a spec that covers what's shipping now — not
+        a complete, permanent one. <code class="mono">bc-enhancement</code> below is how it deepens from
+        there; most BCs go through several rounds of it as understanding grows.</div>
       <div class="flow">
         <div class="fnode"><span class="tag">MAP</span><div class="title">Domain Exploration</div></div>
         <div class="arrow">&rarr;</div>
@@ -279,7 +294,31 @@
         <div class="arrow">&rarr;</div>
         <div class="fnode gate"><span class="tag">VERIFY</span><div class="title">Cross-BC Validation</div></div>
       </div>
-      <div class="loop"><span>&#8635;</span> <b>bc-enhancement</b> — a governed loop back in for any bug or changed requirement on a shipped BC, always closed out with a full BC review.</div>
+
+      <div class="loopwrap">
+        <svg class="loop-arc" viewBox="0 0 1000 70" preserveAspectRatio="none">
+          <defs>
+            <marker id="loopArrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M1 1L8 5L1 9" fill="none" stroke="#5E8267" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </marker>
+          </defs>
+          <path d="M955,6 C 955,58 165,58 165,6" fill="none" stroke="#5E8267" stroke-width="2.6"
+                stroke-dasharray="1 7" stroke-linecap="round" marker-end="url(#loopArrow)"/>
+        </svg>
+        <div class="loop-panel">
+          <span class="tag-pill">ITERATE</span>
+          <p><b>bc-enhancement</b> loops back into an already-shipped BC to add a new capability slice or
+            change existing behavior. This is the normal way a BC matures — not a bug-fix exception — and
+            every pass still closes with a full BC review.</p>
+        </div>
+      </div>
+
+      <div class="iterate-note" style="margin-top:22px; margin-bottom:0;">Starting from an existing codebase
+        rather than a blank one? <code class="mono">domain-exploration</code> and
+        <code class="mono">bc-refinement</code> can read your existing code, APIs, and schemas as evidence
+        to produce a first-draft spec — then <code class="mono">bc-review full</code> surfaces where the
+        spec and the code have already drifted apart.</div>
+
       <p class="flow-note">Already know your domain boundaries? <code class="mono">architecture-decision-exploration</code>
         handles a cross-system technical decision on its own, without repeating domain mapping.</p>
     </div>
@@ -311,7 +350,8 @@
         <span class="tag">TRACE</span>
         <h3>Scenario-to-test traceability</h3>
         <p>Every BDD scenario is linked to a real test. No orphaned tests, no untested scenarios sitting
-          in a spec no one implemented.</p>
+          in a spec no one implemented — browse any BC's scenarios directly with the built-in Gherkin
+          viewer instead of parsing raw Markdown by eye.</p>
       </div>
       <div class="feat-card">
         <span class="tag">FAST PATH</span>
@@ -352,7 +392,7 @@
           <tr><td class="skillname">bc-refinement</td><td class="desc">One BC needs an approved specification</td><td class="desc">Domain model, BDD scenarios, decisions, ACLs (anti-corruption layers)</td></tr>
           <tr><td class="skillname">bc-review</td><td class="desc">One BC needs a read-only audit</td><td class="desc">Evidence-based findings</td></tr>
           <tr><td class="skillname">bc-implementation</td><td class="desc">A refined BC has no material implementation</td><td class="desc">Tested implementation + traceability report</td></tr>
-          <tr><td class="skillname">bc-enhancement</td><td class="desc">An implemented BC has a bug or changed requirement</td><td class="desc">Synchronized spec + code, ghost behavior removed</td></tr>
+          <tr><td class="skillname">bc-enhancement</td><td class="desc">A BC needs a new capability slice, a changed rule, or a bug fixed</td><td class="desc">Synchronized spec + code, ghost behavior removed</td></tr>
           <tr><td class="skillname">cross-bc-validation</td><td class="desc">A completed journey crosses several implemented BCs</td><td class="desc">Feature-local contract + validation report</td></tr>
         </tbody>
       </table>
