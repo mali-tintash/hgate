@@ -226,8 +226,12 @@ artifacts and local lifecycle status after completing its gates.
 - **Use for:** Initial implementation of one refined, unbuilt BC
 - **Mode:** Fork
 - **Consumes:** Approved BC specification and project conventions
-- **Produces:** Tested source code, migrations, adapters, and traceability report
-- **Complete when:** No approved behavior is missing and validation passes
+- **Produces:** Tested source code, migrations, adapters, traceability report,
+  immutable module-scoped BDD-to-TDD sign-off, and optional separately signed
+  Goal 3 property/model evidence when the human selects it
+- **Complete when:** No approved behavior is missing, validation passes, the
+  human explicitly signs off BDD evidence, and any selected Goal 3 evidence is
+  separately signed off
 
 ### `bc-enhancement`
 
@@ -235,8 +239,11 @@ artifacts and local lifecycle status after completing its gates.
 - **Mode:** Fork
 - **Consumes:** Existing specification, code, tests, and requested change
 - **Produces:** Synchronized specification and implementation with ghost
-  behavior removed
-- **Complete when:** New behavior passes and the ghost-behavior sweep is clear
+  behavior removed, immutable module-scoped BDD-to-TDD sign-off, and optional
+  separately signed Goal 3 property/model evidence when selected
+- **Complete when:** New behavior passes, the ghost-behavior sweep is clear, the
+  human explicitly signs off BDD evidence, and any selected Goal 3 evidence is
+  separately signed off
 
 ### `cross-bc-validation`
 

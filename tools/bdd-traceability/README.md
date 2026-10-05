@@ -35,6 +35,25 @@ Recommended `package.json` script:
 
 Run `npm run verify:bdd` as a required CI gate before or alongside Jest.
 
+## Human sign-off loop
+
+The verifier is the deterministic engine for hGATE's BDD-to-TDD close gate. For
+initial BC implementation and behavioral enhancement, follow
+[`signoff-loop.md`](./signoff-loop.md) after the relevant Jest tests pass.
+
+The loop runs this verifier repository-wide, presents module-specific evidence
+to a human, records requested changes, and repeats until the verifier exits `0`
+and the human explicitly signs off. Completed evidence is stored per module:
+
+```text
+docs/verification/bdd-signoffs/<module-slug>/
+  YYYY-MM-DD-<change-slug>.md
+```
+
+Use [`signoff-template.md`](./signoff-template.md). A passing verifier proves
+linkage and ID validity; it does not prove that the linked assertions
+meaningfully protect the Given/When/Then outcome.
+
 ## Conventions
 
 Scenario IDs use uppercase segments and a three-digit sequence:

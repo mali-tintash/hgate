@@ -13,6 +13,23 @@ reused. In TypeScript/Jest projects, run `npm run verify:bdd` before completing
 implementation, enhancement, or full-review work; this deterministic gate must
 pass in CI.
 
+Initial implementation and behavioral enhancement also follow
+`tools/bdd-traceability/signoff-loop.md`. Run relevant Jest tests and the
+repository-wide verifier against a clean candidate revision, present
+module-specific evidence to the human, and obtain explicit sign-off or requested
+changes. Repeat after spec-first and test-first corrections. Store each
+completed immutable record under
+`docs/verification/bdd-signoffs/<module-slug>/`; verifier success alone is not
+human approval.
+
+After BDD scope is approved, `bc-implementation` and behavioral
+`bc-enhancement` must ask whether the human wants optional Goal 3 business-logic
+verification for the current BC change. Goal 3 uses independent
+`properties.md` claims, `[PROP:<ID>]` Jest references, the
+`tools/business-verification` verifier, and a separate human sign-off. If the
+human declines, record the scoped rationale in the BC's `decisions.md` and
+create no skipped artifact. This choice is optional at every adoption level.
+
 Before starting new work, reconcile any code changed outside an agent-governed
 hGATE session. Do not silently treat manually changed code as the new
 specification. The user must confirm whether each behavioral change is intended,
@@ -114,6 +131,7 @@ already be committed.
 
 - BC decisions: `.github/skills/<bc-name>/decisions.md`
 - BC lifecycle: `.github/skills/<bc-name>/status.md`
+- Optional BC universal claims: `.github/skills/<bc-name>/properties.md`
 - Workflow-skill decisions: `decisions.md` beside that skill's `SKILL.md`
 - Cross-cutting decisions: one ADR per decision under `docs/adr/`
 
