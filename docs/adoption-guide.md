@@ -38,6 +38,31 @@ Copy the hGATE skill directories into the repository's skill location:
 
 Preserve each skill's `SKILL.md`, `assets/`, `references/`, and `decisions.md`.
 
+Install the deterministic BDD traceability verifier:
+
+```bash
+mkdir -p /path/to/your-project/tools/bdd-traceability
+cp tools/bdd-traceability/verify.mjs \
+  /path/to/your-project/tools/bdd-traceability/
+```
+
+For a TypeScript/Jest project, add this required package script:
+
+```json
+{
+  "scripts": {
+    "verify:bdd": "node tools/bdd-traceability/verify.mjs --root ."
+  }
+}
+```
+
+Run `npm run verify:bdd` in CI before or alongside Jest. The command exits
+nonzero for duplicate or malformed scenario IDs, scenarios without an active
+Jest reference, and Jest references to unknown scenarios. If the adopting
+project uses non-default specification or test roots, configure repeatable
+`--scenario-path` and `--test-path` arguments in the package script. See
+[`tools/bdd-traceability/README.md`](../tools/bdd-traceability/README.md).
+
 Merge `templates/CLAUDE.hgate.md` into the adopting project's `CLAUDE.md` or
 equivalent instructions. Preserve existing project-specific conventions. The
 template contains both guided routing and the mandatory session-start
@@ -123,8 +148,9 @@ conflict hotspots when teams work on separate BCs.
 
 Every Gherkin Scenario and Scenario Outline uses a repository-unique tag such as
 `@scenario:CART-SUBMIT-001`. Tests that claim coverage include
-`[BDD:CART-SUBMIT-001]` in their name or framework metadata. Reviews check both
-uncovered scenarios and test references that no longer resolve.
+`[BDD:CART-SUBMIT-001]` in a static Jest `it(...)` or `test(...)` title.
+`npm run verify:bdd` checks both uncovered scenarios and test references that no
+longer resolve.
 
 `bc-enhancement` includes a triviality gate. A change with no observable
 behavior, contract, or scenario impact may skip the ghost-behavior audit,

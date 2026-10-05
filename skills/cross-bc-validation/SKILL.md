@@ -224,6 +224,10 @@ Inventory:
 Run the smallest existing commands that validate the journey. Do not add or
 modify tests in this read-only session.
 
+Run `npm run verify:bdd` once for the repository and use its output when
+recording participating scenario IDs. Treat nonzero traceability results as
+findings owned by the affected BCs.
+
 For each test distinguish:
 
 - What the test proves

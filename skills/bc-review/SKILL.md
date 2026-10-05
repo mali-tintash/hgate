@@ -325,6 +325,12 @@ Report:
 Absence of a test does not prove absence of behavior. Presence of a test does not eliminate
 uncovered races or integration failures.
 
+Run `npm run verify:bdd` and include its deterministic diagnostics as evidence.
+Any duplicate or malformed scenario ID, uncovered scenario, or unknown test
+reference is at least a specification-conformance finding. Continue reviewing
+whether each referenced test meaningfully asserts the scenario outcome; the
+tool proves linkage, not assertion quality.
+
 ### 2.4 Classification
 
 Classify every finding exactly once:

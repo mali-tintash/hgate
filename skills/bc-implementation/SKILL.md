@@ -246,8 +246,8 @@ layer's responsibility.
 
 Use the scenario IDs already defined in `bdd-scenarios.md`; do not invent
 implementation-local aliases such as `S1`. Every executable test that claims
-scenario coverage must include `[BDD:<scenario-id>]` in its test name or
-equivalent framework metadata:
+scenario coverage must include `[BDD:<scenario-id>]` in its static Jest
+`it(...)` or `test(...)` title:
 
 ```typescript
 it('[BDD:CART-SUBMIT-001] submits a valid cart', async () => {
@@ -450,13 +450,15 @@ Read every test file created or changed for the BC and confirm:
 Run the smallest existing commands that prove the implementation:
 
 1. Targeted tests for the BC
-2. Type checking or build
-3. Targeted linting, if supported
-4. Broader integration or full test suite only when needed by project policy or
+2. `npm run verify:bdd` for repository-wide scenario/test traceability
+3. Type checking or build
+4. Targeted linting, if supported
+5. Broader integration or full test suite only when needed by project policy or
    shared wiring changes
 
-Do not add new validation tools unless the implementation genuinely requires
-them.
+If the project has adopted hGATE but the traceability command is missing, stop
+and install `tools/bdd-traceability/verify.mjs` and its package script rather
+than replacing the deterministic check with manual review.
 
 #### 6d. Final conformance report
 

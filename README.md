@@ -23,9 +23,13 @@ repository:
 ```bash
 mkdir -p /path/to/your-project/.github/skills
 cp -R skills/* /path/to/your-project/.github/skills/
+mkdir -p /path/to/your-project/tools/bdd-traceability
+cp tools/bdd-traceability/verify.mjs \
+  /path/to/your-project/tools/bdd-traceability/
 ```
 
 Preserve each skill's `SKILL.md`, `assets/`, `references/`, and `decisions.md`.
+The verifier is a required part of hGATE adoption for TypeScript/Jest projects.
 
 ### 2. Install the complete hGATE project instructions
 
@@ -155,6 +159,29 @@ Then click **Load file** and select a BC's `bdd-scenarios.md`. The viewer:
   back to tests
 - supports live filtering by tag, scenario title, or step text, and a
   "Collapse all features" control for scanning large files
+
+## BDD Traceability Verifier
+
+`tools/bdd-traceability/verify.mjs` deterministically checks adopted
+TypeScript/Jest projects for globally unique scenario IDs, uncovered scenarios,
+and test references to unknown IDs:
+
+```bash
+node tools/bdd-traceability/verify.mjs --root .
+```
+
+Add the command to the adopting project's `package.json` and required CI gates:
+
+```json
+{
+  "scripts": {
+    "verify:bdd": "node tools/bdd-traceability/verify.mjs --root ."
+  }
+}
+```
+
+See [`tools/bdd-traceability/README.md`](tools/bdd-traceability/README.md) for
+the TypeScript/Jest contract, scan options, reports, and exit codes.
 
 ## Lifecycle
 

@@ -9,7 +9,9 @@ decisions, and ACL contracts.
 Every BDD Scenario and Scenario Outline has a stable
 `@scenario:<BC>-<CAPABILITY>-<NNN>` ID. Executable tests that protect the
 scenario reference it as `[BDD:<scenario-id>]`. IDs are never renumbered or
-reused.
+reused. In TypeScript/Jest projects, run `npm run verify:bdd` before completing
+implementation, enhancement, or full-review work; this deterministic gate must
+pass in CI.
 
 Before starting new work, reconcile any code changed outside an agent-governed
 hGATE session. Do not silently treat manually changed code as the new

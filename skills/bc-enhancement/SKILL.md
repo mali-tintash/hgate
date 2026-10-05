@@ -488,6 +488,10 @@ Read every `*.spec.ts` file in the BC. Confirm:
 
 ### 5d. Sweep report
 
+Run `npm run verify:bdd` after updating tests and before completing the sweep.
+Duplicate or malformed scenario IDs, uncovered scenarios, and unknown test
+references block completion; do not replace the command with a manual grep.
+
 Output a sweep report:
 
 ```
