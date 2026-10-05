@@ -70,6 +70,29 @@ human to sign off or request changes, and repeats after spec-first and
 test-first corrections. Store completed records per owning module under
 `docs/verification/bdd-signoffs/<module-slug>/`; never edit a signed record.
 
+Goal 3 business-logic verification is optional at every adoption level. During
+initial implementation and behavioral enhancement, ask whether the human wants
+it for the current BC change.
+
+If selected:
+
+```bash
+cp -R tools/business-verification \
+  /path/to/your-project/tools/
+cd /path/to/your-project
+npm install --save-dev fast-check
+```
+
+Add `verify:properties` and a project-specific `test:properties` Jest script as
+documented in
+[`tools/business-verification/README.md`](../tools/business-verification/README.md).
+The BC owns `properties.md`, the property verifier runs in CI, and the separate
+human loop writes immutable evidence under
+`docs/verification/property-signoffs/<module-slug>/`.
+
+If declined, record the current scope and rationale in the BC's `decisions.md`.
+Do not install placeholder tooling or create a skipped-verification artifact.
+
 Merge `templates/CLAUDE.hgate.md` into the adopting project's `CLAUDE.md` or
 equivalent instructions. Preserve existing project-specific conventions. The
 template contains both guided routing and the mandatory session-start
@@ -117,6 +140,10 @@ Use for long-lived, regulated, multi-team, or high-consequence systems:
 Adoption level changes process depth, not BC isolation or the requirement to
 confirm material business decisions.
 
+Goal 3 remains optional even at Enterprise. Risk may motivate recommending it,
+but the workflow must ask the human and record a decline rather than silently
+enabling stronger verification.
+
 ## Repository Artifacts
 
 ```text
@@ -130,6 +157,9 @@ docs/
     bdd-signoffs/
       <module-slug>/
         YYYY-MM-DD-<change-slug>.md
+    property-signoffs/
+      <module-slug>/
+        YYYY-MM-DD-<change-slug>.md
   features/
     <feature-name>/
       validation.md
@@ -139,6 +169,7 @@ docs/
     SKILL.md
     domain-model.md
     bdd-scenarios.md
+    properties.md               # optional Goal 3 claims
     decisions.md
     status.md
     *-acl.md
@@ -153,6 +184,8 @@ docs/
 - BDD scenario IDs: stable links from approved scenarios to executable tests
 - Module sign-off records: immutable evidence that a human accepted passing
   Jest and repository-wide BDD traceability for a clean candidate revision
+- Optional property sign-off records: separately approved universal-claim
+  evidence, counterexample dispositions, and explicit finite bounds
 - `docs/adr/`: one file per cross-cutting architectural decision
 - Feature `validation.md`: one cross-BC journey validation report
 
@@ -169,6 +202,12 @@ A verifier pass is necessary but not sufficient for implementation or
 behavioral-enhancement completion. The BDD-to-TDD sign-off loop requires a
 human to assess the linked Jest tests, request changes or approve them, and
 persist the final decision in the owning module's sign-off directory.
+
+When Goal 3 is selected, property declarations use stable `@property:<ID>`
+headings and executable Jest tests use `[PROP:<ID>]`. Generated properties and
+stateful checks exercise production TypeScript. Pure finite models may claim
+completeness only inside explicit recorded bounds. The property verifier,
+execution evidence, and human approval remain separate from BDD examples.
 
 `bc-enhancement` includes a triviality gate. A change with no observable
 behavior, contract, or scenario impact may skip the ghost-behavior audit,
@@ -330,6 +369,10 @@ boundaries remain unclear.
 - [ ] Every active BC has local specification, decisions, and status artifacts
 - [ ] Cross-cutting decisions use standalone ADRs
 - [ ] Initial implementation and enhancement use different skills
+- [ ] Each initial implementation and behavioral enhancement explicitly asks
+      whether Goal 3 verification is wanted for the current scope
+- [ ] Selected Goal 3 claims, evidence, counterexamples, bounds, and separate
+      sign-off follow the business-verification contract
 - [ ] Independent review policy matches the selected adoption level
 - [ ] Cross-BC fixes are routed to owning BC sessions
 - [ ] No global mutable decision or lifecycle file exists

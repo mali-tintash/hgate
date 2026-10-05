@@ -37,6 +37,7 @@ The BC skill directory should contain:
 - `bdd-scenarios.md`
 - `decisions.md`
 - One `*-acl.md` file for each external integration
+- Optional `properties.md` when Goal 3 business-logic verification was selected
 
 ## Output
 
@@ -47,6 +48,8 @@ The BC skill directory should contain:
 - Adapters for specified external dependencies
 - A specification-to-code traceability report
 - An immutable module-scoped BDD-to-TDD sign-off artifact
+- When explicitly selected, executable property/model evidence and a separate
+  immutable Goal 3 sign-off artifact
 - A completion report listing any explicitly deferred items
 
 ## Golden Rules
@@ -244,6 +247,34 @@ Use the smallest meaningful test level:
 
 Avoid duplicating the same assertion at every layer. Each test should protect the
 layer's responsibility.
+
+#### Optional Goal 3 decision and property matrix
+
+Before planning source code, ask one focused question:
+
+> Do you want Goal 3 business-logic verification for this BC implementation?
+
+If declined:
+
+1. Record the implementation scope and supplied rationale as a concluded
+   **Asked -> Findings -> Decision/Action** entry in the BC's `decisions.md`.
+2. Do not create a property sign-off artifact.
+3. Continue with the existing BDD/TDD workflow.
+
+If accepted, require an approved `.github/skills/<bc-name>/properties.md`. If it
+does not exist or lacks a needed claim, return to `bc-refinement`; do not invent
+property claims inside implementation.
+
+Build a separate property matrix:
+
+```text
+| Property ID | Universal claim | Technique | Generator/model | Oracle | Planned Jest test | Bounds |
+|-------------|-----------------|-----------|-----------------|--------|-------------------|--------|
+```
+
+Keep it separate from the BDD scenario matrix. Use `PROPERTY` for generated
+checks against production code and `FINITE_MODEL` only for explicitly bounded,
+exhaustively enumerable models.
 
 Use the scenario IDs already defined in `bdd-scenarios.md`; do not invent
 implementation-local aliases such as `S1`. Every executable test that claims
@@ -480,13 +511,41 @@ The loop must:
 
 Do not proceed to close reporting until the loop reaches `SIGNED_OFF`.
 
-#### 6e. Final conformance report
+#### 6e. Goal 3 business-logic verification when selected
+
+After BDD-to-TDD reaches `SIGNED_OFF`, follow
+`tools/business-verification/signoff-loop.md`.
+
+The Goal 3 loop must:
+
+- Run the configured property/model Jest suite and repository-wide
+  `npm run verify:properties` command against a clean candidate revision
+- Preserve seeds, replay paths, minimized synthetic counterexamples or model
+  command sequences, and their dispositions
+- Treat falsification as `CHANGES_REQUIRED`
+- Treat excessive discards, non-replayable failures, timeouts, invalid bounds,
+  state-limit exhaustion, or tooling failures as `BLOCKED`
+- Present property inventory, generators/models, oracles, bounds, and explicit
+  limitations to the human
+- Obtain approval separate from BDD sign-off
+- Create one immutable artifact under
+  `docs/verification/property-signoffs/<bc-name>/`
+
+Property-based success applies only to configured generated runs. Finite-model
+success applies only to declared bounds. Do not report either as unbounded
+proof.
+
+If Goal 3 was declined, report the BC-local decision entry instead and do not
+run or simulate this loop.
+
+#### 6f. Final conformance report
 
 ```text
 ## Specification Conformance
 
 Business rules: <implemented>/<total>
 BDD scenario IDs: <covered>/<total>
+Goal 3 properties: <covered>/<total> / DECLINED
 Ports and adapters: <implemented>/<specified>
 Migrations and constraints: <implemented>/<specified>
 
@@ -523,7 +582,8 @@ End with:
 ### Traceability
 - <implemented>/<total> business rules
 - <covered>/<total> BDD scenario IDs
-- Sign-off: [artifact path]
+- BDD sign-off: [artifact path]
+- Goal 3: [property sign-off artifact path] / Declined: [BC decision entry]
 
 ### Open or deferred items
 - None | [...]
@@ -540,7 +600,8 @@ IMPLEMENTING -> IMPLEMENTED
 
 If implementation is blocked, record `IMPLEMENTING -> BLOCKED` with the blocker,
 owner, and intended return state. Never set `IMPLEMENTED` while traceability
-contains a `Missing` item or the sign-off loop is not `SIGNED_OFF`.
+contains a `Missing` item, BDD sign-off is incomplete, or selected Goal 3
+verification is not `SIGNED_OFF`.
 
 ## Standing Rules
 
@@ -611,6 +672,10 @@ Implementation is complete only when:
 - Existing build or type checks pass
 - Explicit human BDD-to-TDD sign-off is recorded in an immutable module-scoped
   artifact
+- When Goal 3 was selected, every approved property has meaningful executable
+  coverage and a separate current property sign-off artifact
+- When Goal 3 was declined, the scoped decision and rationale are recorded in
+  the BC's `decisions.md` and no skipped artifact exists
 - The traceability report contains no `Missing` approved behavior
 
 If any condition is unmet, report the implementation as incomplete or blocked

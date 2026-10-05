@@ -15,7 +15,8 @@ This document defines the repeatable process used to bring a Bounded Context (BC
 **Input**: An existing skill directory at `.github/skills/<bc-name>/`  
 **Output**: Fully updated `SKILL.md`, `domain-model.md`, `bdd-scenarios.md`,
 `decisions.md`, `status.md`, one or more `*-acl.md` files, and any new ACL files
-needed.
+needed. When the human has explicitly opted into Goal 3 business-logic
+verification for this BC scope, output also includes `properties.md`.
 
 **Golden rule: one BC per session.** If conversation drifts toward another BC, warn the developer, note it in the Deferred Items log, and suggest redirecting. The developer has final authority — but the risk of cross-BC contamination must be clearly stated before proceeding.
 
@@ -370,7 +371,34 @@ Numbered list of unresolved contract questions (marked [OPEN]).
 
 If the external API contract is not yet known, create a **placeholder ACL** with a stub adapter and mark all questions `[OPEN]`.
 
-### 5e. `decisions.md`
+### 5e. Optional `properties.md`
+
+Do not create universal properties by default. Goal 3 business-logic
+verification is optional at every hGATE adoption level.
+
+When the human explicitly asks refinement to specify Goal 3 properties for the
+current scope, create `properties.md` from `assets/properties-template.md`.
+Otherwise omit it. A later `bc-implementation` or behavioral `bc-enhancement`
+session will ask whether Goal 3 is wanted for that change and may return to
+refinement if an approved property specification is needed.
+
+Each property:
+
+- Has one stable, repository-unique
+  `@property:<BC>-<CAPABILITY>-<three-digit-sequence>` ID.
+- States one falsifiable universal or bounded-universal claim.
+- Defines quantification, preconditions, observable oracle, technique,
+  generator contract, and finite bounds.
+- Uses `PROPERTY` for generated tests against production code.
+- Uses `FINITE_MODEL` only for a pure, genuinely finite state space with exact
+  states, commands, inputs, and depth bounds.
+- Remains distinct from named Given/When/Then examples in `bdd-scenarios.md`.
+
+Never claim that property-based testing is proof. Never claim finite-model
+completeness outside the declared bounds. Retire materially changed property
+IDs in `decisions.md`, just as retired scenario IDs are recorded.
+
+### 5f. `decisions.md`
 
 Record concluded decisions owned by this BC. Use one entry per decision:
 
@@ -388,7 +416,7 @@ Do not record in-progress deliberation. Do not copy cross-cutting decisions into
 this file; create a standalone ADR under `docs/adr/` and link to it instead.
 Never append BC decisions to a global decisions log.
 
-### 5f. `status.md`
+### 5g. `status.md`
 
 After the user approves the refined specification and Phase 6 validation passes,
 update the BC-local lifecycle status:
@@ -422,6 +450,9 @@ After updating all files, self-check:
     validation checks pass.
 11. Every Scenario/Scenario Outline has one valid, repository-unique
     `@scenario:<ID>` tag; no ID is duplicated or reused.
+12. If Goal 3 was explicitly selected, every property declaration has complete
+    metadata and one valid, repository-unique `@property:<ID>`; no property
+    merely restates one named BDD example.
 
 Report any violations to the user after completing the update.
 

@@ -32,6 +32,11 @@ Preserve each skill's `SKILL.md`, `assets/`, `references/`, and `decisions.md`.
 The verifier and its human sign-off protocol are required parts of hGATE
 adoption for TypeScript/Jest projects.
 
+Goal 3 business-logic verification is optional. When selected for a BC change,
+also copy `tools/business-verification`, install `fast-check`, and add the
+property scripts described in its README. When declined, record the scoped
+rationale in the BC's `decisions.md`; do not create a skipped artifact.
+
 ### 2. Install the complete hGATE project instructions
 
 Merge [`templates/CLAUDE.hgate.md`](templates/CLAUDE.hgate.md) into your
@@ -124,6 +129,8 @@ docs/
   adr/                          # one file per cross-cutting decision
   verification/bdd-signoffs/
     <module>/                   # immutable BDD-to-TDD human sign-offs
+  verification/property-signoffs/
+    <module>/                   # immutable, separately approved Goal 3 evidence
   features/<feature>/
     validation.md               # one cross-BC journey report
 
@@ -131,6 +138,7 @@ docs/
   SKILL.md                      # BC purpose, rules, lifecycle, module design
   domain-model.md               # aggregates, values, ports, and persistence
   bdd-scenarios.md              # business scenarios with stable traceability IDs
+  properties.md                 # optional universal/bounded-universal claims
   decisions.md                  # decisions owned by this BC
   status.md                     # lifecycle state owned by this BC
   *-acl.md                      # external contract translation
@@ -190,6 +198,32 @@ Implementation and behavioral enhancement close through the
 [`BDD-to-TDD human sign-off loop`](tools/bdd-traceability/signoff-loop.md).
 The verifier runs repository-wide, while each immutable approval record is
 stored under `docs/verification/bdd-signoffs/<module-slug>/`.
+
+## Optional Business-Logic Verification
+
+After BDD/TDD, hGATE can optionally verify universal business invariants through
+property-based Jest tests and exhaustive finite-state checks where the complete
+bounded state space is practical:
+
+```bash
+node tools/business-verification/verify.mjs --root .
+```
+
+`bc-implementation` and behavioral `bc-enhancement` ask whether Goal 3 is
+wanted for the current change. An opted-in BC specifies independent
+`@property:<ID>` claims in `properties.md`; Jest tests reference them as
+`[PROP:<ID>]`. Generated checks use `fast-check` against production code.
+Finite models state exact states, commands, inputs, and depth bounds.
+
+Goal 3 has its own traceability command, failure semantics, counterexample
+contract, human approval, and immutable artifact under
+`docs/verification/property-signoffs/<module-slug>/`. BDD examples and
+universal claims never substitute for one another. External SMT/proof-language
+support is deferred until a concrete high-consequence pilot can also address
+model-to-code correspondence.
+
+See
+[`tools/business-verification/README.md`](tools/business-verification/README.md).
 
 ## Lifecycle
 
@@ -306,6 +340,8 @@ completion checks.
     human BDD-to-TDD sign-off recorded for the owning module.
 12. A trivial, no-spec-impact change may take `bc-enhancement`'s fast path only
     with explicit human confirmation; default to the full pipeline otherwise.
+13. Goal 3 property/model verification is optional per BC change, separately
+    specified and signed off, and never reported as unbounded proof.
 
 ## Why hGATE
 
