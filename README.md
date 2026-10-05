@@ -23,9 +23,19 @@ repository:
 ```bash
 mkdir -p /path/to/your-project/.github/skills
 cp -R skills/* /path/to/your-project/.github/skills/
+mkdir -p /path/to/your-project/tools
+cp -R tools/bdd-traceability \
+  /path/to/your-project/tools/
 ```
 
 Preserve each skill's `SKILL.md`, `assets/`, `references/`, and `decisions.md`.
+The verifier and its human sign-off protocol are required parts of hGATE
+adoption for TypeScript/Jest projects.
+
+Goal 3 business-logic verification is optional. When selected for a BC change,
+also copy `tools/business-verification`, install `fast-check`, and add the
+property scripts described in its README. When declined, record the scoped
+rationale in the BC's `decisions.md`; do not create a skipped artifact.
 
 ### 2. Install the complete hGATE project instructions
 
@@ -106,8 +116,8 @@ understood but a technical or cross-system architecture decision remains open.
 | `architecture-decision-exploration` | A technical or cross-system architecture decision is unresolved | ADR or design report | Yes |
 | `bc-refinement` | One BC needs an approved specification | BC skill, domain model, BDD scenarios, decisions, status, and ACLs | Yes |
 | `bc-review` | One BC needs a read-only specification or implementation audit | Evidence-based findings | One BC per invocation |
-| `bc-implementation` | One refined BC has no material implementation | Tested implementation and traceability report | Yes |
-| `bc-enhancement` | An implemented BC needs new capability, a changed rule, a bug fix, or a gap closed — including iterative slices after first delivery | Synchronized specification and code with ghost behavior removed | Yes |
+| `bc-implementation` | One refined BC has no material implementation | Tested implementation, traceability report, and module sign-off | Yes |
+| `bc-enhancement` | An implemented BC needs new capability, a changed rule, a bug fix, or a gap closed — including iterative slices after first delivery | Synchronized specification/code, ghost behavior removed, and module sign-off | Yes |
 | `cross-bc-validation` | One completed journey crosses several implemented BCs | Feature-local contract and journey validation report | Yes |
 
 ## Persistent Artifacts
@@ -116,7 +126,13 @@ understood but a technical or cross-system architecture decision remains open.
 docs/
   domain-map.md                 # confirmed domains, BCs, and ownership
   context-map.md                # relationships between BCs
+  hgate-project.json            # derived machine-readable project projection
+  hgate-project.schema.json     # schema for projection validation
   adr/                          # one file per cross-cutting decision
+  verification/bdd-signoffs/
+    <module>/                   # immutable BDD-to-TDD human sign-offs
+  verification/property-signoffs/
+    <module>/                   # immutable, separately approved Goal 3 evidence
   features/<feature>/
     validation.md               # one cross-BC journey report
 
@@ -124,6 +140,7 @@ docs/
   SKILL.md                      # BC purpose, rules, lifecycle, module design
   domain-model.md               # aggregates, values, ports, and persistence
   bdd-scenarios.md              # business scenarios with stable traceability IDs
+  properties.md                 # optional universal/bounded-universal claims
   decisions.md                  # decisions owned by this BC
   status.md                     # lifecycle state owned by this BC
   *-acl.md                      # external contract translation
@@ -132,6 +149,14 @@ docs/
 Decision and status files are local to their owning skill or BC. hGATE does not
 use global append-only decision or lifecycle files because they create merge
 conflicts during parallel work.
+
+`docs/hgate-project.json` is the single canonical machine-readable projection
+used by the project viewer. Authoritative Markdown remains the source of truth,
+and BC-local `status.md` remains authoritative for lifecycle. Specialist
+workflows synchronize the projection only when projected information changes,
+using stable IDs, deterministic ordering, no timestamps, and schema validation.
+Projects without the projection remain supported through their legacy Markdown
+maps.
 
 ## BDD Scenario Viewer
 
@@ -155,6 +180,73 @@ Then click **Load file** and select a BC's `bdd-scenarios.md`. The viewer:
   back to tests
 - supports live filtering by tag, scenario title, or step text, and a
   "Collapse all features" control for scanning large files
+
+## hGATE Project Viewer
+
+The viewer prefers `docs/hgate-project.json` to render a project-wide view of
+domains, bounded contexts, relationships, and journeys, while retaining legacy
+Markdown support. Schema version 1 projects stable BC, relationship, and journey
+IDs; classification and boundary role; lifecycle; ownership and capabilities;
+ports and ACLs; relationship contracts; journey outcomes; and source artifact
+paths.
+
+The JSON is derived, not a place to decide boundaries or status. Update the
+owning Markdown first, synchronize only affected projected information,
+preserve unrelated entries, omit timestamps, sort deterministically, and
+validate against `docs/hgate-project.schema.json`.
+## BDD Traceability Verifier
+
+`tools/bdd-traceability/verify.mjs` deterministically checks adopted
+TypeScript/Jest projects for globally unique scenario IDs, uncovered scenarios,
+and test references to unknown IDs:
+
+```bash
+node tools/bdd-traceability/verify.mjs --root .
+```
+
+Add the command to the adopting project's `package.json` and required CI gates:
+
+```json
+{
+  "scripts": {
+    "verify:bdd": "node tools/bdd-traceability/verify.mjs --root ."
+  }
+}
+```
+
+See [`tools/bdd-traceability/README.md`](tools/bdd-traceability/README.md) for
+the TypeScript/Jest contract, scan options, reports, and exit codes.
+
+Implementation and behavioral enhancement close through the
+[`BDD-to-TDD human sign-off loop`](tools/bdd-traceability/signoff-loop.md).
+The verifier runs repository-wide, while each immutable approval record is
+stored under `docs/verification/bdd-signoffs/<module-slug>/`.
+
+## Optional Business-Logic Verification
+
+After BDD/TDD, hGATE can optionally verify universal business invariants through
+property-based Jest tests and exhaustive finite-state checks where the complete
+bounded state space is practical:
+
+```bash
+node tools/business-verification/verify.mjs --root .
+```
+
+`bc-implementation` and behavioral `bc-enhancement` ask whether Goal 3 is
+wanted for the current change. An opted-in BC specifies independent
+`@property:<ID>` claims in `properties.md`; Jest tests reference them as
+`[PROP:<ID>]`. Generated checks use `fast-check` against production code.
+Finite models state exact states, commands, inputs, and depth bounds.
+
+Goal 3 has its own traceability command, failure semantics, counterexample
+contract, human approval, and immutable artifact under
+`docs/verification/property-signoffs/<module-slug>/`. BDD examples and
+universal claims never substitute for one another. External SMT/proof-language
+support is deferred until a concrete high-consequence pilot can also address
+model-to-code correspondence.
+
+See
+[`tools/business-verification/README.md`](tools/business-verification/README.md).
 
 ## Lifecycle
 
@@ -267,8 +359,14 @@ completion checks.
 9. Decisions and lifecycle state stay local to their owner.
 10. Every BDD scenario has a stable ID referenced by meaningful executable
     tests.
-11. A trivial, no-spec-impact change may take `bc-enhancement`'s fast path only
+11. Initial implementation and behavioral enhancement close only after explicit
+    human BDD-to-TDD sign-off recorded for the owning module.
+12. A trivial, no-spec-impact change may take `bc-enhancement`'s fast path only
     with explicit human confirmation; default to the full pipeline otherwise.
+13. The global project projection is derived from localized authoritative
+    artifacts and must be synchronized and validated after projected changes.
+14. Goal 3 property/model verification is optional per BC change, separately
+    specified and signed off, and never reported as unbounded proof.
 
 ## Why hGATE
 

@@ -23,6 +23,30 @@
         color: #0c4a6e;
       }
 
+      [hidden] {
+        display: none !important;
+      }
+
+      .tabs {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 18px;
+        border-bottom: 1px solid #bae6fd;
+      }
+
+      .tab {
+        border: 0;
+        border-bottom: 3px solid transparent;
+        border-radius: 8px 8px 0 0;
+        background: transparent;
+        font-weight: 700;
+      }
+
+      .tab[aria-selected="true"] {
+        border-bottom-color: #0284c7;
+        background: #e0f2fe;
+      }
+
       .row {
         display: flex;
         flex-wrap: wrap;
@@ -176,26 +200,261 @@
       code {
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       }
+
+      .project-toolbar {
+        align-items: center;
+      }
+
+      .zoom-controls {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .zoom-level {
+        min-width: 48px;
+        color: #475569;
+        font-variant-numeric: tabular-nums;
+        text-align: center;
+      }
+
+      .project-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+        gap: 16px;
+        margin-top: 12px;
+      }
+
+      .project-graph,
+      .project-details {
+        min-height: 360px;
+        border: 1px solid #bae6fd;
+        border-radius: 12px;
+        background: #f8fdff;
+        padding: 12px;
+      }
+
+      .project-graph {
+        overflow: auto;
+      }
+
+      .project-graph svg {
+        display: block;
+        width: 100%;
+        max-width: none;
+        height: auto;
+        transition: width 120ms ease-out;
+      }
+
+      .project-detail-heading {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .project-detail-heading h2 {
+        margin: 0;
+      }
+
+      .project-detail-section h3 {
+        margin-bottom: 4px;
+      }
+
+      .project-detail-section ul {
+        margin-top: 4px;
+        padding-left: 20px;
+      }
+
+      .project-meta {
+        color: #0369a1;
+        font-weight: 700;
+      }
+
+      .source-badge,
+      .inferred-badge {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .source-badge.canonical {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      .source-badge.legacy,
+      .inferred-badge {
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      .diagnostics {
+        display: grid;
+        gap: 6px;
+        margin: 10px 0;
+      }
+
+      .diagnostic {
+        border-left: 4px solid #38bdf8;
+        border-radius: 6px;
+        background: #e0f2fe;
+        padding: 8px 10px;
+      }
+
+      .diagnostic.warning {
+        border-left-color: #f59e0b;
+        background: #fef3c7;
+      }
+
+      .diagnostic.error {
+        border-left-color: #ef4444;
+        background: #fee2e2;
+      }
+
+      .graph-domain-label {
+        fill: #334155;
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .graph-edge {
+        stroke: #64748b;
+        stroke-width: 2;
+      }
+
+      .graph-arrow {
+        fill: #64748b;
+      }
+
+      .graph-edge-label {
+        fill: #475569;
+        font-size: 10px;
+        font-weight: 600;
+        text-anchor: middle;
+      }
+
+      .graph-edge-label-background {
+        fill: #f8fdff;
+        stroke: #cbd5e1;
+        stroke-width: 1;
+      }
+
+      .graph-node {
+        cursor: pointer;
+        outline: none;
+      }
+
+      .graph-node rect {
+        fill: #e0f2fe;
+        stroke: #0284c7;
+        stroke-width: 2;
+      }
+
+      .graph-node:hover rect,
+      .graph-node:focus rect {
+        fill: #bae6fd;
+        stroke-width: 3;
+      }
+
+      .graph-node.classification-core rect {
+        fill: #ede9fe;
+        stroke: #7c3aed;
+      }
+
+      .graph-node.classification-generic rect {
+        fill: #f1f5f9;
+        stroke: #64748b;
+      }
+
+      .graph-node.inferred rect {
+        stroke-dasharray: 6 4;
+      }
+
+      .graph-node-title {
+        fill: #0f172a;
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .graph-node-meta,
+      .graph-node-lifecycle {
+        fill: #475569;
+        font-size: 10px;
+      }
+
+      @media (max-width: 850px) {
+        .project-layout {
+          grid-template-columns: 1fr;
+        }
+      }
     </style>
   </head>
   <body>
     <h1>hGATE viewer</h1>
-    <p class="muted">Paste a Markdown BDD scenario file.</p>
-
-    <div class="row">
-      <input id="filterInput" type="text" placeholder="Filter by tag/title/step..." />
-      <button id="renderBtn">Render</button>
-      <button id="loadFileBtn">Load file</button>
-      <input id="fileInput" type="file" accept=".md,.txt,.feature" style="display: none" />
+    <div class="tabs" role="tablist" aria-label="Viewer sections">
+      <button id="scenarioTab" class="tab" role="tab" aria-selected="true">
+        Scenarios
+      </button>
+      <button id="projectTab" class="tab" role="tab" aria-selected="false">
+        Project
+      </button>
     </div>
 
-    <textarea id="sourceInput" aria-label="BDD scenario markdown input"></textarea>
+    <section id="scenarioPanel" role="tabpanel" aria-labelledby="scenarioTab">
+      <p class="muted">Paste a Markdown BDD scenario file.</p>
 
-    <div class="row" style="align-items: center">
-      <div id="summary" class="summary-card" aria-live="polite"></div>
-      <button id="collapseAllBtn" type="button">Collapse all features</button>
-    </div>
-    <div id="results"></div>
+      <div class="row">
+        <input id="filterInput" type="text" placeholder="Filter by tag/title/step..." />
+        <button id="renderBtn">Render</button>
+        <button id="loadFileBtn">Load file</button>
+        <input id="fileInput" type="file" accept=".md,.txt,.feature" style="display: none" />
+      </div>
+
+      <textarea id="sourceInput" aria-label="BDD scenario markdown input"></textarea>
+
+      <div class="row" style="align-items: center">
+        <div id="summary" class="summary-card" aria-live="polite"></div>
+        <button id="collapseAllBtn" type="button">Collapse all features</button>
+      </div>
+      <div id="results"></div>
+    </section>
+
+    <section id="projectPanel" role="tabpanel" aria-labelledby="projectTab" hidden>
+      <p class="muted">
+        Select an hGATE-managed project folder. All processing stays in this browser.
+      </p>
+      <div class="row project-toolbar">
+        <button id="selectProjectBtn" type="button">Select project folder</button>
+        <input
+          id="projectFolderInput"
+          type="file"
+          webkitdirectory
+          directory
+          multiple
+          hidden
+        />
+        <div id="projectSummary" class="summary-card" aria-live="polite">
+          No project loaded
+        </div>
+        <div class="zoom-controls" role="group" aria-label="Diagram zoom controls">
+          <button id="zoomOutBtn" type="button" aria-label="Zoom out diagram" disabled>−</button>
+          <output id="zoomLevel" class="zoom-level" aria-live="polite">100%</output>
+          <button id="zoomInBtn" type="button" aria-label="Zoom in diagram" disabled>+</button>
+          <button id="fitDiagramBtn" type="button" disabled>Fit to view</button>
+        </div>
+      </div>
+      <div id="projectDiagnostics" class="diagnostics" aria-live="polite" hidden></div>
+      <div class="project-layout">
+        <div id="projectGraph" class="project-graph">
+          <p class="muted">The bounded-context topology will appear here.</p>
+        </div>
+        <aside id="projectDetails" class="project-details">
+          <p class="muted">Select a project folder, then choose a bounded context.</p>
+        </aside>
+      </div>
+    </section>
 
     <script>
       const sample = `# Auth BDD Scenarios
@@ -417,5 +676,6 @@ Feature: Portal User Authentication (AdminAuthMiddleware)
       sourceInput.value = sample;
       render();
     </script>
+    <script src="./project-viewer.js"></script>
   </body>
 </html>
