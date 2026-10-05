@@ -162,6 +162,23 @@ Check the specification for:
 - Materially different outcomes sharing one ID
 - Retired IDs that remain in the current specification
 
+### Lens 4b — Optional universal properties
+
+If `properties.md` exists, review it independently from BDD scenarios:
+
+- Every declaration has one stable, unique `@property:<ID>`.
+- The claim is universal or explicitly bounded-universal rather than one named
+  example rewritten as a property.
+- Quantification, preconditions, oracle, technique, generator, and bounds are
+  complete and falsifiable.
+- `FINITE_MODEL` claims state exact completeness bounds and do not claim
+  unbounded proof.
+- Generated properties use synthetic data and cannot persist secrets, personal
+  data, or production identifiers.
+
+Absence of `properties.md` is not a finding. Goal 3 is optional at every
+adoption level.
+
 ### Lens 5 — Authorization and tenant isolation
 
 Check separately:
@@ -331,6 +348,22 @@ reference is at least a specification-conformance finding. Continue reviewing
 whether each referenced test meaningfully asserts the scenario outcome; the
 tool proves linkage, not assertion quality.
 
+When `properties.md` exists, also run `npm run verify:properties` and the
+project's configured property/model Jest suite. Build a separate property
+traceability map:
+
+```text
+| Property ID | Universal claim | Technique | Executable tests | Generator/model and bounds | Coverage assessment |
+```
+
+Classify generated-run success and bounded finite-model completeness exactly as
+declared. Inspect the newest artifact under
+`docs/verification/property-signoffs/<bc-name>/`. A missing or stale artifact
+for a scope that explicitly opted into Goal 3 is workflow-evidence debt; a BC
+that never opted in has no Goal 3 defect. Property evidence never substitutes
+for scenario evidence, and scenario evidence never substitutes for property
+evidence.
+
 Inspect the newest artifact under
 `docs/verification/bdd-signoffs/<bc-name>/`, if present. Treat it as human
 review evidence only when:
@@ -399,6 +432,8 @@ Include a scenario traceability summary:
 - Uncovered IDs
 - Unknown or retired IDs referenced by tests
 - Current, stale, or missing BDD-to-TDD sign-off evidence
+- When Goal 3 exists: current property IDs, executable coverage, honest bounds,
+  counterexample dispositions, and current/stale/missing property sign-off
 
 Finish with:
 

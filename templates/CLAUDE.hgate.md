@@ -22,6 +22,14 @@ completed immutable record under
 `docs/verification/bdd-signoffs/<module-slug>/`; verifier success alone is not
 human approval.
 
+After BDD scope is approved, `bc-implementation` and behavioral
+`bc-enhancement` must ask whether the human wants optional Goal 3 business-logic
+verification for the current BC change. Goal 3 uses independent
+`properties.md` claims, `[PROP:<ID>]` Jest references, the
+`tools/business-verification` verifier, and a separate human sign-off. If the
+human declines, record the scoped rationale in the BC's `decisions.md` and
+create no skipped artifact. This choice is optional at every adoption level.
+
 Before starting new work, reconcile any code changed outside an agent-governed
 hGATE session. Do not silently treat manually changed code as the new
 specification. The user must confirm whether each behavioral change is intended,
@@ -123,6 +131,7 @@ already be committed.
 
 - BC decisions: `.github/skills/<bc-name>/decisions.md`
 - BC lifecycle: `.github/skills/<bc-name>/status.md`
+- Optional BC universal claims: `.github/skills/<bc-name>/properties.md`
 - Workflow-skill decisions: `decisions.md` beside that skill's `SKILL.md`
 - Cross-cutting decisions: one ADR per decision under `docs/adr/`
 

@@ -238,6 +238,12 @@ Record the participating BC scenario IDs that support each journey hop. Report
 an uncovered scenario ID or unknown `[BDD:<scenario-id>]` test reference as a
 finding owned by that BC; do not repair it in this session.
 
+When a participating BC has `properties.md`, inspect its current property
+sign-off and relevant `[PROP:<property-id>]` evidence as additional,
+independently scoped evidence. Do not require Goal 3 from a BC that did not opt
+in, and do not treat property evidence as a replacement for cross-BC journey
+examples or contract validation.
+
 ### Phase 7 - Classify Every Hop
 
 Use exactly one status:
