@@ -15,8 +15,9 @@ Perform a repeatable, evidence-based review of one Bounded Context (BC):
    missing, or intentionally deferred in implementation and tests.
 
 This is a read-only review of specifications and source code. Do not modify
-specification, source, migration, or test files. The only permitted write is the
-target BC's local `status.md` after the final report is complete.
+specification, source, migration, or test files. The only authoritative write is
+the target BC's local `status.md` after the final report is complete. When that
+lifecycle value changes, also update the derived `docs/hgate-project.json`.
 
 ## Inputs
 
@@ -162,6 +163,23 @@ Check the specification for:
 - Materially different outcomes sharing one ID
 - Retired IDs that remain in the current specification
 
+### Lens 4b — Optional universal properties
+
+If `properties.md` exists, review it independently from BDD scenarios:
+
+- Every declaration has one stable, unique `@property:<ID>`.
+- The claim is universal or explicitly bounded-universal rather than one named
+  example rewritten as a property.
+- Quantification, preconditions, oracle, technique, generator, and bounds are
+  complete and falsifiable.
+- `FINITE_MODEL` claims state exact completeness bounds and do not claim
+  unbounded proof.
+- Generated properties use synthetic data and cannot persist secrets, personal
+  data, or production identifiers.
+
+Absence of `properties.md` is not a finding. Goal 3 is optional at every
+adoption level.
+
 ### Lens 5 — Authorization and tenant isolation
 
 Check separately:
@@ -257,7 +275,8 @@ For `spec-only`, update local lifecycle metadata after reporting:
 - Otherwise use `REFINED -> BLOCKED` and record the findings, owner, and return
   state.
 
-Modify only `.github/skills/<bc-name>/status.md`.
+Modify only `.github/skills/<bc-name>/status.md` as authoritative content, then
+synchronize only its lifecycle in the derived `docs/hgate-project.json`.
 
 For `spec-only`, stop here.
 
@@ -325,6 +344,42 @@ Report:
 Absence of a test does not prove absence of behavior. Presence of a test does not eliminate
 uncovered races or integration failures.
 
+Run `npm run verify:bdd` and include its deterministic diagnostics as evidence.
+Any duplicate or malformed scenario ID, uncovered scenario, or unknown test
+reference is at least a specification-conformance finding. Continue reviewing
+whether each referenced test meaningfully asserts the scenario outcome; the
+tool proves linkage, not assertion quality.
+
+When `properties.md` exists, also run `npm run verify:properties` and the
+project's configured property/model Jest suite. Build a separate property
+traceability map:
+
+```text
+| Property ID | Universal claim | Technique | Executable tests | Generator/model and bounds | Coverage assessment |
+```
+
+Classify generated-run success and bounded finite-model completeness exactly as
+declared. Inspect the newest artifact under
+`docs/verification/property-signoffs/<bc-name>/`. A missing or stale artifact
+for a scope that explicitly opted into Goal 3 is workflow-evidence debt; a BC
+that never opted in has no Goal 3 defect. Property evidence never substitutes
+for scenario evidence, and scenario evidence never substitutes for property
+evidence.
+
+Inspect the newest artifact under
+`docs/verification/bdd-signoffs/<bc-name>/`, if present. Treat it as human
+review evidence only when:
+
+- Its status is `SIGNED_OFF`
+- Its module matches the target BC
+- Its verified revision exists
+- No later change affects scenarios, test discovery or execution,
+  implementation behavior, verifier source, or verifier configuration
+
+A missing or stale artifact is a workflow-evidence finding, not proof that the
+implementation behavior is missing. A current artifact does not replace this
+review's independent assessment of test quality.
+
 ### 2.4 Classification
 
 Classify every finding exactly once:
@@ -378,6 +433,9 @@ Include a scenario traceability summary:
 - IDs with meaningful executable coverage
 - Uncovered IDs
 - Unknown or retired IDs referenced by tests
+- Current, stale, or missing BDD-to-TDD sign-off evidence
+- When Goal 3 exists: current property IDs, executable coverage, honest bounds,
+  counterexample dispositions, and current/stale/missing property sign-off
 
 Finish with:
 
@@ -391,11 +449,16 @@ Finish with:
 ### Lifecycle status update
 
 After the full final report, use `IMPLEMENTED -> VERIFIED` only when all
-material requirements are covered and no unresolved Critical or High finding
-remains; otherwise use `IMPLEMENTED -> BLOCKED`.
+material requirements are covered, no unresolved Critical or High finding
+remains, and the target BC has current `SIGNED_OFF` BDD-to-TDD evidence;
+otherwise use `IMPLEMENTED -> BLOCKED`.
 
-Update only `.github/skills/<bc-name>/status.md`. Record report evidence,
-blockers, recommended next skill, and transition history.
+Update only `.github/skills/<bc-name>/status.md` as authoritative content.
+Record report evidence, blockers, recommended next skill, and transition
+history. Then synchronize only the projected lifecycle in
+`docs/hgate-project.json`, preserve all unrelated entries and stable IDs, omit
+timestamps, sort deterministically, and validate against
+`docs/hgate-project.schema.json`.
 
 ## Quality Checklist
 
@@ -414,7 +477,10 @@ Before returning the final report, verify:
 - [ ] Tests were treated as supporting evidence, not conclusive proof
 - [ ] Every current scenario ID was mapped to executable tests
 - [ ] Unknown and retired test references were reported
+- [ ] Module-scoped BDD-to-TDD sign-off evidence was classified as current,
+      stale, or missing
 - [ ] Undocumented safeguards were reported
 - [ ] Cross-BC concerns were deferred, not redesigned
 - [ ] No specification, source, migration, or test files were modified
-- [ ] Any lifecycle update was limited to the target BC's `status.md`
+- [ ] Any authoritative lifecycle update was limited to the target BC's
+      `status.md`; the derived project projection was synchronized and validated

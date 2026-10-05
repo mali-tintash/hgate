@@ -129,6 +129,9 @@ Proceed to Phase 1. First update local lifecycle status:
 IMPLEMENTED | VERIFIED -> CHANGING
 ```
 
+Immediately synchronize that lifecycle into `docs/hgate-project.json` and
+validate it; the transition remains owned by `status.md`.
+
 If the BC is not in an eligible state, stop and resolve the status/code
 mismatch before implementation.
 
@@ -171,6 +174,9 @@ misclassified and must move to the Behavioral path instead.
    None — decisions.md updated with a one-line note.
    ```
 6. Stop here. Do not run Phases 1–7.
+
+The fast path does not synchronize `docs/hgate-project.json`: by definition it
+changes no projected authoritative information or lifecycle state.
 
 ---
 
@@ -258,6 +264,24 @@ existing flows. Please answer each question:
 
 **Do not proceed to Phase 2b until the user has answered all consequence questions.**
 
+### Phase 2a.1 - Optional Goal 3 decision
+
+For every behavioral enhancement, ask:
+
+> Do you want Goal 3 business-logic verification for this BC change?
+
+This choice is optional at every adoption level and applies only to the current
+change scope.
+
+If declined, record the scope and supplied rationale as a concluded
+**Asked -> Findings -> Decision/Action** entry in the BC's `decisions.md`. Do
+not create a skipped property sign-off artifact. Continue with the normal
+BDD-to-TDD path.
+
+If accepted, Phase 3 must create or update `properties.md` from
+`bc-refinement/assets/properties-template.md`. Keep universal property claims
+separate from concrete BDD examples.
+
 ### Phase 2b — Ripple Effect Analysis
 
 Using the user's answers from Phase 2a, produce:
@@ -303,7 +327,10 @@ Files that commonly need updates:
 | A request/response field added/removed | `bdd-scenarios.md` → update `When` steps that supply the field and `Then` steps that assert what is stored or returned |
 | An external API call moved or added | relevant `*-acl.md` |
 | A port method added/removed | `domain-model.md` → port interface block |
+| A port added/removed or its purpose/contract changes | `domain-model.md` → structured Ports table |
 | A business or architectural choice is concluded | `decisions.md` → add one Asked / Findings / Decision/Action entry |
+| Goal 3 is selected | `properties.md` → add or update stable universal claims, generators/models, oracles, and bounds |
+| Goal 3 is declined | `decisions.md` → record scoped decline and rationale; create no property artifact |
 
 Scenario ID rules during enhancement:
 
@@ -488,6 +515,29 @@ Read every `*.spec.ts` file in the BC. Confirm:
 
 ### 5d. Sweep report
 
+After updating tests, follow `tools/bdd-traceability/signoff-loop.md`.
+The loop runs relevant Jest tests and the repository-wide verifier against a
+clean candidate revision, presents module evidence to the human, records
+requested changes, and repeats until explicit sign-off. Duplicate or malformed
+scenario IDs, uncovered scenarios, unknown test references, failed Jest
+evidence, discovery errors, and verifier failures block sign-off; do not replace
+the command with a manual grep.
+
+Keep the BC at `CHANGING` throughout the loop. Do not proceed to the close
+report until one immutable artifact exists under
+`docs/verification/bdd-signoffs/<bc-name>/` and the loop reaches `SIGNED_OFF`.
+
+If Goal 3 was selected in Phase 2a.1, then follow
+`tools/business-verification/signoff-loop.md` after BDD-to-TDD sign-off. Run the
+property/model Jest suite and `npm run verify:properties` against a clean
+candidate revision. Preserve reproducible, sanitized counterexamples and their
+dispositions. Falsification requires changes; invalid or incomplete evidence is
+blocked. Obtain separate human approval and create one immutable artifact under
+`docs/verification/property-signoffs/<bc-name>/`.
+
+If Goal 3 was declined, cite the BC-local decision entry in the close report.
+Do not run a placeholder property check or create a skipped artifact.
+
 Output a sweep report:
 
 ```
@@ -537,15 +587,30 @@ End every enhancement session with:
 ### Skill files updated
 - [file] — [what changed] / Already up to date
 
+### BDD-to-TDD sign-off
+- [artifact path]
+
+### Goal 3 business-logic verification
+- [property sign-off artifact path] / Declined: [BC decision entry]
+
 ### Open items
 - [anything deferred or blocked — none if clean]
 ```
 
-After the enhancement, tests, and ghost-behavior sweep pass, update:
+After the enhancement, tests, ghost-behavior sweep, BDD human sign-off, and any
+selected Goal 3 sign-off pass, update:
 
 ```text
 CHANGING -> IMPLEMENTED
 ```
+
+After authoritative specifications and `status.md` are final, synchronize
+`docs/hgate-project.json` only if projected information changed. Preserve stable
+BC/relationship/journey IDs and unrelated entries; derive lifecycle from
+`status.md`; include structured ports, ACLs, and source paths; omit timestamps;
+sort deterministically; and validate against
+`docs/hgate-project.schema.json`. The projection records confirmed truth but
+never decides it independently.
 
 This intentionally makes any previous `VERIFIED` status stale. Run
 `bc-review full` for independent verification. If blocked, record

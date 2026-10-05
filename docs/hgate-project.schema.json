@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mali-tintash/hgate/docs/hgate-project.schema.json",
+  "title": "hGATE project projection",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "project",
+    "domains",
+    "boundedContexts",
+    "relationships",
+    "journeys"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "project": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" }
+      }
+    },
+    "domains": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/domain" }
+    },
+    "boundedContexts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/boundedContext" }
+    },
+    "relationships": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/relationship" }
+    },
+    "journeys": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/journey" }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "domain": {
+      "type": "object",
+      "required": ["id", "name", "classification", "purpose"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string", "minLength": 1 },
+        "classification": {
+          "enum": ["CORE", "SUPPORTING", "GENERIC", "UNCONFIRMED"]
+        },
+        "purpose": { "type": "string" }
+      }
+    },
+    "capability": {
+      "type": "object",
+      "required": ["name", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "trigger": { "type": "string" },
+        "outcome": { "type": "string" },
+        "status": { "enum": ["CONFIRMED", "PROVISIONAL"] }
+      }
+    },
+    "port": {
+      "type": "object",
+      "required": ["name", "direction", "purpose", "contract"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "direction": {
+          "enum": ["INBOUND", "OUTBOUND", "BIDIRECTIONAL", "UNKNOWN"]
+        },
+        "purpose": { "type": "string" },
+        "contract": { "type": "string" }
+      }
+    },
+    "acl": {
+      "type": "object",
+      "required": ["name", "system", "direction", "file"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "system": { "type": "string" },
+        "direction": {
+          "enum": ["INBOUND", "OUTBOUND", "BIDIRECTIONAL", "UNKNOWN"]
+        },
+        "purpose": { "type": "string" },
+        "file": { "type": "string" }
+      }
+    },
+    "boundedContext": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "domainId",
+        "classification",
+        "role",
+        "lifecycle",
+        "owns",
+        "doesNotOwn",
+        "capabilities",
+        "ports",
+        "acls",
+        "sources"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string", "minLength": 1 },
+        "domainId": { "$ref": "#/$defs/id" },
+        "classification": {
+          "enum": ["CORE", "SUPPORTING", "GENERIC", "UNCONFIRMED"]
+        },
+        "role": {
+          "enum": ["PRIMARY", "SHARED", "SUPPORTING", "UNCONFIRMED"]
+        },
+        "lifecycle": {
+          "enum": [
+            "DISCOVERED",
+            "REFINING",
+            "REFINED",
+            "SPEC_REVIEWED",
+            "IMPLEMENTING",
+            "IMPLEMENTED",
+            "VERIFIED",
+            "CHANGING",
+            "BLOCKED",
+            "DEPRECATED"
+          ]
+        },
+        "purpose": { "type": "string" },
+        "owns": { "type": "array", "items": { "type": "string" } },
+        "doesNotOwn": { "type": "array", "items": { "type": "string" } },
+        "capabilities": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/capability" }
+        },
+        "ports": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/port" }
+        },
+        "acls": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/acl" }
+        },
+        "sources": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "relationship": {
+      "type": "object",
+      "required": ["id", "from", "to", "information", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "from": { "$ref": "#/$defs/id" },
+        "to": { "$ref": "#/$defs/id" },
+        "information": { "type": "string" },
+        "sourceOfTruth": { "type": "string" },
+        "consistency": { "type": "string" },
+        "interaction": { "type": "string" },
+        "translationAcl": { "type": "string" },
+        "status": { "type": "string" }
+      }
+    },
+    "journey": {
+      "type": "object",
+      "required": ["id", "name", "boundedContextIds"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string", "minLength": 1 },
+        "boundedContextIds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "entryPoint": { "type": "string" },
+        "outcome": { "type": "string" },
+        "validationArtifact": { "type": "string" }
+      }
+    }
+  }
+}

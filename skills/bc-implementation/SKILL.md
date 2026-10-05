@@ -37,6 +37,7 @@ The BC skill directory should contain:
 - `bdd-scenarios.md`
 - `decisions.md`
 - One `*-acl.md` file for each external integration
+- Optional `properties.md` when Goal 3 business-logic verification was selected
 
 ## Output
 
@@ -46,6 +47,9 @@ The BC skill directory should contain:
 - Integration or acceptance tests for critical BDD scenarios
 - Adapters for specified external dependencies
 - A specification-to-code traceability report
+- An immutable module-scoped BDD-to-TDD sign-off artifact
+- When explicitly selected, executable property/model evidence and a separate
+  immutable Goal 3 sign-off artifact
 - A completion report listing any explicitly deferred items
 
 ## Golden Rules
@@ -97,6 +101,9 @@ record:
 ```text
 REFINED | SPEC_REVIEWED -> IMPLEMENTING
 ```
+
+Immediately synchronize that lifecycle into `docs/hgate-project.json` and
+validate it; the transition remains owned by `status.md`.
 
 Declare:
 
@@ -244,10 +251,38 @@ Use the smallest meaningful test level:
 Avoid duplicating the same assertion at every layer. Each test should protect the
 layer's responsibility.
 
+#### Optional Goal 3 decision and property matrix
+
+Before planning source code, ask one focused question:
+
+> Do you want Goal 3 business-logic verification for this BC implementation?
+
+If declined:
+
+1. Record the implementation scope and supplied rationale as a concluded
+   **Asked -> Findings -> Decision/Action** entry in the BC's `decisions.md`.
+2. Do not create a property sign-off artifact.
+3. Continue with the existing BDD/TDD workflow.
+
+If accepted, require an approved `.github/skills/<bc-name>/properties.md`. If it
+does not exist or lacks a needed claim, return to `bc-refinement`; do not invent
+property claims inside implementation.
+
+Build a separate property matrix:
+
+```text
+| Property ID | Universal claim | Technique | Generator/model | Oracle | Planned Jest test | Bounds |
+|-------------|-----------------|-----------|-----------------|--------|-------------------|--------|
+```
+
+Keep it separate from the BDD scenario matrix. Use `PROPERTY` for generated
+checks against production code and `FINITE_MODEL` only for explicitly bounded,
+exhaustively enumerable models.
+
 Use the scenario IDs already defined in `bdd-scenarios.md`; do not invent
 implementation-local aliases such as `S1`. Every executable test that claims
-scenario coverage must include `[BDD:<scenario-id>]` in its test name or
-equivalent framework metadata:
+scenario coverage must include `[BDD:<scenario-id>]` in its static Jest
+`it(...)` or `test(...)` title:
 
 ```typescript
 it('[BDD:CART-SUBMIT-001] submits a valid cart', async () => {
@@ -450,21 +485,70 @@ Read every test file created or changed for the BC and confirm:
 Run the smallest existing commands that prove the implementation:
 
 1. Targeted tests for the BC
-2. Type checking or build
-3. Targeted linting, if supported
-4. Broader integration or full test suite only when needed by project policy or
+2. The BDD-to-TDD sign-off loop described below
+3. Type checking or build
+4. Targeted linting, if supported
+5. Broader integration or full test suite only when needed by project policy or
    shared wiring changes
 
-Do not add new validation tools unless the implementation genuinely requires
-them.
+If the project has adopted hGATE but the traceability command is missing, stop
+and install `tools/bdd-traceability/verify.mjs` and its package script rather
+than replacing the deterministic check with manual review.
 
-#### 6d. Final conformance report
+#### 6d. BDD-to-TDD human sign-off
+
+Follow `tools/bdd-traceability/signoff-loop.md` for this BC before writing the
+final conformance report.
+
+The loop must:
+
+- Run relevant Jest tests and the repository-wide verifier against a clean
+  candidate revision
+- Present module scenario evidence and all repository diagnostics to the human
+- Keep the BC at `IMPLEMENTING` while changes are requested or the attempt is
+  blocked
+- Repeat test-first corrections until Jest passes and the verifier exits `0`
+- Obtain explicit human sign-off; verifier success alone is not approval
+- Create and commit one immutable artifact under
+  `docs/verification/bdd-signoffs/<bc-name>/`
+
+Do not proceed to close reporting until the loop reaches `SIGNED_OFF`.
+
+#### 6e. Goal 3 business-logic verification when selected
+
+After BDD-to-TDD reaches `SIGNED_OFF`, follow
+`tools/business-verification/signoff-loop.md`.
+
+The Goal 3 loop must:
+
+- Run the configured property/model Jest suite and repository-wide
+  `npm run verify:properties` command against a clean candidate revision
+- Preserve seeds, replay paths, minimized synthetic counterexamples or model
+  command sequences, and their dispositions
+- Treat falsification as `CHANGES_REQUIRED`
+- Treat excessive discards, non-replayable failures, timeouts, invalid bounds,
+  state-limit exhaustion, or tooling failures as `BLOCKED`
+- Present property inventory, generators/models, oracles, bounds, and explicit
+  limitations to the human
+- Obtain approval separate from BDD sign-off
+- Create one immutable artifact under
+  `docs/verification/property-signoffs/<bc-name>/`
+
+Property-based success applies only to configured generated runs. Finite-model
+success applies only to declared bounds. Do not report either as unbounded
+proof.
+
+If Goal 3 was declined, report the BC-local decision entry instead and do not
+run or simulate this loop.
+
+#### 6f. Final conformance report
 
 ```text
 ## Specification Conformance
 
 Business rules: <implemented>/<total>
 BDD scenario IDs: <covered>/<total>
+Goal 3 properties: <covered>/<total> / DECLINED
 Ports and adapters: <implemented>/<specified>
 Migrations and constraints: <implemented>/<specified>
 
@@ -501,6 +585,8 @@ End with:
 ### Traceability
 - <implemented>/<total> business rules
 - <covered>/<total> BDD scenario IDs
+- BDD sign-off: [artifact path]
+- Goal 3: [property sign-off artifact path] / Declined: [BC decision entry]
 
 ### Open or deferred items
 - None | [...]
@@ -515,9 +601,16 @@ After all completion criteria pass, update the BC-local status:
 IMPLEMENTING -> IMPLEMENTED
 ```
 
+Because lifecycle is projected, synchronize `docs/hgate-project.json` after the
+authoritative `status.md` transition. Do not edit other projected fields unless
+their authoritative Markdown changed through the approved workflow. Preserve
+stable IDs and unrelated entries, omit timestamps, sort deterministically, and
+validate against `docs/hgate-project.schema.json` before reporting completion.
+
 If implementation is blocked, record `IMPLEMENTING -> BLOCKED` with the blocker,
 owner, and intended return state. Never set `IMPLEMENTED` while traceability
-contains a `Missing` item.
+contains a `Missing` item, BDD sign-off is incomplete, or selected Goal 3
+verification is not `SIGNED_OFF`.
 
 ## Standing Rules
 
@@ -586,7 +679,15 @@ Implementation is complete only when:
 - BC isolation audit is clear
 - Targeted tests pass
 - Existing build or type checks pass
+- Explicit human BDD-to-TDD sign-off is recorded in an immutable module-scoped
+  artifact
+- When Goal 3 was selected, every approved property has meaningful executable
+  coverage and a separate current property sign-off artifact
+- When Goal 3 was declined, the scoped decision and rationale are recorded in
+  the BC's `decisions.md` and no skipped artifact exists
 - The traceability report contains no `Missing` approved behavior
+- `docs/hgate-project.json` reflects the final `status.md` lifecycle and passes
+  schema validation
 
 If any condition is unmet, report the implementation as incomplete or blocked
 rather than claiming completion.
