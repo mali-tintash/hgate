@@ -15,8 +15,9 @@ Perform a repeatable, evidence-based review of one Bounded Context (BC):
    missing, or intentionally deferred in implementation and tests.
 
 This is a read-only review of specifications and source code. Do not modify
-specification, source, migration, or test files. The only permitted write is the
-target BC's local `status.md` after the final report is complete.
+specification, source, migration, or test files. The only authoritative write is
+the target BC's local `status.md` after the final report is complete. When that
+lifecycle value changes, also update the derived `docs/hgate-project.json`.
 
 ## Inputs
 
@@ -274,7 +275,8 @@ For `spec-only`, update local lifecycle metadata after reporting:
 - Otherwise use `REFINED -> BLOCKED` and record the findings, owner, and return
   state.
 
-Modify only `.github/skills/<bc-name>/status.md`.
+Modify only `.github/skills/<bc-name>/status.md` as authoritative content, then
+synchronize only its lifecycle in the derived `docs/hgate-project.json`.
 
 For `spec-only`, stop here.
 
@@ -451,8 +453,12 @@ material requirements are covered, no unresolved Critical or High finding
 remains, and the target BC has current `SIGNED_OFF` BDD-to-TDD evidence;
 otherwise use `IMPLEMENTED -> BLOCKED`.
 
-Update only `.github/skills/<bc-name>/status.md`. Record report evidence,
-blockers, recommended next skill, and transition history.
+Update only `.github/skills/<bc-name>/status.md` as authoritative content.
+Record report evidence, blockers, recommended next skill, and transition
+history. Then synchronize only the projected lifecycle in
+`docs/hgate-project.json`, preserve all unrelated entries and stable IDs, omit
+timestamps, sort deterministically, and validate against
+`docs/hgate-project.schema.json`.
 
 ## Quality Checklist
 
@@ -476,4 +482,5 @@ Before returning the final report, verify:
 - [ ] Undocumented safeguards were reported
 - [ ] Cross-BC concerns were deferred, not redesigned
 - [ ] No specification, source, migration, or test files were modified
-- [ ] Any lifecycle update was limited to the target BC's `status.md`
+- [ ] Any authoritative lifecycle update was limited to the target BC's
+      `status.md`; the derived project projection was synchronized and validated

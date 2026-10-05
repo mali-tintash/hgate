@@ -50,7 +50,8 @@ and addressed in a separate session. It will NOT be designed or implemented here
 At session start, update this BC's `status.md` from `DISCOVERED`, `REFINED`, or
 `SPEC_REVIEWED` to `REFINING`. If the file does not exist, create it from
 `assets/status-template.md` and record why lifecycle tracking was initialized
-late.
+late. Immediately synchronize the lifecycle into `docs/hgate-project.json` and
+validate the projection; `status.md` remains authoritative.
 
 ---
 
@@ -281,6 +282,16 @@ One-liner explaining why each is an alias not a class.
 Class blocks for every real VO.
 Invariants listed as comments.
 
+## Ports
+Structured table (required):
+| Name | Direction | Purpose | Contract |
+|---|---|---|---|
+| `SomePort` | INBOUND / OUTBOUND / BIDIRECTIONAL / UNKNOWN | Business purpose in this BC's language | Interface, event, endpoint, or `TBD` |
+
+Every port used by the BC must appear once. `Direction` is from this BC's
+perspective. Do not replace this table with prose or infer ports only from a
+module tree.
+
 ## Enums
 One block per enum. Valid transitions documented as comments.
 
@@ -450,11 +461,25 @@ After updating all files, self-check:
     validation checks pass.
 11. Every Scenario/Scenario Outline has one valid, repository-unique
     `@scenario:<ID>` tag; no ID is duplicated or reused.
-12. If Goal 3 was explicitly selected, every property declaration has complete
+12. `domain-model.md` contains the structured Ports table and every port has a
+    name, direction, purpose, and contract.
+13. If the refined authoritative artifacts changed projected information,
+    synchronize `docs/hgate-project.json`. Include the BC's stable ID, name,
+    domain ID, classification, boundary role, lifecycle from `status.md`,
+    ownership, capabilities, structured ports, ACL metadata, and source paths.
+    Preserve unrelated entries and deterministic ordering, omit timestamps, and
+    validate against `docs/hgate-project.schema.json`.
+14. If Goal 3 was explicitly selected, every property declaration has complete
     metadata and one valid, repository-unique `@property:<ID>`; no property
     merely restates one named BDD example.
 
 Report any violations to the user after completing the update.
+
+The projection is derived and cannot introduce a decision absent from the
+Markdown artifacts. If required projected information is unconfirmed, record
+the schema's `UNCONFIRMED` value or return to the authoritative artifact rather
+than deciding it in JSON. A refinement is not complete when projected
+authoritative information changed and the projection is stale or invalid.
 
 ---
 

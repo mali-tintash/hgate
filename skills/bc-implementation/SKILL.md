@@ -102,6 +102,9 @@ record:
 REFINED | SPEC_REVIEWED -> IMPLEMENTING
 ```
 
+Immediately synchronize that lifecycle into `docs/hgate-project.json` and
+validate it; the transition remains owned by `status.md`.
+
 Declare:
 
 ```text
@@ -598,6 +601,12 @@ After all completion criteria pass, update the BC-local status:
 IMPLEMENTING -> IMPLEMENTED
 ```
 
+Because lifecycle is projected, synchronize `docs/hgate-project.json` after the
+authoritative `status.md` transition. Do not edit other projected fields unless
+their authoritative Markdown changed through the approved workflow. Preserve
+stable IDs and unrelated entries, omit timestamps, sort deterministically, and
+validate against `docs/hgate-project.schema.json` before reporting completion.
+
 If implementation is blocked, record `IMPLEMENTING -> BLOCKED` with the blocker,
 owner, and intended return state. Never set `IMPLEMENTED` while traceability
 contains a `Missing` item, BDD sign-off is incomplete, or selected Goal 3
@@ -677,6 +686,8 @@ Implementation is complete only when:
 - When Goal 3 was declined, the scoped decision and rationale are recorded in
   the BC's `decisions.md` and no skipped artifact exists
 - The traceability report contains no `Missing` approved behavior
+- `docs/hgate-project.json` reflects the final `status.md` lifecycle and passes
+  schema validation
 
 If any condition is unmet, report the implementation as incomplete or blocked
 rather than claiming completion.
