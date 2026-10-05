@@ -23,13 +23,14 @@ repository:
 ```bash
 mkdir -p /path/to/your-project/.github/skills
 cp -R skills/* /path/to/your-project/.github/skills/
-mkdir -p /path/to/your-project/tools/bdd-traceability
-cp tools/bdd-traceability/verify.mjs \
-  /path/to/your-project/tools/bdd-traceability/
+mkdir -p /path/to/your-project/tools
+cp -R tools/bdd-traceability \
+  /path/to/your-project/tools/
 ```
 
 Preserve each skill's `SKILL.md`, `assets/`, `references/`, and `decisions.md`.
-The verifier is a required part of hGATE adoption for TypeScript/Jest projects.
+The verifier and its human sign-off protocol are required parts of hGATE
+adoption for TypeScript/Jest projects.
 
 ### 2. Install the complete hGATE project instructions
 
@@ -110,8 +111,8 @@ understood but a technical or cross-system architecture decision remains open.
 | `architecture-decision-exploration` | A technical or cross-system architecture decision is unresolved | ADR or design report | Yes |
 | `bc-refinement` | One BC needs an approved specification | BC skill, domain model, BDD scenarios, decisions, status, and ACLs | Yes |
 | `bc-review` | One BC needs a read-only specification or implementation audit | Evidence-based findings | One BC per invocation |
-| `bc-implementation` | One refined BC has no material implementation | Tested implementation and traceability report | Yes |
-| `bc-enhancement` | An implemented BC needs new capability, a changed rule, a bug fix, or a gap closed — including iterative slices after first delivery | Synchronized specification and code with ghost behavior removed | Yes |
+| `bc-implementation` | One refined BC has no material implementation | Tested implementation, traceability report, and module sign-off | Yes |
+| `bc-enhancement` | An implemented BC needs new capability, a changed rule, a bug fix, or a gap closed — including iterative slices after first delivery | Synchronized specification/code, ghost behavior removed, and module sign-off | Yes |
 | `cross-bc-validation` | One completed journey crosses several implemented BCs | Feature-local contract and journey validation report | Yes |
 
 ## Persistent Artifacts
@@ -121,6 +122,8 @@ docs/
   domain-map.md                 # confirmed domains, BCs, and ownership
   context-map.md                # relationships between BCs
   adr/                          # one file per cross-cutting decision
+  verification/bdd-signoffs/
+    <module>/                   # immutable BDD-to-TDD human sign-offs
   features/<feature>/
     validation.md               # one cross-BC journey report
 
@@ -182,6 +185,11 @@ Add the command to the adopting project's `package.json` and required CI gates:
 
 See [`tools/bdd-traceability/README.md`](tools/bdd-traceability/README.md) for
 the TypeScript/Jest contract, scan options, reports, and exit codes.
+
+Implementation and behavioral enhancement close through the
+[`BDD-to-TDD human sign-off loop`](tools/bdd-traceability/signoff-loop.md).
+The verifier runs repository-wide, while each immutable approval record is
+stored under `docs/verification/bdd-signoffs/<module-slug>/`.
 
 ## Lifecycle
 
@@ -294,7 +302,9 @@ completion checks.
 9. Decisions and lifecycle state stay local to their owner.
 10. Every BDD scenario has a stable ID referenced by meaningful executable
     tests.
-11. A trivial, no-spec-impact change may take `bc-enhancement`'s fast path only
+11. Initial implementation and behavioral enhancement close only after explicit
+    human BDD-to-TDD sign-off recorded for the owning module.
+12. A trivial, no-spec-impact change may take `bc-enhancement`'s fast path only
     with explicit human confirmation; default to the full pipeline otherwise.
 
 ## Why hGATE

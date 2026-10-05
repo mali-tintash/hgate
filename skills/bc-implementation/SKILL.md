@@ -46,6 +46,7 @@ The BC skill directory should contain:
 - Integration or acceptance tests for critical BDD scenarios
 - Adapters for specified external dependencies
 - A specification-to-code traceability report
+- An immutable module-scoped BDD-to-TDD sign-off artifact
 - A completion report listing any explicitly deferred items
 
 ## Golden Rules
@@ -450,7 +451,7 @@ Read every test file created or changed for the BC and confirm:
 Run the smallest existing commands that prove the implementation:
 
 1. Targeted tests for the BC
-2. `npm run verify:bdd` for repository-wide scenario/test traceability
+2. The BDD-to-TDD sign-off loop described below
 3. Type checking or build
 4. Targeted linting, if supported
 5. Broader integration or full test suite only when needed by project policy or
@@ -460,7 +461,26 @@ If the project has adopted hGATE but the traceability command is missing, stop
 and install `tools/bdd-traceability/verify.mjs` and its package script rather
 than replacing the deterministic check with manual review.
 
-#### 6d. Final conformance report
+#### 6d. BDD-to-TDD human sign-off
+
+Follow `tools/bdd-traceability/signoff-loop.md` for this BC before writing the
+final conformance report.
+
+The loop must:
+
+- Run relevant Jest tests and the repository-wide verifier against a clean
+  candidate revision
+- Present module scenario evidence and all repository diagnostics to the human
+- Keep the BC at `IMPLEMENTING` while changes are requested or the attempt is
+  blocked
+- Repeat test-first corrections until Jest passes and the verifier exits `0`
+- Obtain explicit human sign-off; verifier success alone is not approval
+- Create and commit one immutable artifact under
+  `docs/verification/bdd-signoffs/<bc-name>/`
+
+Do not proceed to close reporting until the loop reaches `SIGNED_OFF`.
+
+#### 6e. Final conformance report
 
 ```text
 ## Specification Conformance
@@ -503,6 +523,7 @@ End with:
 ### Traceability
 - <implemented>/<total> business rules
 - <covered>/<total> BDD scenario IDs
+- Sign-off: [artifact path]
 
 ### Open or deferred items
 - None | [...]
@@ -519,7 +540,7 @@ IMPLEMENTING -> IMPLEMENTED
 
 If implementation is blocked, record `IMPLEMENTING -> BLOCKED` with the blocker,
 owner, and intended return state. Never set `IMPLEMENTED` while traceability
-contains a `Missing` item.
+contains a `Missing` item or the sign-off loop is not `SIGNED_OFF`.
 
 ## Standing Rules
 
@@ -588,6 +609,8 @@ Implementation is complete only when:
 - BC isolation audit is clear
 - Targeted tests pass
 - Existing build or type checks pass
+- Explicit human BDD-to-TDD sign-off is recorded in an immutable module-scoped
+  artifact
 - The traceability report contains no `Missing` approved behavior
 
 If any condition is unmet, report the implementation as incomplete or blocked

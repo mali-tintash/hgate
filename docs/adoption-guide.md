@@ -41,9 +41,9 @@ Preserve each skill's `SKILL.md`, `assets/`, `references/`, and `decisions.md`.
 Install the deterministic BDD traceability verifier:
 
 ```bash
-mkdir -p /path/to/your-project/tools/bdd-traceability
-cp tools/bdd-traceability/verify.mjs \
-  /path/to/your-project/tools/bdd-traceability/
+mkdir -p /path/to/your-project/tools
+cp -R tools/bdd-traceability \
+  /path/to/your-project/tools/
 ```
 
 For a TypeScript/Jest project, add this required package script:
@@ -62,6 +62,13 @@ Jest reference, and Jest references to unknown scenarios. If the adopting
 project uses non-default specification or test roots, configure repeatable
 `--scenario-path` and `--test-path` arguments in the package script. See
 [`tools/bdd-traceability/README.md`](../tools/bdd-traceability/README.md).
+
+Initial implementation and behavioral enhancement must also use
+[`tools/bdd-traceability/signoff-loop.md`](../tools/bdd-traceability/signoff-loop.md).
+The loop runs Jest and the verifier against a clean candidate revision, asks a
+human to sign off or request changes, and repeats after spec-first and
+test-first corrections. Store completed records per owning module under
+`docs/verification/bdd-signoffs/<module-slug>/`; never edit a signed record.
 
 Merge `templates/CLAUDE.hgate.md` into the adopting project's `CLAUDE.md` or
 equivalent instructions. Preserve existing project-specific conventions. The
@@ -119,6 +126,10 @@ docs/
   context-map.md
   adr/
     YYYY-MM-DD-<decision-slug>.md
+  verification/
+    bdd-signoffs/
+      <module-slug>/
+        YYYY-MM-DD-<change-slug>.md
   features/
     <feature-name>/
       validation.md
@@ -140,6 +151,8 @@ docs/
 - BC `decisions.md`: decisions owned by one BC
 - BC `status.md`: mutable lifecycle state for one BC
 - BDD scenario IDs: stable links from approved scenarios to executable tests
+- Module sign-off records: immutable evidence that a human accepted passing
+  Jest and repository-wide BDD traceability for a clean candidate revision
 - `docs/adr/`: one file per cross-cutting architectural decision
 - Feature `validation.md`: one cross-BC journey validation report
 
@@ -152,12 +165,19 @@ Every Gherkin Scenario and Scenario Outline uses a repository-unique tag such as
 `npm run verify:bdd` checks both uncovered scenarios and test references that no
 longer resolve.
 
+A verifier pass is necessary but not sufficient for implementation or
+behavioral-enhancement completion. The BDD-to-TDD sign-off loop requires a
+human to assess the linked Jest tests, request changes or approve them, and
+persist the final decision in the owning module's sign-off directory.
+
 `bc-enhancement` includes a triviality gate. A change with no observable
 behavior, contract, or scenario impact may skip the ghost-behavior audit,
 consequence interview, and skill-file sync only after explicit human
 confirmation of the classification; it still requires passing existing tests,
 a stale-reference grep, and a one-line `decisions.md` note. Any doubt defaults
-to the full pipeline.
+to the full pipeline. The BDD-to-TDD sign-off loop applies to the behavioral
+path; the confirmed implementation-detail fast path does not create a new
+behavior sign-off.
 
 ## Starting a New Project
 

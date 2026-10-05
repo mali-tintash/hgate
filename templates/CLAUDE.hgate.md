@@ -13,6 +13,15 @@ reused. In TypeScript/Jest projects, run `npm run verify:bdd` before completing
 implementation, enhancement, or full-review work; this deterministic gate must
 pass in CI.
 
+Initial implementation and behavioral enhancement also follow
+`tools/bdd-traceability/signoff-loop.md`. Run relevant Jest tests and the
+repository-wide verifier against a clean candidate revision, present
+module-specific evidence to the human, and obtain explicit sign-off or requested
+changes. Repeat after spec-first and test-first corrections. Store each
+completed immutable record under
+`docs/verification/bdd-signoffs/<module-slug>/`; verifier success alone is not
+human approval.
+
 Before starting new work, reconcile any code changed outside an agent-governed
 hGATE session. Do not silently treat manually changed code as the new
 specification. The user must confirm whether each behavioral change is intended,

@@ -331,6 +331,20 @@ reference is at least a specification-conformance finding. Continue reviewing
 whether each referenced test meaningfully asserts the scenario outcome; the
 tool proves linkage, not assertion quality.
 
+Inspect the newest artifact under
+`docs/verification/bdd-signoffs/<bc-name>/`, if present. Treat it as human
+review evidence only when:
+
+- Its status is `SIGNED_OFF`
+- Its module matches the target BC
+- Its verified revision exists
+- No later change affects scenarios, test discovery or execution,
+  implementation behavior, verifier source, or verifier configuration
+
+A missing or stale artifact is a workflow-evidence finding, not proof that the
+implementation behavior is missing. A current artifact does not replace this
+review's independent assessment of test quality.
+
 ### 2.4 Classification
 
 Classify every finding exactly once:
@@ -384,6 +398,7 @@ Include a scenario traceability summary:
 - IDs with meaningful executable coverage
 - Uncovered IDs
 - Unknown or retired IDs referenced by tests
+- Current, stale, or missing BDD-to-TDD sign-off evidence
 
 Finish with:
 
@@ -397,8 +412,9 @@ Finish with:
 ### Lifecycle status update
 
 After the full final report, use `IMPLEMENTED -> VERIFIED` only when all
-material requirements are covered and no unresolved Critical or High finding
-remains; otherwise use `IMPLEMENTED -> BLOCKED`.
+material requirements are covered, no unresolved Critical or High finding
+remains, and the target BC has current `SIGNED_OFF` BDD-to-TDD evidence;
+otherwise use `IMPLEMENTED -> BLOCKED`.
 
 Update only `.github/skills/<bc-name>/status.md`. Record report evidence,
 blockers, recommended next skill, and transition history.
@@ -420,6 +436,8 @@ Before returning the final report, verify:
 - [ ] Tests were treated as supporting evidence, not conclusive proof
 - [ ] Every current scenario ID was mapped to executable tests
 - [ ] Unknown and retired test references were reported
+- [ ] Module-scoped BDD-to-TDD sign-off evidence was classified as current,
+      stale, or missing
 - [ ] Undocumented safeguards were reported
 - [ ] Cross-BC concerns were deferred, not redesigned
 - [ ] No specification, source, migration, or test files were modified

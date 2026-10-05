@@ -4,6 +4,7 @@
 
 - [Localized decisions and lifecycle state](../../docs/adr/2026-08-07-localized-workflow-artifacts.md)
 - [Session-start specification synchronization](../../docs/adr/2026-08-07-spec-first-session-synchronization.md)
+- [BDD-to-TDD human sign-off loop](../../docs/adr/2026-10-05-bdd-tdd-human-signoff-loop.md)
 
 ## Keep orchestration manual and guided
 

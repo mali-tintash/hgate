@@ -488,9 +488,17 @@ Read every `*.spec.ts` file in the BC. Confirm:
 
 ### 5d. Sweep report
 
-Run `npm run verify:bdd` after updating tests and before completing the sweep.
-Duplicate or malformed scenario IDs, uncovered scenarios, and unknown test
-references block completion; do not replace the command with a manual grep.
+After updating tests, follow `tools/bdd-traceability/signoff-loop.md`.
+The loop runs relevant Jest tests and the repository-wide verifier against a
+clean candidate revision, presents module evidence to the human, records
+requested changes, and repeats until explicit sign-off. Duplicate or malformed
+scenario IDs, uncovered scenarios, unknown test references, failed Jest
+evidence, discovery errors, and verifier failures block sign-off; do not replace
+the command with a manual grep.
+
+Keep the BC at `CHANGING` throughout the loop. Do not proceed to the close
+report until one immutable artifact exists under
+`docs/verification/bdd-signoffs/<bc-name>/` and the loop reaches `SIGNED_OFF`.
 
 Output a sweep report:
 
@@ -541,11 +549,15 @@ End every enhancement session with:
 ### Skill files updated
 - [file] — [what changed] / Already up to date
 
+### BDD-to-TDD sign-off
+- [artifact path]
+
 ### Open items
 - [anything deferred or blocked — none if clean]
 ```
 
-After the enhancement, tests, and ghost-behavior sweep pass, update:
+After the enhancement, tests, ghost-behavior sweep, and human sign-off pass,
+update:
 
 ```text
 CHANGING -> IMPLEMENTED
