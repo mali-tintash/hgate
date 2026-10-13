@@ -29,6 +29,24 @@ const REQUIRED_FIELDS = [
   "Bounds",
 ];
 const TECHNIQUES = new Set(["PROPERTY", "FINITE_MODEL"]);
+const ADEQUACY_FIELDS = [
+  "Domain partitions",
+  "Boundary values",
+  "Cross-field combinations",
+  "Min runs",
+  "Max discard ratio",
+  "Shrinking",
+  "Invalid-input generator",
+  "Coverage evidence",
+];
+const ADEQUACY_OPTIONAL_FIELDS = [
+  "Min runs rationale",
+  "Max discard ratio rationale",
+];
+const MIN_RUNS_FLOOR = 100;
+const DISCARD_RATIO_REASONED_ABOVE = 20;
+const DISCARD_RATIO_HARD_LIMIT = 50;
+const MIN_PARTITIONS = 3;
 
 function toPosixPath(value) {
   return value.split(path.sep).join("/");
@@ -280,11 +298,181 @@ function parsePropertyFile(source, file) {
       }
     }
 
+    diagnostics.push(...validateAdequacy(property, file));
     properties.push(property);
     index = cursor - 1;
   }
 
   return { properties, diagnostics };
+}
+
+function isNotApplicable(value) {
+  return /^`?N\/A`?$/i.test((value ?? "").trim());
+}
+
+function hasRationale(value) {
+  return Boolean(value) && !isNotApplicable(value);
+}
+
+function parseAdequacy(fields) {
+  const problems = [];
+  const partitions = [];
+
+  const partitionText = fields["Domain partitions"] ?? "";
+  for (const item of partitionText.split(";").map((part) => part.trim())) {
+    const match =
+      /^([A-Za-z0-9_-]+):\s*(\d+(?:\.\d+)?)%\s*-\s*(\S.*)$/.exec(item);
+    if (!match) {
+      problems.push(
+        `Domain partitions entry "${item}" must be "<label>:<share>% - <why it matters>"`,
+      );
+      continue;
+    }
+    partitions.push({ label: match[1], share: Number(match[2]) });
+  }
+  if (partitions.length > 0 || problems.length === 0) {
+    const total = partitions.reduce((sum, { share }) => sum + share, 0);
+    if (partitions.length < MIN_PARTITIONS) {
+      problems.push(
+        `Domain partitions must declare at least ${MIN_PARTITIONS} partitions`,
+      );
+    }
+    if (Math.abs(total - 100) > 0.001) {
+      problems.push(`Domain partitions shares must sum to 100%, received ${total}%`);
+    }
+    if (new Set(partitions.map(({ label }) => label)).size !== partitions.length) {
+      problems.push("Domain partitions labels must be unique");
+    }
+  }
+
+  const boundaryText = fields["Boundary values"] ?? "";
+  const boundaryEntries = boundaryText
+    .split(";")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  if (
+    boundaryEntries.length === 0 ||
+    !boundaryEntries.every((entry) =>
+      /^[A-Za-z0-9_.-]+\s*=\s*\[[^\],]+(?:,[^\],]+)+\]$/.test(entry),
+    )
+  ) {
+    problems.push(
+      "Boundary values must list at least two values per constrained field as field=[a, b, ...]",
+    );
+  }
+
+  const combinations = fields["Cross-field combinations"] ?? "";
+  if (!combinations || (isNotApplicable(combinations))) {
+    problems.push(
+      'Cross-field combinations must name reachable combinations or "N/A: <reason>"',
+    );
+  }
+
+  const minRuns = /^\d+$/.test(fields["Min runs"] ?? "")
+    ? Number(fields["Min runs"])
+    : null;
+  if (minRuns === null || minRuns < 1) {
+    problems.push("Min runs must be a positive integer");
+  }
+
+  const discardMatch = /^(\d+(?:\.\d+)?)%$/.exec(fields["Max discard ratio"] ?? "");
+  const discard = discardMatch ? Number(discardMatch[1]) : null;
+  if (discard === null) {
+    problems.push('Max discard ratio must be a percentage such as "10%"');
+  } else if (discard > DISCARD_RATIO_HARD_LIMIT) {
+    problems.push(
+      `Max discard ratio must not exceed ${DISCARD_RATIO_HARD_LIMIT}%; build valid values by construction`,
+    );
+  }
+
+  const invalid = fields["Invalid-input generator"] ?? "";
+  if (!invalid || (isNotApplicable(invalid))) {
+    problems.push(
+      'Invalid-input generator must name a separate generator and expected rejection, or "N/A: <reason>"',
+    );
+  }
+
+  for (const field of ["Shrinking", "Coverage evidence"]) {
+    if (!fields[field] || isNotApplicable(fields[field])) {
+      problems.push(`${field} must be described, not N/A`);
+    }
+  }
+
+  const policy = [];
+  if (
+    minRuns !== null &&
+    minRuns < MIN_RUNS_FLOOR &&
+    !hasRationale(fields["Min runs rationale"])
+  ) {
+    policy.push(
+      `Min runs ${minRuns} is below ${MIN_RUNS_FLOOR}; add a Min runs rationale tied to input complexity`,
+    );
+  }
+  if (
+    discard !== null &&
+    discard > DISCARD_RATIO_REASONED_ABOVE &&
+    discard <= DISCARD_RATIO_HARD_LIMIT &&
+    !hasRationale(fields["Max discard ratio rationale"])
+  ) {
+    policy.push(
+      `Max discard ratio ${discard}% exceeds ${DISCARD_RATIO_REASONED_ABOVE}%; add a Max discard ratio rationale`,
+    );
+  }
+
+  return { problems, policy, partitions, minRuns };
+}
+
+function validateAdequacy(property, file) {
+  const result = [];
+  const { fields } = property;
+  const present = [...ADEQUACY_FIELDS, ...ADEQUACY_OPTIONAL_FIELDS].filter(
+    (field) => Object.hasOwn(fields, field),
+  );
+
+  if (property.technique === "FINITE_MODEL") {
+    for (const field of present.filter((name) => !isNotApplicable(fields[name]))) {
+      result.push(
+        diagnostic(
+          "PROP030",
+          file,
+          property.line,
+          property.id,
+          `FINITE_MODEL declarations must not set generator adequacy field "${field}" (use N/A)`,
+        ),
+      );
+    }
+    return result;
+  }
+  if (property.technique !== "PROPERTY") {
+    return result;
+  }
+
+  const missing = ADEQUACY_FIELDS.filter((field) => !fields[field]);
+  if (missing.length > 0) {
+    result.push(
+      diagnostic(
+        "PROP030",
+        file,
+        property.line,
+        property.id,
+        `PROPERTY declaration is missing generator adequacy field(s): ${missing.join(", ")}`,
+      ),
+    );
+    return result;
+  }
+
+  const adequacy = parseAdequacy(fields);
+  for (const problem of adequacy.problems) {
+    result.push(diagnostic("PROP030", file, property.line, property.id, problem));
+  }
+  for (const problem of adequacy.policy) {
+    result.push(diagnostic("PROP031", file, property.line, property.id, problem));
+  }
+  property.adequacy = {
+    partitions: adequacy.partitions.map(({ label }) => label),
+    minRuns: adequacy.minRuns,
+  };
+  return result;
 }
 
 function isIdentifierCharacter(value) {
@@ -533,6 +721,7 @@ export async function verifyProject(options = {}) {
 
   const properties = [];
   const testReferences = [];
+  const testSources = new Map();
   const diagnostics = [];
 
   for (const absolutePath of propertyFiles) {
@@ -555,9 +744,11 @@ export async function verifyProject(options = {}) {
 
   for (const absolutePath of testFiles) {
     const file = toPosixPath(path.relative(root, absolutePath));
-    const parsed = parseJestTestFile(await readFile(absolutePath, "utf8"), file);
+    const source = await readFile(absolutePath, "utf8");
+    const parsed = parseJestTestFile(source, file);
     testReferences.push(...parsed.references);
     diagnostics.push(...parsed.diagnostics);
+    testSources.set(file, source);
   }
 
   if (propertyFiles.length === 0) {
@@ -633,6 +824,47 @@ export async function verifyProject(options = {}) {
           `property ID "${id}" has no active Jest test reference`,
         ),
       );
+    }
+  }
+
+  for (const [id, matches] of propertiesById) {
+    const property = matches[0];
+    if (matches.length !== 1 || !property.adequacy) {
+      continue;
+    }
+    const covering = new Set(
+      (activeReferencesById.get(id) ?? []).map(({ file }) => file),
+    );
+    for (const file of [...covering].sort(compareText)) {
+      const source = testSources.get(file) ?? "";
+      const missingLabels = property.adequacy.partitions.filter(
+        (label) => !new RegExp(`["'\`]${label}["'\`]`).test(source),
+      );
+      if (missingLabels.length > 0) {
+        diagnostics.push(
+          diagnostic(
+            "PROP032",
+            property.file,
+            property.line,
+            id,
+            `covering test ${file} does not reference partition label(s) as string literals: ${missingLabels.join(", ")}`,
+          ),
+        );
+      }
+      const lowRuns = [...source.matchAll(/numRuns\s*:\s*(\d+)/g)]
+        .map((match) => Number(match[1]))
+        .filter((runs) => property.adequacy.minRuns !== null && runs < property.adequacy.minRuns);
+      if (lowRuns.length > 0) {
+        diagnostics.push(
+          diagnostic(
+            "PROP033",
+            property.file,
+            property.line,
+            id,
+            `covering test ${file} sets numRuns ${lowRuns.join(", ")} below declared Min runs ${property.adequacy.minRuns}`,
+          ),
+        );
+      }
     }
   }
 

@@ -37,7 +37,19 @@ Repository summary:
 
 | Property ID | Claim | Technique | Executable test(s) | Bounds / generated runs | Human assessment |
 |---|---|---|---|---|---|
-| `<ID>` | `<claim>` | `PROPERTY` / `FINITE_MODEL` | `<file:line - title>` | `<runs or exact finite bounds>` | Generator/model and oracle are adequate |
+| `<ID>` | `<claim>` | `PROPERTY` / `FINITE_MODEL` | `<file:line - title>` | `<runs or exact finite bounds>` | Generator adequacy table above satisfied; model and oracle are adequate |
+
+## Generator Adequacy Evidence
+
+One block per `PROPERTY`; `FINITE_MODEL` properties record `N/A`.
+
+| Property ID | Partition | Declared share | Observed share (statistics) | Boundary values hit | Required combinations hit |
+|---|---|---|---|---|---|
+| `<ID>` | `<label>` | `<n%>` | `<n%>` | `<yes/no per field>` | `<yes/no>` |
+
+| Property ID | numRuns used / Min runs | Discard ratio / Max | Shrinking checked | Invalid-input generator | Counter command/output reference |
+|---|---|---|---|---|---|
+| `<ID>` | `<n / n>` | `<n% / n%>` | `<yes/no + note>` | `<name or N/A: reason>` | `<command and sanitized summary>` |
 
 ## Attempt History
 

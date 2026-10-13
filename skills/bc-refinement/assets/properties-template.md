@@ -21,6 +21,16 @@ repository-unique ID:
 - **Technique:** `PROPERTY`
 - **Generator:** <Named generator contract and the domain values it constructs.>
 - **Bounds:** `N/A`
+- **Domain partitions:** <label:share% - why it matters; at least three, shares sum to 100%>
+- **Boundary values:** <field=[min, min+1, max, ...]; one entry per constrained field>
+- **Cross-field combinations:** <reachable combos such as a x b, or N/A: reason>
+- **Min runs:** <integer numRuns floor, at least 100 unless justified below>
+- **Min runs rationale:** <Required below 100: risk and input-complexity justification, else N/A>
+- **Max discard ratio:** <percent, at most 20% unless justified below; never above 50%>
+- **Max discard ratio rationale:** <Required above 20%, else N/A>
+- **Shrinking:** <Arbitraries used and any custom map/chain that limits minimization>
+- **Invalid-input generator:** <Separate named generator and expected rejection, or N/A: reason>
+- **Coverage evidence:** <fc.statistics/classify/cover labels that report each partition>
 
 ## @property:<BC>-<CAPABILITY>-002 <Bounded finite-state claim>
 
@@ -31,6 +41,9 @@ repository-unique ID:
 - **Technique:** `FINITE_MODEL`
 - **Generator:** `N/A`
 - **Bounds:** <Exact states, commands, input domains, and maximum depth claimed complete.>
+
+Generator adequacy fields are `PROPERTY`-only; omit them on `FINITE_MODEL`
+declarations (or set them to `N/A`).
 
 ### Authoring rules
 

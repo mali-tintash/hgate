@@ -94,7 +94,12 @@ For each attempt:
    - repository verifier summary and diagnostics
    - module property claims, techniques, tests, generated-run configuration,
      and finite-model bounds
-   - generator/model/oracle adequacy assessment
+   - generator adequacy checklist per `PROPERTY`: observed partition shares
+     against declared shares (from `fc.statistics`/`classify`/`cover` output),
+     boundary values hit, run count against `Min runs`, discard ratio against
+     `Max discard ratio`, shrinking suitability, invalid-input generator, and
+     reachable cross-field combinations
+   - model/oracle adequacy assessment
    - every sanitized counterexample and its disposition
    - explicit limitation of each evidence type
 5. Preserve the attempt and feedback for the final artifact.
@@ -110,6 +115,7 @@ Any relevant change invalidates the attempt and requires a new clean candidate.
 | Verifier exit `1` | `CHANGES_REQUIRED` | Fix declaration or traceability diagnostics |
 | Verifier exit `0` and Jest passes | `AWAITING_SIGN_OFF` | Present evidence and ask for separate Goal 3 approval |
 | Verifier exit `2` or `PROP010` | `BLOCKED` | Correct discovery, configuration, access, or tooling |
+| Declared partition unobserved, observed distribution far from declared shares, boundaries or required combinations never hit, runs below `Min runs`, or discard ratio above `Max discard ratio` | `BLOCKED` | Repair the generator or declaration; do not sign off vacuous evidence |
 | Excessive generator discards, timeout, non-replayable failure, flaky result, invalid model/bounds, or finite-model state-limit exhaustion | `BLOCKED` | Repair evidence; do not infer a property failure or pass |
 
 Sign-off is unavailable unless the verifier exits `0`, the property/model Jest
