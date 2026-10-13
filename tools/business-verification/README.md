@@ -22,6 +22,12 @@ wants business-logic verification for the current BC change.
 - If declined, record the scope and rationale in the BC's `decisions.md`. Do
   not create `properties.md` or a sign-off artifact only to represent a skip.
 - If accepted, create or update `.github/skills/<bc-name>/properties.md` from
+  `bc-refinement/assets/properties-template.md`, and
+  `.github/skills/<bc-name>/property-discovery.md` from
+  `bc-refinement/assets/property-discovery-template.md`. Discovery is required:
+  every approved business rule is evaluated against each property family and
+  each candidate is recorded ACCEPTED/REJECTED/DEFERRED with a reason; `bc-review`
+  checks the inventory. Use
   the reusable template and follow
   [`signoff-loop.md`](./signoff-loop.md) after BDD-to-TDD sign-off.
 
