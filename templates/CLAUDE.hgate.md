@@ -9,7 +9,26 @@ decisions, and ACL contracts.
 Every BDD Scenario and Scenario Outline has a stable
 `@scenario:<BC>-<CAPABILITY>-<NNN>` ID. Executable tests that protect the
 scenario reference it as `[BDD:<scenario-id>]`. IDs are never renumbered or
-reused.
+reused. In TypeScript/Jest projects, run `npm run verify:bdd` before completing
+implementation, enhancement, or full-review work; this deterministic gate must
+pass in CI.
+
+Initial implementation and behavioral enhancement also follow
+`tools/bdd-traceability/signoff-loop.md`. Run relevant Jest tests and the
+repository-wide verifier against a clean candidate revision, present
+module-specific evidence to the human, and obtain explicit sign-off or requested
+changes. Repeat after spec-first and test-first corrections. Store each
+completed immutable record under
+`docs/verification/bdd-signoffs/<module-slug>/`; verifier success alone is not
+human approval.
+
+After BDD scope is approved, `bc-implementation` and behavioral
+`bc-enhancement` must ask whether the human wants optional Goal 3 business-logic
+verification for the current BC change. Goal 3 uses independent
+`properties.md` claims, `[PROP:<ID>]` Jest references, the
+`tools/business-verification` verifier, and a separate human sign-off. If the
+human declines, record the scoped rationale in the BC's `decisions.md` and
+create no skipped artifact. This choice is optional at every adoption level.
 
 Before starting new work, reconcile any code changed outside an agent-governed
 hGATE session. Do not silently treat manually changed code as the new
@@ -112,10 +131,47 @@ already be committed.
 
 - BC decisions: `.github/skills/<bc-name>/decisions.md`
 - BC lifecycle: `.github/skills/<bc-name>/status.md`
+- Optional BC universal claims: `.github/skills/<bc-name>/properties.md`
 - Workflow-skill decisions: `decisions.md` beside that skill's `SKILL.md`
 - Cross-cutting decisions: one ADR per decision under `docs/adr/`
 
 Do not maintain a global append-only decisions file or mutable lifecycle table.
+
+## Canonical Project Projection
+
+Authoritative Markdown remains the source of truth:
+
+- `docs/domain-map.md` owns confirmed domains, BC identities, classifications,
+  boundary roles, capabilities, and ownership.
+- `docs/context-map.md` owns relationships and cross-BC journeys.
+- `.github/skills/<bc-name>/` owns the BC specification, domain model, ACLs,
+  decisions, and lifecycle `status.md`.
+
+Maintain one derived machine-readable projection at
+`docs/hgate-project.json`. Viewer and automation tooling should prefer this
+file, while continuing to support legacy Markdown projects. The projection is
+not an independent decision or lifecycle artifact.
+
+Schema version 1 has top-level `project`, `domains`, `boundedContexts`,
+`relationships`, and `journeys`. Use stable repository-unique kebab-case IDs.
+Each BC projects its name, domain ID, classification
+(`CORE|SUPPORTING|GENERIC|UNCONFIRMED`), boundary role
+in `role` (`PRIMARY|SHARED|SUPPORTING|UNCONFIRMED`), lifecycle from `status.md`,
+`owns`, `doesNotOwn`, capabilities, structured ports
+(`name`, `direction`, `purpose`, `contract`), ACLs
+(`name`, `system`, `direction`, `file`), and source artifact paths.
+Relationships project `id`, `from`, `to`, `information`, `sourceOfTruth`,
+`consistency`, `interaction`, `translationAcl`, and `status`. Journeys project
+`id`, `name`, `boundedContextIds`, `entryPoint`, `outcome`, and
+`validationArtifact`.
+
+Synchronize the projection only when projected authoritative information
+changes. Preserve unrelated entries and stable IDs, omit timestamps, order
+collections deterministically by stable ID (nested ports and ACLs by name), and
+validate against `docs/hgate-project.schema.json`. Do not report the workflow
+complete with a stale or invalid projection. When information is undecided,
+resolve it in the owning Markdown artifact or use an allowed `UNCONFIRMED`
+value; never decide it directly in JSON.
 
 ## Guided Workflow
 

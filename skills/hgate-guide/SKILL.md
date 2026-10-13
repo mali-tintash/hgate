@@ -48,6 +48,8 @@ Use these locations when they exist:
 ```text
 docs/domain-map.md
 docs/context-map.md
+docs/hgate-project.json
+docs/hgate-project.schema.json
 .github/skills/<bc-name>/SKILL.md
 .github/skills/<bc-name>/domain-model.md
 .github/skills/<bc-name>/bdd-scenarios.md
@@ -91,6 +93,11 @@ Use the conversation and available artifacts to determine:
 
 When available, read the target BC's `status.md`. Treat it as a navigation aid,
 not proof. Confirm material claims against the actual artifacts.
+
+The viewer may read `docs/hgate-project.json` first, but the guide must treat it
+as a derived index, not authority. If it conflicts with a Markdown map,
+BC-local specification, ACL, or `status.md`, report the projection as stale and
+use the authoritative artifact to recommend the next step.
 
 ### Phase 3 - Resolve Ambiguity
 
@@ -226,8 +233,12 @@ artifacts and local lifecycle status after completing its gates.
 - **Use for:** Initial implementation of one refined, unbuilt BC
 - **Mode:** Fork
 - **Consumes:** Approved BC specification and project conventions
-- **Produces:** Tested source code, migrations, adapters, and traceability report
-- **Complete when:** No approved behavior is missing and validation passes
+- **Produces:** Tested source code, migrations, adapters, traceability report,
+  immutable module-scoped BDD-to-TDD sign-off, and optional separately signed
+  Goal 3 property/model evidence when the human selects it
+- **Complete when:** No approved behavior is missing, validation passes, the
+  human explicitly signs off BDD evidence, and any selected Goal 3 evidence is
+  separately signed off
 
 ### `bc-enhancement`
 
@@ -235,8 +246,11 @@ artifacts and local lifecycle status after completing its gates.
 - **Mode:** Fork
 - **Consumes:** Existing specification, code, tests, and requested change
 - **Produces:** Synchronized specification and implementation with ghost
-  behavior removed
-- **Complete when:** New behavior passes and the ghost-behavior sweep is clear
+  behavior removed, immutable module-scoped BDD-to-TDD sign-off, and optional
+  separately signed Goal 3 property/model evidence when selected
+- **Complete when:** New behavior passes, the ghost-behavior sweep is clear, the
+  human explicitly signs off BDD evidence, and any selected Goal 3 evidence is
+  separately signed off
 
 ### `cross-bc-validation`
 
@@ -262,6 +276,25 @@ If `status.md` disagrees with the repository:
 If no `status.md` exists, infer only enough state to recommend the next skill
 and say that lifecycle tracking has not been initialized.
 
+## Project Projection
+
+`docs/hgate-project.json` is the single canonical machine-readable projection
+for schema version 1. It projects:
+
+- `project`, `domains`, `boundedContexts`, `relationships`, and `journeys`
+- stable kebab-case IDs for BCs, relationships, and journeys
+- BC classification, boundary role, lifecycle, ownership, capabilities, ports,
+  ACLs, and source artifact paths
+- relationship direction, exchanged information, source of truth, consistency,
+  interaction, translation ACL, and status
+- journey participants, entry point, outcome, and validation artifact
+
+It contains no timestamps and uses deterministic ordering. It supports tooling
+without replacing the legacy Markdown maps. Specialist workflows synchronize
+and schema-validate it only when projected authoritative information changes;
+`status.md` remains the lifecycle authority. Decisions remain in their local
+Markdown owner and are never made directly in the global projection.
+
 ## Completion Criteria
 
 The guide interaction is complete when:
@@ -272,3 +305,5 @@ The guide interaction is complete when:
 - Its inputs, outputs, mode, and completion signal are explained
 - The nearest alternative is ruled out
 - No skill was invoked and no lifecycle state was changed automatically
+- Any projection drift observed was reported rather than silently treated as
+  authoritative

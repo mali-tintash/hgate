@@ -1,0 +1,12 @@
+{
+  "$schema": "./hgate-project.schema.json",
+  "schemaVersion": 1,
+  "project": {
+    "name": "<project-name>",
+    "description": "<confirmed-project-purpose>"
+  },
+  "domains": [],
+  "boundedContexts": [],
+  "relationships": [],
+  "journeys": []
+}

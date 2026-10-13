@@ -1,0 +1,22 @@
+name: verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  tooling:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Whitespace check
+        if: github.event_name == 'pull_request'
+        run: git diff --check "origin/${{ github.base_ref }}...HEAD"
+      - name: Tooling tests
+        run: node --test tools/bdd-traceability/tests/*.test.mjs tools/business-verification/tests/*.test.mjs tools/gherkin-viewer/project-viewer.test.js

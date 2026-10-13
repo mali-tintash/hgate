@@ -8,13 +8,15 @@ prematurely fixing transport details.
 
 ## Context Relationships
 
-| Provider/Owner BC | Consumer BC | Information or decision exchanged | Source of truth | Consistency expectation | Candidate interaction | Translation/ACL | Status |
-|---|---|---|---|---|---|---|---|
-| [...] | [...] | [...] | [...] | Immediate / Eventual / TBD | Request-response / Domain event / Scheduled sync / TBD | Yes / No / TBD | Confirmed / Provisional |
+Relationship IDs are stable, repository-unique kebab-case identifiers.
+
+| Relationship ID | Provider/Owner BC ID | Consumer BC ID | Information or decision exchanged | Source of truth | Consistency expectation | Candidate interaction | Translation/ACL | Status |
+|---|---|---|---|---|---|---|---|---|
+| `[...]` | `[...]` | `[...]` | [...] | [...] | Immediate / Eventual / TBD | Request-response / Domain event / Scheduled sync / TBD | ACL name / None / TBD | Confirmed / Provisional |
 
 ## Relationship Details
 
-### [Provider BC] -> [Consumer BC]
+### `[relationship-id]` — [Provider BC] -> [Consumer BC]
 
 **Business purpose:** [...]
 
@@ -44,9 +46,11 @@ prematurely fixing transport details.
 
 ## Cross-BC Journeys
 
-| Journey | Participating BCs | Entry point | Business outcome | Validation artifact |
-|---|---|---|---|---|
-| [...] | [...] | [...] | [...] | `docs/features/<feature-name>/validation.md` |
+Journey IDs are stable, repository-unique kebab-case identifiers.
+
+| Journey ID | Journey | Participating BC IDs | Entry point | Business outcome | Validation artifact |
+|---|---|---|---|---|---|
+| `[...]` | [...] | `[...]` | [...] | [...] | `docs/features/<feature-name>/validation.md` |
 
 ## Open Relationship Gaps
 

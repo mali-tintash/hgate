@@ -11,6 +11,10 @@ Each BC owns:
 Do not maintain one global lifecycle table. `docs/domain-map.md` links to each
 BC's status file but does not duplicate its mutable lifecycle value.
 
+`docs/hgate-project.json` may project each BC's current lifecycle for viewers,
+but it is derived from these local files. It is not a lifecycle authority and
+must never be edited as an independent transition.
+
 ## States
 
 | State | Meaning | Owning transition |
@@ -64,3 +68,10 @@ project policy requires it.
    `VERIFIED`.
 6. Cross-BC validation does not change BC lifecycle state. It records feature
    findings and routes each failure to its owning BC.
+7. After a valid transition, the owning specialist synchronizes that lifecycle
+   into `docs/hgate-project.json`, preserves unrelated entries and stable IDs,
+   uses deterministic ordering with no timestamps, and validates against
+   `docs/hgate-project.schema.json`.
+8. A lifecycle transition is not complete for repository tooling until the
+   projection is synchronized and valid. A projection-only edit never counts as
+   a transition.
