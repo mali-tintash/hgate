@@ -401,7 +401,10 @@ Each property:
   `@property:<BC>-<CAPABILITY>-<three-digit-sequence>` ID.
 - States one falsifiable universal or bounded-universal claim.
 - Defines quantification, preconditions, observable oracle, technique,
-  generator contract, and finite bounds.
+  generator contract, finite bounds, and (for `PROPERTY`) the generator
+  adequacy fields: partitions with rationale, boundary values, cross-field
+  combinations, min runs, max discard ratio, shrinking, invalid-input
+  generator, and coverage evidence.
 - Declares an `Oracle source` (`REFERENCE_CALCULATION`, `DOMAIN_EQUATION`,
   `CONSERVATION`, `METAMORPHIC`, `ROUND_TRIP`, `TRUSTED_LIBRARY`,
   `STATE_INVARIANT`, or `APPROVED_TABLE`) and an `Oracle independence`

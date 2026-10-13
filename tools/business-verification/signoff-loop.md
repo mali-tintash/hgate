@@ -98,7 +98,12 @@ For each attempt:
    - repository verifier summary and diagnostics
    - module property claims, techniques, tests, generated-run configuration,
      and finite-model bounds
-   - generator/model/oracle adequacy assessment, including each oracle's source
+   - generator adequacy checklist per `PROPERTY`: observed partition shares
+     against declared shares (from `fc.statistics`/`classify`/`cover` output),
+     boundary values hit, run count against `Min runs`, discard ratio against
+     `Max discard ratio`, shrinking suitability, invalid-input generator, and
+     reachable cross-field combinations
+   - model/oracle adequacy assessment, including each oracle's source
      and independence from the subject (no circular or line-for-line duplicated
      oracle)
    - every sanitized counterexample and its disposition
@@ -117,6 +122,7 @@ Any relevant change invalidates the attempt and requires a new clean candidate.
 | Verifier exit `0` and Jest passes | `AWAITING_SIGN_OFF` | Present evidence, the `property-discovery.md` inventory (candidate counts, rejections, deferred risks), and ask for separate Goal 3 approval |
 | Any `PROP011`/`PROP012` (test body executes no matching property) or `PROP013` (missing evidence) | `CHANGES_REQUIRED` | Make the test execute the declared technique through the hGATE wrapper; an empty or stub test is not coverage |
 | Verifier exit `2`, `PROP010`, or `PROP014` | `BLOCKED` | Correct discovery, configuration, access, or tooling |
+| Declared partition unobserved, observed distribution far from declared shares, boundaries or required combinations never hit, runs below `Min runs`, or discard ratio above `Max discard ratio` | `BLOCKED` | Repair the generator or declaration; do not sign off vacuous evidence |
 | Excessive generator discards, timeout, non-replayable failure, flaky result, invalid model/bounds, or finite-model state-limit exhaustion | `BLOCKED` | Repair evidence; do not infer a property failure or pass |
 
 Sign-off is unavailable unless the verifier exits `0`, the property/model Jest

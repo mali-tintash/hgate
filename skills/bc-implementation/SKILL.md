@@ -277,6 +277,11 @@ Build a separate property matrix:
 |-------------|--------------|----------------|-----------------|-----------|-----------------|--------|------------------------------|-------------------|--------|
 ```
 
+Each `PROPERTY` row must also carry the declared generator adequacy fields
+(partitions, boundaries, combinations, min runs, discard ratio, shrinking,
+invalid-input generator, coverage counters); write the counters into the test
+before the generator is considered done.
+
 Keep it separate from the BDD scenario matrix. Use `PROPERTY` for generated
 checks against production code and `FINITE_MODEL` only for explicitly bounded,
 exhaustively enumerable models. A `[PROP:<ID>]` test must execute that technique
@@ -538,7 +543,8 @@ The Goal 3 loop must:
 - Treat excessive discards, non-replayable failures, timeouts, invalid bounds,
   state-limit exhaustion, or tooling failures as `BLOCKED`
 - Present property inventory, generators/models, oracles with their sources and
-  independence statements, bounds, and explicit limitations to the human,
+  independence statements, bounds, observed partition statistics and discard
+  ratios, and explicit limitations to the human,
   including the `property-discovery.md` candidate counts
   (ACCEPTED/REJECTED/DEFERRED) and any DEFERRED risks
 - Obtain approval separate from BDD sign-off

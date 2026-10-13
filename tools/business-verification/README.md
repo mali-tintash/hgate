@@ -94,6 +94,9 @@ Required fields are:
 - `Generator`
 - `Bounds`
 
+`PROPERTY` declarations also require the generator adequacy fields described
+in [Generator adequacy contract](#generator-adequacy-contract).
+
 `Technique` is exactly `PROPERTY` or `FINITE_MODEL`. Generated properties name a
 generator contract and use `Bounds: N/A`. Finite models may use
 `Generator: N/A`, but must state exact states, commands, input domains, and
@@ -176,6 +179,7 @@ Generator rules:
 - Keep invalid-input generators separate and label their expected rejection.
 - Compose small value generators into aggregate generators.
 - Avoid broad `filter` use; excessive discarded cases make evidence invalid.
+- Satisfy the [generator adequacy contract](#generator-adequacy-contract).
 - Generate synthetic values only. Never persist secrets, production identifiers,
   or personal data in counterexamples.
 - Use `fast-check` seed and path replay rather than hardcoded random sources.
@@ -184,6 +188,37 @@ One Jest title may reference several property IDs and several tests may protect
 one property. Comments, helpers, computed titles, `describe` titles,
 `it.skip`, `test.skip`, `test.todo`, and tests whose body does not execute the
 declared technique do not satisfy coverage.
+
+## Generator adequacy contract
+
+A passing property is only as strong as the inputs it saw. A generator that
+yields one currency, small quantities, one-item carts, and no boundaries can
+pass vacuously. Every `PROPERTY` declaration therefore states:
+
+| Field | Requirement |
+|---|---|
+| `Domain partitions` | `label:share% - why it matters`, `;`-separated; at least three, unique labels, shares sum to 100%. Partitions are business-relevant regions (currencies, cart sizes, denomination types, empty/boundary states), each with its reason. |
+| `Boundary values` | `field=[a, b, ...]` for every constrained field, at least two values each: min, min+1, max, and the first invalid value where applicable. |
+| `Cross-field combinations` | Combinations that must be reachable (for example `multi-currency x multi-item`), or `N/A: <reason>`. |
+| `Min runs` | `numRuns` floor justified by risk and input complexity. Below 100 needs `Min runs rationale`. |
+| `Max discard ratio` | Percent of preconditions-rejected cases. Above 20% needs `Max discard ratio rationale`; above 50% is rejected. |
+| `Shrinking` | Which arbitraries are used and whether custom `map`/`chain`/`filter` limits minimization. |
+| `Invalid-input generator` | Separate generator and expected rejection, or `N/A: <reason>`. |
+| `Coverage evidence` | The `fc.statistics`, `classify`, or `cover`-style counters that report each partition. |
+
+Counters must label each partition with the declared string literal, for
+example `fc.statistics(arb, (cart) => (isMultiCurrency(cart) ? "multi-currency" : "single-currency"))`.
+The sign-off records the observed share per partition, boundary hits, run count,
+and discard ratio. A declared partition that is unobserved, or an observed
+distribution far from the declared share, blocks sign-off.
+
+Generator adequacy fields are not allowed on `FINITE_MODEL` declarations
+(omit them or use `N/A`); a finite model's completeness is stated by `Bounds`.
+
+The verifier statically checks only field shape, floors, partition-label
+presence as string literals in the covering test file, and `numRuns` literals
+below `Min runs`. It cannot judge whether partitions are the right ones or
+whether observed statistics are realistic; that is human sign-off.
 
 ## Stateful and finite-model checks
 
@@ -258,6 +293,10 @@ Diagnostics:
 | `PROP012` | Property test body executes a different technique than declared |
 | `PROP013` | `--evidence` supplied but a covered property lacks complete execution evidence |
 | `PROP014` | Evidence file is unreadable or malformed |
+| `PROP030` | Generator adequacy fields missing or malformed |
+| `PROP031` | Min runs below 100 or discard ratio above 20% without rationale |
+| `PROP032` | Covering test file lacks a declared partition label string literal |
+| `PROP033` | Covering test sets a `numRuns` literal below declared `Min runs` |
 | `PROP040` | Oracle source is missing or not an allowed value |
 | `PROP041` | Oracle independence is missing, a placeholder, too short, or admits a shared implementation path |
 

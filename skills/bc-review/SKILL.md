@@ -178,6 +178,10 @@ If `properties.md` exists, review it independently from BDD scenarios:
   any reference oracle or finite model that duplicates the production
   algorithm line for line, and any independence statement that is vague or
   admits a shared implementation path.
+- Generator adequacy is substantive: partitions are business-relevant with
+  reasons, boundaries cover each constrained field, required combinations are
+  reachable, run/discard limits fit the risk, invalid inputs use a separate
+  generator, and coverage counters are present in the tests.
 - `FINITE_MODEL` claims state exact completeness bounds and do not claim
   unbounded proof.
 - Each `[PROP:<ID>]` test body executes the declared technique
@@ -385,6 +389,9 @@ traceability map:
 ```text
 | Property ID | Universal claim | Technique | Executable tests | Generator/model and bounds | Coverage assessment |
 ```
+
+Compare sign-off observed partition statistics with declared shares; treat an
+unobserved partition or vacuous distribution as a coverage gap.
 
 Classify generated-run success and bounded finite-model completeness exactly as
 declared. Inspect the newest artifact under

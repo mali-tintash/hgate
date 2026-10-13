@@ -39,6 +39,33 @@ const propertyFile = (body) => `
 ${body}
 `;
 
+const adequacyDefaults = {
+  "Domain partitions":
+    "single-currency:30% - baseline totals; multi-currency:50% - conversion paths; empty-cart:20% - zero-total edge",
+  "Boundary values":
+    "quantity=[1, 2, 999, 1000]; unitPrice=[0.01, 0.02, 9999.99]",
+  "Cross-field combinations": "multi-currency x multi-item; empty-cart x any-currency",
+  "Min runs": "200",
+  "Min runs rationale": "N/A",
+  "Max discard ratio": "10%",
+  "Max discard ratio rationale": "N/A",
+  Shrinking: "Built-in integer/array arbitraries only; shrinks to one item.",
+  "Invalid-input generator":
+    "invalidCartArbitrary expects ValidationError rejection",
+  "Coverage evidence":
+    "fc.statistics labels single-currency, multi-currency, empty-cart",
+};
+
+const adequacyFields = (overrides = {}) =>
+  Object.entries({ ...adequacyDefaults, ...overrides })
+    .filter(([, value]) => value !== undefined)
+    .map(([field, value]) => `- **${field}:** ${value}\n`)
+    .join("");
+
+const coverageLabels = `
+const labels = ["single-currency", "multi-currency", "empty-cart"];
+`;
+
 const generatedProperty = (id = "CART-TOTAL-001") => `
 ## @property:${id} Cart totals remain non-negative
 
@@ -51,7 +78,7 @@ const generatedProperty = (id = "CART-TOTAL-001") => `
 - **Technique:** \`PROPERTY\`
 - **Generator:** validCartArbitrary
 - **Bounds:** \`N/A\`
-`;
+${adequacyFields()}`;
 
 const finiteModel = (id = "CART-STATE-001") => `
 ## @property:${id} Terminal carts cannot be reopened
@@ -76,6 +103,7 @@ test("returns valid for complete declarations covered by active Jest tests", asy
 it("[PROP:CART-TOTAL-001] keeps totals non-negative", () => {
   fc.assert(fc.property(cartArbitrary, (cart) => total(cart) >= 0));
 });
+${coverageLabels}
 test("[PROP:CART-STATE-001] exhausts cart transitions", () => {
   exploreFiniteModel(cartModel);
 });
@@ -243,6 +271,7 @@ test("supports configured property and test paths with stable reports", async ()
     "specifications/cart/invariants.md": propertyFile(generatedProperty()),
     "acceptance/cart.property.spec.ts": `
 it("[PROP:CART-TOTAL-001] checks totals", () => { fc.assert(p); });
+${coverageLabels}
 `,
   });
 
@@ -275,6 +304,7 @@ test("CLI emits versioned JSON and documented exit codes", async () => {
     ".github/skills/cart/properties.md": propertyFile(generatedProperty()),
     "test/verification/cart/cart.property.spec.ts": `
 it("[PROP:CART-TOTAL-001] checks totals", () => { fc.assert(p); });
+${coverageLabels}
 `,
   });
   const emptyRoot = await createProject({
@@ -349,6 +379,7 @@ test("accepts hGATE wrappers and rejects a call of the wrong technique with PROP
 it("[PROP:CART-TOTAL-001] wrapper", async () => {
   await hgateProperty("CART-TOTAL-001", arb, predicate);
 });
+${coverageLabels}
 it("[PROP:CART-STATE-001] wrong technique", () => {
   fc.assert(fc.property(arb, predicate));
 });
@@ -371,7 +402,7 @@ test("a covering test elsewhere keeps a property covered despite an empty duplic
   const root = await createProject({
     ".github/skills/cart/properties.md": propertyFile(generatedProperty()),
     "test/a.spec.ts": `it("[PROP:CART-TOTAL-001] stub", () => {});`,
-    "test/b.spec.ts": `it("[PROP:CART-TOTAL-001] real", () => { fc.assert(p); });`,
+    "test/b.spec.ts": `it("[PROP:CART-TOTAL-001] real", () => { fc.assert(p); });${coverageLabels}`,
   });
 
   const report = await verifyProject({ root });
@@ -385,6 +416,7 @@ test("validates execution evidence when an evidence file is supplied", async () 
   const tests = `
 it("[PROP:CART-TOTAL-001] p", () => { fc.assert(p); });
 it("[PROP:CART-STATE-001] m", () => { exploreFiniteModel(m); });
+${coverageLabels}
 `;
   const good = await createProject({
     ".github/skills/cart/properties.md": properties,
@@ -442,7 +474,7 @@ it("[PROP:CART-STATE-001] m", () => { exploreFiniteModel(m); });
 test("report schema is versioned 2 and lists execution kinds", async () => {
   const root = await createProject({
     ".github/skills/cart/properties.md": propertyFile(generatedProperty()),
-    "test/cart.spec.ts": `it("[PROP:CART-TOTAL-001] p", () => { fc.assert(p); });`,
+    "test/cart.spec.ts": `it("[PROP:CART-TOTAL-001] p", () => { fc.assert(p); });${coverageLabels}`,
   });
 
   const report = await verifyProject({ root });
@@ -462,7 +494,7 @@ const oracleVariant = (source, independence) => `
 ${source === null ? "" : `- **Oracle source:** \`${source}\`\n`}${independence === null ? "" : `- **Oracle independence:** ${independence}\n`}- **Technique:** \`PROPERTY\`
 - **Generator:** validCartArbitrary
 - **Bounds:** \`N/A\`
-`;
+${adequacyFields()}`;
 
 const independent =
   "The expected value comes from a hand-derived equation in the test and shares no function with the subject.";
@@ -472,7 +504,7 @@ async function oracleCodes(source, independence) {
     ".github/skills/cart/properties.md": propertyFile(
       oracleVariant(source, independence),
     ),
-    "test/cart.property.spec.ts": `it("[PROP:CART-TOTAL-001] covered", () => { fc.assert(p); });`,
+    "test/cart.property.spec.ts": `it("[PROP:CART-TOTAL-001] covered", () => { fc.assert(p); });${coverageLabels}`,
   });
   const report = await verifyProject({ root });
   return report.diagnostics.map(({ code }) => code);
@@ -522,4 +554,107 @@ test("accepts independence statements that negate shared-path wording", async ()
     "The reference never calls the production code path and was derived from the pricing policy table.",
   );
   assert.deepEqual(codes, []);
+});
+
+const adequacyProject = (overrides, testSource = coverageLabels) =>
+  createProject({
+    ".github/skills/cart/properties.md": propertyFile(
+      generatedProperty("CART-TOTAL-001").replace(
+        adequacyFields(),
+        adequacyFields(overrides),
+      ),
+    ),
+    "test/verification/cart/cart.property.spec.ts": `
+it("[PROP:CART-TOTAL-001] checks totals", () => { fc.assert(p); });
+${testSource}
+`,
+  });
+
+const adequacyCodes = async (overrides, testSource) => {
+  const report = await verifyProject({
+    root: await adequacyProject(overrides, testSource),
+  });
+  return { report, codes: report.diagnostics.map(({ code }) => code) };
+};
+
+test("PROP030 rejects missing or malformed generator adequacy fields", async () => {
+  for (const overrides of [
+    { "Domain partitions": undefined },
+    { "Domain partitions": "only-one:100% - single partition" },
+    { "Domain partitions": "a:50% - why; b:20% - why; c:10% - why" },
+    { "Domain partitions": "a:40%; b:30%; c:30% - why" },
+    { "Boundary values": "quantity=[1]" },
+    { "Boundary values": "N/A" },
+    { "Cross-field combinations": undefined },
+    { "Min runs": "many" },
+    { "Max discard ratio": "70%" },
+    { Shrinking: undefined },
+    { "Invalid-input generator": "N/A" },
+    { "Coverage evidence": undefined },
+  ]) {
+    const { report, codes } = await adequacyCodes(overrides);
+    assert.equal(report.exitCode, EXIT_INVALID, JSON.stringify(overrides));
+    assert.ok(codes.includes("PROP030"), JSON.stringify(overrides));
+  }
+});
+
+test("PROP030 accepts a reasoned N/A invalid generator and rejects adequacy fields on finite models", async () => {
+  const accepted = await adequacyCodes({
+    "Invalid-input generator": "N/A: domain accepts every generated value",
+  });
+  assert.deepEqual(accepted.codes, []);
+
+  const root = await createProject({
+    ".github/skills/cart/properties.md": propertyFile(
+      finiteModel() + "- **Min runs:** 100\n",
+    ),
+    "test/verification/cart/cart.model.spec.ts": `
+it("[PROP:CART-STATE-001] explores", () => {});
+`,
+  });
+  const report = await verifyProject({ root });
+  assert.ok(report.diagnostics.some(({ code }) => code === "PROP030"));
+});
+
+test("PROP031 requires rationale for runs below 100 and discard ratio above 20%", async () => {
+  const lowRuns = await adequacyCodes({ "Min runs": "50" });
+  assert.deepEqual(lowRuns.codes, ["PROP031"]);
+
+  const justifiedRuns = await adequacyCodes({
+    "Min runs": "50",
+    "Min runs rationale": "Tiny finite input space of eight values",
+  });
+  assert.deepEqual(justifiedRuns.codes, []);
+
+  const highDiscard = await adequacyCodes({ "Max discard ratio": "30%" });
+  assert.deepEqual(highDiscard.codes, ["PROP031"]);
+
+  const justifiedDiscard = await adequacyCodes({
+    "Max discard ratio": "30%",
+    "Max discard ratio rationale": "Sparse valid region cannot be built directly",
+  });
+  assert.deepEqual(justifiedDiscard.codes, []);
+});
+
+test("PROP032 requires every declared partition label in the covering test file", async () => {
+  const { codes, report } = await adequacyCodes(
+    {},
+    `const labels = ["single-currency", "multi-currency"];`,
+  );
+  assert.deepEqual(codes, ["PROP032"]);
+  assert.match(report.diagnostics[0].message, /empty-cart/);
+});
+
+test("PROP033 rejects a numRuns literal below the declared minimum", async () => {
+  const { codes } = await adequacyCodes(
+    {},
+    `${coverageLabels}\nfc.assert(prop, { numRuns: 25 });`,
+  );
+  assert.deepEqual(codes, ["PROP033"]);
+
+  const ok = await adequacyCodes(
+    {},
+    `${coverageLabels}\nfc.assert(prop, { numRuns: 250 });`,
+  );
+  assert.deepEqual(ok.codes, []);
 });
