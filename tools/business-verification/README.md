@@ -96,13 +96,47 @@ property ID in a static title:
 
 ```typescript
 it("[PROP:CART-TOTAL-001] keeps every valid cart total non-negative", () => {
-  fc.assert(
+  hgateProperty(
+    "CART-TOTAL-001",
     fc.property(validCartArbitrary, (cart) => {
       expect(calculateTotal(cart).isNegative()).toBe(false);
     }),
+    { numRuns: 200 },
   );
 });
+
+it("[PROP:CART-STATE-001] submitted carts never reopen", () => {
+  hgateFiniteModel("CART-STATE-001", cartLifecycleModel);
+});
 ```
+
+### Execution contract
+
+A property reference counts as coverage only when the test body executes the
+declared technique. The verifier statically requires, outside comments and
+strings, a call to:
+
+- `PROPERTY`: `hgateProperty(...)` or `fc.assert(...)`
+- `FINITE_MODEL`: `hgateFiniteModel(...)` or `exploreFiniteModel(...)`
+
+Empty callbacks, comment-only bodies, and calls of the wrong technique do not
+count. [`hgate-property.ts`](./hgate-property.ts) ships the standard
+`hgateProperty` and `hgateFiniteModel` wrappers. They run the check with an
+explicit, replayable `seed` and `numRuns` and, when the
+`HGATE_PROPERTY_EVIDENCE` environment variable names a file, append one JSON
+line per passing run:
+
+```json
+{"id":"CART-TOTAL-001","technique":"PROPERTY","numRuns":200,"seed":1042}
+{"id":"CART-STATE-001","technique":"FINITE_MODEL","statesVisited":3,"transitionsExplored":4,"maxDepthReached":4}
+```
+
+Static detection cannot prove the call is reachable (for example, it cannot
+tell `if (false) { fc.assert(...) }` from a real run). Run the property Jest
+suite with `HGATE_PROPERTY_EVIDENCE` set, then pass the file to the verifier
+with `--evidence` so each covered property must have a runtime record
+(`numRuns >= 1` and an integer `seed` for `PROPERTY`; `statesVisited >= 1` for
+`FINITE_MODEL`). Delete the file before each run so evidence is not stale.
 
 Recommended project structure:
 
@@ -126,7 +160,8 @@ Generator rules:
 
 One Jest title may reference several property IDs and several tests may protect
 one property. Comments, helpers, computed titles, `describe` titles,
-`it.skip`, `test.skip`, and `test.todo` do not satisfy coverage.
+`it.skip`, `test.skip`, `test.todo`, and tests whose body does not execute the
+declared technique do not satisfy coverage.
 
 ## Stateful and finite-model checks
 
@@ -167,6 +202,7 @@ Options:
 --property-path <path> Property file or directory; repeatable
 --test-path <path>     Jest test file or directory; repeatable
 --exclude <name>       Directory name to exclude; repeatable
+--evidence <path>      JSONL execution evidence from the hGATE wrappers
 --format <text|json>   Report format (default: text)
 --help                 Show help
 ```
@@ -177,7 +213,7 @@ accepts `*.spec.ts` and `*.test.ts`.
 
 Exit codes:
 
-- `0`: static property traceability is valid
+- `0`: static property traceability (and evidence, when supplied) is valid
 - `1`: declaration or traceability violations were found
 - `2`: arguments, discovery, file access, or verifier execution failed
 
@@ -195,8 +231,16 @@ Diagnostics:
 | `PROP008` | Jest property reference is malformed |
 | `PROP009` | No property specification was discovered |
 | `PROP010` | Verifier invocation or execution failed |
+| `PROP011` | Property test body executes no property or finite model |
+| `PROP012` | Property test body executes a different technique than declared |
+| `PROP013` | `--evidence` supplied but a covered property lacks complete execution evidence |
+| `PROP014` | Evidence file is unreadable or malformed |
 
-The verifier proves declaration and static linkage only. Jest execution proves
+The verifier proves declaration, static linkage, and that a covering test body
+calls the declared technique (plus recorded evidence when `--evidence` is
+supplied). The JSON report is `schemaVersion: 2`: references carry
+`executionKinds`, and `evidence` is `null` or `{ path, records }`.
+ Jest execution proves
 that the configured generated or finite checks passed. Human review decides
 whether the property inventory, generators, model, oracle, and bounds are
 meaningful.

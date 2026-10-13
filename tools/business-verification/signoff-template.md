@@ -25,7 +25,7 @@ universal claims are independent evidence.
 | Evidence | Command | Result |
 |---|---|---|
 | Property/model Jest suite | `<project property Jest command>` | PASS |
-| Property traceability | `npm run --silent verify:properties -- --format json` | PASS (exit 0) |
+| Property traceability | `npm run --silent verify:properties -- --evidence .hgate-property-evidence.jsonl --format json` | PASS (exit 0) |
 
 Repository summary:
 

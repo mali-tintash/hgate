@@ -277,7 +277,8 @@ Build a separate property matrix:
 
 Keep it separate from the BDD scenario matrix. Use `PROPERTY` for generated
 checks against production code and `FINITE_MODEL` only for explicitly bounded,
-exhaustively enumerable models.
+exhaustively enumerable models. A `[PROP:<ID>]` test must execute that technique
+in its body via `hgateProperty`/`hgateFiniteModel`; empty tests are not coverage.
 
 Use the scenario IDs already defined in `bdd-scenarios.md`; do not invent
 implementation-local aliases such as `S1`. Every executable test that claims
@@ -682,7 +683,7 @@ Implementation is complete only when:
 - Explicit human BDD-to-TDD sign-off is recorded in an immutable module-scoped
   artifact
 - When Goal 3 was selected, every approved property has meaningful executable
-  coverage and a separate current property sign-off artifact
+  coverage (verifier reports no `PROP011`-`PROP014`) and a separate current property sign-off artifact
 - When Goal 3 was declined, the scoped decision and rationale are recorded in
   the BC's `decisions.md` and no skipped artifact exists
 - The traceability report contains no `Missing` approved behavior

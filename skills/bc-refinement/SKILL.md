@@ -400,7 +400,9 @@ Each property:
 - States one falsifiable universal or bounded-universal claim.
 - Defines quantification, preconditions, observable oracle, technique,
   generator contract, and finite bounds.
-- Uses `PROPERTY` for generated tests against production code.
+- Uses `PROPERTY` for generated tests against production code. Its planned
+  test must execute the property through `hgateProperty`; an empty test
+  never satisfies coverage.
 - Uses `FINITE_MODEL` only for a pure, genuinely finite state space with exact
   states, commands, inputs, and depth bounds.
 - Remains distinct from named Given/When/Then examples in `bdd-scenarios.md`.

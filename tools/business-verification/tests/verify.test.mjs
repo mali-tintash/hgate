@@ -69,8 +69,12 @@ test("returns valid for complete declarations covered by active Jest tests", asy
       generatedProperty() + finiteModel(),
     ),
     "test/verification/cart/cart.property.spec.ts": `
-it("[PROP:CART-TOTAL-001] keeps totals non-negative", () => {});
-test("[PROP:CART-STATE-001] exhausts cart transitions", () => {});
+it("[PROP:CART-TOTAL-001] keeps totals non-negative", () => {
+  fc.assert(fc.property(cartArbitrary, (cart) => total(cart) >= 0));
+});
+test("[PROP:CART-STATE-001] exhausts cart transitions", () => {
+  exploreFiniteModel(cartModel);
+});
 `,
   });
 
@@ -230,7 +234,7 @@ test("supports configured property and test paths with stable reports", async ()
   const root = await createProject({
     "specifications/cart/invariants.md": propertyFile(generatedProperty()),
     "acceptance/cart.property.spec.ts": `
-it("[PROP:CART-TOTAL-001] checks totals", () => {});
+it("[PROP:CART-TOTAL-001] checks totals", () => { fc.assert(p); });
 `,
   });
 
@@ -262,7 +266,7 @@ test("CLI emits versioned JSON and documented exit codes", async () => {
   const validRoot = await createProject({
     ".github/skills/cart/properties.md": propertyFile(generatedProperty()),
     "test/verification/cart/cart.property.spec.ts": `
-it("[PROP:CART-TOTAL-001] checks totals", () => {});
+it("[PROP:CART-TOTAL-001] checks totals", () => { fc.assert(p); });
 `,
   });
   const emptyRoot = await createProject({
@@ -278,7 +282,7 @@ it("[PROP:CART-TOTAL-001] checks totals", () => {});
   ]);
   const validReport = JSON.parse(validResult.stdout);
 
-  assert.equal(validReport.schemaVersion, 1);
+  assert.equal(validReport.schemaVersion, 2);
   assert.equal(validReport.exitCode, EXIT_VALID);
 
   await assert.rejects(
@@ -288,4 +292,154 @@ it("[PROP:CART-TOTAL-001] checks totals", () => {});
       error.stdout.includes("PROP009") &&
       error.stderr === "",
   );
+});
+
+const evidenceLine = (id, technique, extra = {}) =>
+  JSON.stringify({
+    id,
+    technique,
+    ...(technique === "PROPERTY" ? { numRuns: 100, seed: 42 } : {}),
+    ...extra,
+  });
+
+test("reports PROP011 when a property test body executes no property", async () => {
+  const root = await createProject({
+    ".github/skills/cart/properties.md": propertyFile(
+      generatedProperty() + finiteModel(),
+    ),
+    "test/cart.spec.ts": `
+it("[PROP:CART-TOTAL-001] empty arrow", () => {});
+test("[PROP:CART-STATE-001] only comments and strings", () => {
+  // fc.assert(...) and exploreFiniteModel(...)
+  const text = "fc.assert(x)";
+});
+`,
+  });
+
+  const report = await verifyProject({ root });
+
+  assert.equal(report.exitCode, EXIT_INVALID);
+  assert.deepEqual(
+    report.diagnostics.map(({ code, id }) => [code, id]),
+    [
+      ["PROP006", "CART-TOTAL-001"],
+      ["PROP006", "CART-STATE-001"],
+      ["PROP011", "CART-TOTAL-001"],
+      ["PROP011", "CART-STATE-001"],
+    ],
+  );
+  assert.equal(report.summary.coveredProperties, 0);
+  assert.deepEqual(report.testReferences[0].executionKinds, []);
+});
+
+test("accepts hGATE wrappers and rejects a call of the wrong technique with PROP012", async () => {
+  const root = await createProject({
+    ".github/skills/cart/properties.md": propertyFile(
+      generatedProperty() + finiteModel(),
+    ),
+    "test/cart.spec.ts": `
+it("[PROP:CART-TOTAL-001] wrapper", async () => {
+  await hgateProperty("CART-TOTAL-001", arb, predicate);
+});
+it("[PROP:CART-STATE-001] wrong technique", () => {
+  fc.assert(fc.property(arb, predicate));
+});
+`,
+  });
+
+  const report = await verifyProject({ root });
+
+  assert.deepEqual(
+    report.diagnostics.map(({ code, id }) => [code, id]),
+    [
+      ["PROP006", "CART-STATE-001"],
+      ["PROP012", "CART-STATE-001"],
+    ],
+  );
+  assert.equal(report.summary.coveredProperties, 1);
+});
+
+test("a covering test elsewhere keeps a property covered despite an empty duplicate", async () => {
+  const root = await createProject({
+    ".github/skills/cart/properties.md": propertyFile(generatedProperty()),
+    "test/a.spec.ts": `it("[PROP:CART-TOTAL-001] stub", () => {});`,
+    "test/b.spec.ts": `it("[PROP:CART-TOTAL-001] real", () => { fc.assert(p); });`,
+  });
+
+  const report = await verifyProject({ root });
+
+  assert.equal(report.summary.coveredProperties, 1);
+  assert.deepEqual(report.diagnostics.map(({ code }) => code), ["PROP011"]);
+});
+
+test("validates execution evidence when an evidence file is supplied", async () => {
+  const properties = propertyFile(generatedProperty() + finiteModel());
+  const tests = `
+it("[PROP:CART-TOTAL-001] p", () => { fc.assert(p); });
+it("[PROP:CART-STATE-001] m", () => { exploreFiniteModel(m); });
+`;
+  const good = await createProject({
+    ".github/skills/cart/properties.md": properties,
+    "test/cart.spec.ts": tests,
+    "evidence.jsonl": [
+      evidenceLine("CART-TOTAL-001", "PROPERTY"),
+      evidenceLine("CART-STATE-001", "FINITE_MODEL", {
+        statesVisited: 3,
+        transitionsExplored: 4,
+      }),
+    ].join("\n"),
+  });
+  const goodReport = await verifyProject({
+    root: good,
+    evidencePath: "evidence.jsonl",
+  });
+  assert.equal(goodReport.exitCode, EXIT_VALID);
+  assert.equal(goodReport.evidence.path, "evidence.jsonl");
+  assert.deepEqual(
+    goodReport.evidence.records.map(({ id, numRuns, seed }) => [id, numRuns, seed]),
+    [
+      ["CART-STATE-001", undefined, undefined],
+      ["CART-TOTAL-001", 100, 42],
+    ],
+  );
+
+  const bad = await createProject({
+    ".github/skills/cart/properties.md": properties,
+    "test/cart.spec.ts": tests,
+    "evidence.jsonl": [
+      evidenceLine("CART-TOTAL-001", "PROPERTY", { numRuns: 0 }),
+    ].join("\n"),
+  });
+  const badReport = await verifyProject({
+    root: bad,
+    evidencePath: "evidence.jsonl",
+  });
+  assert.equal(badReport.exitCode, EXIT_INVALID);
+  assert.deepEqual(
+    badReport.diagnostics.map(({ code, id }) => [code, id]),
+    [
+      ["PROP013", "CART-TOTAL-001"],
+      ["PROP013", "CART-STATE-001"],
+    ],
+  );
+
+  const missing = await verifyProject({
+    root: good,
+    evidencePath: "absent.jsonl",
+  });
+  assert.equal(missing.exitCode, EXIT_DISCOVERY);
+  assert.equal(missing.diagnostics[0].code, "PROP014");
+});
+
+test("report schema is versioned 2 and lists execution kinds", async () => {
+  const root = await createProject({
+    ".github/skills/cart/properties.md": propertyFile(generatedProperty()),
+    "test/cart.spec.ts": `it("[PROP:CART-TOTAL-001] p", () => { fc.assert(p); });`,
+  });
+
+  const report = await verifyProject({ root });
+
+  assert.equal(report.schemaVersion, 2);
+  assert.deepEqual(report.testReferences[0].executionKinds, ["PROPERTY"]);
+  assert.equal(report.evidence, null);
 });
