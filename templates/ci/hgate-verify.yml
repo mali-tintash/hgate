@@ -1,0 +1,35 @@
+# hGATE adopter CI gate. Copy to .github/workflows/hgate-verify.yml in the
+# adopting project. hGATE never installs this for you.
+#
+# Requires package.json scripts:
+#   "verify:bdd":        "node tools/bdd-traceability/verify.mjs --root ."
+#   "verify:properties": "node tools/business-verification/verify.mjs --root ."  (optional Goal 3)
+# and `typescript` in devDependencies (the verifiers resolve it from the project).
+name: hgate-verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  hgate-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: BDD scenario-to-test traceability
+        run: npm run --silent verify:bdd
+      - name: Business-property traceability (skipped when no properties.md exists)
+        run: |
+          if ls .github/skills/*/properties.md >/dev/null 2>&1; then
+            npm run --silent verify:properties
+          else
+            echo "No properties.md found; Goal 3 not adopted."
+          fi
+      # Keep your normal unit tests as a separate step or job.
+      - run: npm test
