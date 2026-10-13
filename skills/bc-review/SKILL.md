@@ -172,6 +172,12 @@ If `properties.md` exists, review it independently from BDD scenarios:
   example rewritten as a property.
 - Quantification, preconditions, oracle, technique, generator, and bounds are
   complete and falsifiable.
+- `Oracle source` is a documented value and `Oracle independence` names an
+  independent source. Flag as a finding any circular oracle (the subject
+  computes its own expected value, for example `expect(f(x)).toEqual(f(x))`),
+  any reference oracle or finite model that duplicates the production
+  algorithm line for line, and any independence statement that is vague or
+  admits a shared implementation path.
 - `FINITE_MODEL` claims state exact completeness bounds and do not claim
   unbounded proof.
 - Generated properties use synthetic data and cannot persist secrets, personal

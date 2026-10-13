@@ -400,6 +400,12 @@ Each property:
 - States one falsifiable universal or bounded-universal claim.
 - Defines quantification, preconditions, observable oracle, technique,
   generator contract, and finite bounds.
+- Declares an `Oracle source` (`REFERENCE_CALCULATION`, `DOMAIN_EQUATION`,
+  `CONSERVATION`, `METAMORPHIC`, `ROUND_TRIP`, `TRUSTED_LIBRARY`,
+  `STATE_INVARIANT`, or `APPROVED_TABLE`) and an `Oracle independence`
+  statement. Subject and oracle never share an implementation path; circular
+  or line-for-line duplicated oracles are prohibited, and finite models derive
+  from approved rules, not production code.
 - Uses `PROPERTY` for generated tests against production code.
 - Uses `FINITE_MODEL` only for a pure, genuinely finite state space with exact
   states, commands, inputs, and depth bounds.

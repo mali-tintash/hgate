@@ -29,6 +29,28 @@ const REQUIRED_FIELDS = [
   "Bounds",
 ];
 const TECHNIQUES = new Set(["PROPERTY", "FINITE_MODEL"]);
+const ORACLE_SOURCES = new Set([
+  "REFERENCE_CALCULATION",
+  "DOMAIN_EQUATION",
+  "CONSERVATION",
+  "METAMORPHIC",
+  "ROUND_TRIP",
+  "TRUSTED_LIBRARY",
+  "STATE_INVARIANT",
+  "APPROVED_TABLE",
+]);
+const MIN_INDEPENDENCE_LENGTH = 40;
+const PLACEHOLDER_PATTERN =
+  /^(?:n\/a|na|none|tbd|todo|<[^>]*>|independent\.?|yes|same|-+)$/i;
+const SHARED_PATH_PATTERNS = [
+  /\b(?:same|identical)\s+(?:function|method|implementation|code|algorithm|path|logic|service|calculation)\b/i,
+  /\bcop(?:y|ies|ied)\s+of\b/i,
+  /\bline[- ]for[- ]line\b/i,
+  /\b(?:reuses?|re-?implements?|calls?|invokes?|delegates?\s+to|wraps?|mirrors?|duplicates?)\s+(?:the\s+)?(?:production|subject|implementation)\b/i,
+  /\bproduction\s+(?:code|algorithm|implementation|function|path|logic)\b/i,
+];
+const NEGATION_PATTERN =
+  /\b(?:never|not|no|without|nor|neither|isn't|doesn't|don't|cannot|avoids?)\b/i;
 
 function toPosixPath(value) {
   return value.split(path.sep).join("/");
@@ -102,6 +124,27 @@ function normalizeMetadataValue(value) {
     return trimmed.slice(1, -1);
   }
   return trimmed;
+}
+
+function oracleIndependenceProblem(statement) {
+  if (!statement) {
+    return "statement is missing";
+  }
+  if (PLACEHOLDER_PATTERN.test(statement)) {
+    return "statement is a placeholder";
+  }
+  if (statement.length < MIN_INDEPENDENCE_LENGTH) {
+    return `statement must name the independent source and why it shares no implementation path (at least ${MIN_INDEPENDENCE_LENGTH} characters)`;
+  }
+  for (const sentence of statement.split(/(?<=[.;!?])\s+/)) {
+    for (const pattern of SHARED_PATH_PATTERNS) {
+      const match = pattern.exec(sentence);
+      if (match && !NEGATION_PATTERN.test(sentence.slice(0, match.index))) {
+        return `statement admits a shared implementation path ("${match[0]}")`;
+      }
+    }
+  }
+  return null;
 }
 
 function parsePropertyFile(source, file) {
@@ -192,6 +235,34 @@ function parsePropertyFile(source, file) {
           property.line,
           property.id,
           "property declaration must have a human-readable title",
+        ),
+      );
+    }
+
+    const oracleSource = property.fields["Oracle source"];
+    if (!oracleSource || !ORACLE_SOURCES.has(oracleSource)) {
+      diagnostics.push(
+        diagnostic(
+          "PROP040",
+          file,
+          property.line,
+          property.id,
+          `Oracle source must be one of ${[...ORACLE_SOURCES].join(", ")}${oracleSource ? `, received "${oracleSource}"` : ""}`,
+        ),
+      );
+    }
+
+    const independenceProblem = oracleIndependenceProblem(
+      property.fields["Oracle independence"],
+    );
+    if (independenceProblem) {
+      diagnostics.push(
+        diagnostic(
+          "PROP041",
+          file,
+          property.line,
+          property.id,
+          `Oracle independence ${independenceProblem}`,
         ),
       );
     }

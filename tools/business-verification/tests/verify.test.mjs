@@ -46,6 +46,8 @@ const generatedProperty = (id = "CART-TOTAL-001") => `
 - **Quantification:** For every valid cart and item collection.
 - **Preconditions:** Prices and quantities satisfy their domain invariants.
 - **Oracle:** Recalculation returns a total greater than or equal to zero.
+- **Oracle source:** \`DOMAIN_EQUATION\`
+- **Oracle independence:** The expected total is the sum of price times quantity computed from generated line items in the test, without calling the cart total service.
 - **Technique:** \`PROPERTY\`
 - **Generator:** validCartArbitrary
 - **Bounds:** \`N/A\`
@@ -58,6 +60,8 @@ const finiteModel = (id = "CART-STATE-001") => `
 - **Quantification:** For every reachable state and enabled command.
 - **Preconditions:** The initial state is ACTIVE.
 - **Oracle:** No transition leaves SUBMITTED for ACTIVE.
+- **Oracle source:** \`STATE_INVARIANT\`
+- **Oracle independence:** The invariant is derived from the approved lifecycle rule that SUBMITTED is terminal, not from the production transition table.
 - **Technique:** \`FINITE_MODEL\`
 - **Generator:** \`N/A\`
 - **Bounds:** States ACTIVE and SUBMITTED; commands submit and reopen; depth 4.
@@ -288,4 +292,76 @@ it("[PROP:CART-TOTAL-001] checks totals", () => {});
       error.stdout.includes("PROP009") &&
       error.stderr === "",
   );
+});
+
+const oracleVariant = (source, independence) => `
+## @property:CART-TOTAL-001 Cart totals remain non-negative
+
+- **Claim:** A valid cart total is never negative.
+- **Quantification:** For every valid cart and item collection.
+- **Preconditions:** Prices and quantities satisfy their domain invariants.
+- **Oracle:** Recalculation returns a total greater than or equal to zero.
+${source === null ? "" : `- **Oracle source:** \`${source}\`\n`}${independence === null ? "" : `- **Oracle independence:** ${independence}\n`}- **Technique:** \`PROPERTY\`
+- **Generator:** validCartArbitrary
+- **Bounds:** \`N/A\`
+`;
+
+const independent =
+  "The expected value comes from a hand-derived equation in the test and shares no function with the subject.";
+
+async function oracleCodes(source, independence) {
+  const root = await createProject({
+    ".github/skills/cart/properties.md": propertyFile(
+      oracleVariant(source, independence),
+    ),
+    "test/cart.property.spec.ts": `it("[PROP:CART-TOTAL-001] covered", () => {});`,
+  });
+  const report = await verifyProject({ root });
+  return report.diagnostics.map(({ code }) => code);
+}
+
+test("accepts every documented oracle source with an independence statement", async () => {
+  for (const source of [
+    "REFERENCE_CALCULATION",
+    "DOMAIN_EQUATION",
+    "CONSERVATION",
+    "METAMORPHIC",
+    "ROUND_TRIP",
+    "TRUSTED_LIBRARY",
+    "STATE_INVARIANT",
+    "APPROVED_TABLE",
+  ]) {
+    assert.deepEqual(await oracleCodes(source, independent), [], source);
+  }
+});
+
+test("reports PROP040 when the oracle source is missing or unknown", async () => {
+  assert.ok((await oracleCodes(null, independent)).includes("PROP040"));
+  assert.ok((await oracleCodes("SAME_FUNCTION", independent)).includes("PROP040"));
+  assert.ok((await oracleCodes("reference_calculation", independent)).includes("PROP040"));
+});
+
+test("reports PROP041 when oracle independence is missing, a placeholder, too short, or admits a shared path", async () => {
+  for (const statement of [
+    null,
+    "N/A",
+    "TBD",
+    "Independent.",
+    "The oracle calls the same function as the subject under test.",
+    "The reference is a copy of the production algorithm written again.",
+    "The oracle reuses the production code path to compute the expected value.",
+  ]) {
+    assert.ok(
+      (await oracleCodes("REFERENCE_CALCULATION", statement)).includes("PROP041"),
+      String(statement),
+    );
+  }
+});
+
+test("accepts independence statements that negate shared-path wording", async () => {
+  const codes = await oracleCodes(
+    "REFERENCE_CALCULATION",
+    "The reference never calls the production code path and was derived from the pricing policy table.",
+  );
+  assert.deepEqual(codes, []);
 });

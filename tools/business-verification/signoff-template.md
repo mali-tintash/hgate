@@ -35,9 +35,15 @@ Repository summary:
 
 ## Module Property Evidence
 
-| Property ID | Claim | Technique | Executable test(s) | Bounds / generated runs | Human assessment |
-|---|---|---|---|---|---|
-| `<ID>` | `<claim>` | `PROPERTY` / `FINITE_MODEL` | `<file:line - title>` | `<runs or exact finite bounds>` | Generator/model and oracle are adequate |
+| Property ID | Claim | Technique | Oracle source | Oracle independence | Executable test(s) | Bounds / generated runs | Human assessment |
+|---|---|---|---|---|---|---|---|
+| `<ID>` | `<claim>` | `PROPERTY` / `FINITE_MODEL` | `<source>` | `<independent source and why no shared implementation path>` | `<file:line - title>` | `<runs or exact finite bounds>` | Generator/model and oracle are adequate and independent |
+
+Human oracle-independence checklist (all must hold for each property):
+
+- [ ] The oracle's expected value does not come from the subject under test.
+- [ ] No reference calculation or model duplicates production code line for line.
+- [ ] The declared `Oracle source` matches what the Jest test actually does.
 
 ## Attempt History
 
