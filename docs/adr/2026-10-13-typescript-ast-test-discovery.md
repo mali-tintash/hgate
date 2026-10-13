@@ -39,6 +39,11 @@ A test counts as active only when neither it nor any ancestor describe is
 count as active but emit a non-failing `BDD010`/`PROP015` warning, because Jest
 silently skips sibling tests while a focus exists.
 
+An active `[BDD:ID]` test body must contain at least one assertion call
+(`expect`, `.expect`, `assert*`; `expect.assertions` alone is insufficient);
+otherwise `BDD011` is reported and the test does not count as coverage. The
+check proves linkage and non-emptiness, not assertion quality.
+
 ## Consequences
 
 - The tools are no longer dependency-free; adopters already using TypeScript/Jest

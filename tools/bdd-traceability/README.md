@@ -91,6 +91,17 @@ warning (report `warnings`, exit code unchanged): Jest silently skips every
 sibling test while a focus is present. Treat the warning as a cue to remove
 the focus before merging.
 
+An active `[BDD:ID]` test must also contain at least one assertion call in its
+body: `expect(...)` (including `await expect(...).rejects...`), a supertest
+`.expect(...)`, `assert(...)` / `assert.*`, or an `assert`-prefixed helper such
+as `assertCartAccepted(...)`. `expect.assertions(...)` and
+`expect.hasAssertions()` alone do not count. A test with an empty, comment-only,
+non-asserting, or non-inline body (for example `it("...", sharedFn)`) emits
+`BDD011` and does not provide coverage, so its scenario also reports `BDD005`
+unless another asserting test covers it. This proves linkage and
+non-emptiness only, not assertion quality; review still judges whether the
+assertions prove the scenario outcome.
+
 ## Options
 
 ```text

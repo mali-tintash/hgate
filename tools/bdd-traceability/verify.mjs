@@ -174,6 +174,21 @@ function parseScenarioFile(source, file) {
   return { scenarios, diagnostics };
 }
 
+function isAssertionCall({ path: callPath, member }) {
+  if (callPath !== null && callPath.startsWith("expect.")) {
+    return false;
+  }
+  return (
+    callPath === "expect" ||
+    member === "expect" ||
+    callPath === "assert" ||
+    (callPath !== null && callPath.startsWith("assert.")) ||
+    [member, callPath?.split(".").pop()].some(
+      (name) => name != null && /^assert[A-Z_]/.test(name),
+    )
+  );
+}
+
 function parseJestTestFile(ts, source, file) {
   const references = [];
   const diagnostics = [];
@@ -207,6 +222,7 @@ function parseJestTestFile(ts, source, file) {
         line,
         title: titleResult.value,
         active,
+        asserts: testCall.hasFunction && testCall.calls.some(isAssertionCall),
       });
       if (testCall.focused) {
         warnings.push(
@@ -353,7 +369,17 @@ export async function verifyProject(options = {}) {
         ),
       );
     }
-    if (reference.active) {
+    if (reference.active && !reference.asserts) {
+      diagnostics.push(
+        diagnostic(
+          "BDD011",
+          reference.file,
+          reference.line,
+          reference.id,
+          `test for "${reference.id}" contains no assertion; its body must call expect(...) or an assert helper`,
+        ),
+      );
+    } else if (reference.active) {
       const matches = activeReferencesById.get(reference.id) ?? [];
       matches.push(reference);
       activeReferencesById.set(reference.id, matches);
