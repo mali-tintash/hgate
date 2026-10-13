@@ -84,8 +84,12 @@ test("[PROP:CART-STATE-001] exhausts cart transitions", () => {
   assert.deepEqual(report.diagnostics, []);
   assert.equal(report.summary.properties, 2);
   assert.equal(report.summary.coveredProperties, 2);
-  assert.equal(report.summary.propertyTests, 1);
-  assert.equal(report.summary.finiteModelTests, 1);
+  assert.equal(report.summary.propertyDeclarations, 1);
+  assert.equal(report.summary.finiteModelDeclarations, 1);
+  assert.equal(report.summary.activeTestReferences, 2);
+  assert.equal(report.summary.inactiveTestReferences, 0);
+  assert.equal("propertyTests" in report.summary, false);
+  assert.equal("finiteModelTests" in report.summary, false);
 });
 
 test("reports missing, multiple, malformed, and duplicate property IDs", async () => {
