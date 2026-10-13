@@ -1,4 +1,4 @@
-# ADR-004: Close BDD-to-TDD Work with Human Sign-Off
+# ADR-006: Close BDD-to-TDD Work with Human Sign-Off
 
 **Status:** Accepted
 **Date:** 2026-10-05
