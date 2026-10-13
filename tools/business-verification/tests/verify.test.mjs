@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -19,8 +19,15 @@ import {
 const execFileAsync = promisify(execFile);
 const verifierPath = fileURLToPath(new URL("../verify.mjs", import.meta.url));
 
-async function createProject(files) {
+async function createProject(files, { withTypescript = true } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "hgate-properties-"));
+  if (withTypescript) {
+    await symlink(
+      fileURLToPath(new URL("../../../node_modules", import.meta.url)),
+      path.join(root, "node_modules"),
+      "dir",
+    );
+  }
 
   await Promise.all(
     Object.entries(files).map(async ([relativePath, content]) => {

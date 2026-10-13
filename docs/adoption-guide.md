@@ -42,9 +42,12 @@ Install the deterministic BDD traceability verifier:
 
 ```bash
 mkdir -p /path/to/your-project/tools
-cp -R tools/bdd-traceability \
+cp -R tools/bdd-traceability tools/shared \
   /path/to/your-project/tools/
 ```
+
+The verifier needs the project's own `typescript` package (already present in
+TS/Jest projects; otherwise `npm install --save-dev typescript`).
 
 For a TypeScript/Jest project, add this required package script:
 
@@ -56,7 +59,10 @@ For a TypeScript/Jest project, add this required package script:
 }
 ```
 
-Run `npm run verify:bdd` in CI before or alongside Jest. The command exits
+Run `npm run verify:bdd` in CI before or alongside Jest (templates for CI,
+pre-commit, and an agent Stop hook are described under
+[Enforce the Verifiers Outside the Agent](#enforce-the-verifiers-outside-the-agent)).
+The command exits
 nonzero for duplicate or malformed scenario IDs, scenarios without an active
 Jest reference, and Jest references to unknown scenarios. If the adopting
 project uses non-default specification or test roots, configure repeatable
@@ -77,10 +83,10 @@ it for the current BC change.
 If selected:
 
 ```bash
-cp -R tools/business-verification \
+cp -R tools/business-verification tools/shared \
   /path/to/your-project/tools/
 cd /path/to/your-project
-npm install --save-dev fast-check
+npm install --save-dev fast-check typescript
 ```
 
 Add `verify:properties` and a project-specific `test:properties` Jest script as
@@ -102,6 +108,27 @@ paragraph.
 The synchronization protocol must inspect committed as well as uncommitted
 manual changes. An intended behavioral change is reconciled through
 `bc-enhancement` for each affected BC before unrelated new work proceeds.
+
+## Enforce the Verifiers Outside the Agent
+
+`SKILL.md` instructions rely on the agent obeying them. Back them with checks
+that do not. hGATE ships opt-in templates; copy what you want, nothing is
+installed automatically.
+
+| Layer | Template | Install |
+|---|---|---|
+| CI gate (authoritative) | `templates/ci/hgate-verify.yml` | copy to `.github/workflows/hgate-verify.yml` |
+| Pre-commit hook | `templates/hooks/pre-commit` | copy to `.git/hooks/pre-commit` (or call from `.husky/pre-commit`) and `chmod +x` |
+| Agent Stop hook (Claude Code format) | `templates/hooks/hgate-verify-stop.sh` + `templates/hooks/claude-settings.stop-hook.json` | copy the script to `.claude/hooks/`, `chmod +x`, merge the JSON into `.claude/settings.json` |
+
+All three run `npm run verify:bdd`, and `npm run verify:properties` when a
+`properties.md` exists, so the `verify:*` scripts above must be defined and
+`typescript` must be a project dependency. Mark the CI job as a required status
+check in branch protection; hooks are local and bypassable, CI is not. The Stop
+hook exits `2` with the verifier output so the agent keeps working until the
+traceability is valid, and it skips itself when `stop_hook_active` is set to
+avoid loops. Other agent runtimes can reuse the script behind their own
+end-of-turn hook.
 
 ## Choose an Adoption Level
 

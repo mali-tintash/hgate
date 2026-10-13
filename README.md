@@ -24,13 +24,15 @@ repository:
 mkdir -p /path/to/your-project/.github/skills
 cp -R skills/* /path/to/your-project/.github/skills/
 mkdir -p /path/to/your-project/tools
-cp -R tools/bdd-traceability \
+cp -R tools/bdd-traceability tools/shared \
   /path/to/your-project/tools/
 ```
 
 Preserve each skill's `SKILL.md`, `assets/`, `references/`, and `decisions.md`.
 The verifier and its human sign-off protocol are required parts of hGATE
-adoption for TypeScript/Jest projects.
+adoption for TypeScript/Jest projects. The verifiers parse tests with the
+project's own `typescript` package (see
+[ADR-007](docs/adr/2026-10-13-typescript-ast-test-discovery.md)).
 
 Goal 3 business-logic verification is optional. When selected for a BC change,
 also copy `tools/business-verification`, install `fast-check`, and add the

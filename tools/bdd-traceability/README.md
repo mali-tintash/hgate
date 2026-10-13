@@ -1,7 +1,8 @@
 # BDD Traceability Verifier
 
-This dependency-free Node.js CLI enforces hGATE's TypeScript/Jest traceability
-contract in an adopting project:
+This Node.js CLI has no dependencies of its own. It parses test files with the
+TypeScript compiler API from the adopting project's own `typescript` package,
+and enforces hGATE's TypeScript/Jest traceability contract:
 
 - every Gherkin `Scenario` and `Scenario Outline` has one valid,
   repository-unique `@scenario:<ID>` tag
@@ -12,10 +13,16 @@ contract in an adopting project:
 ## Requirements
 
 - Node.js 18 or later
+- `typescript` installed in the adopting project (any TS/Jest project already
+  has it); the verifier resolves it from `--root`. If it cannot be resolved the
+  verifier prints `BDD009 verifier failure: the "typescript" package could not
+  be resolved ...` and exits `2`.
 - TypeScript tests named `*.spec.ts` or `*.test.ts`
 - BDD specifications under `.github/skills/**/bdd-scenarios.md`
 
-The verifier reads TypeScript source but does not compile or execute it.
+The verifier parses TypeScript source into an AST but does not compile,
+type-check, or execute it. The shared parser lives in `tools/shared/`; copy it
+with this directory (`cp -R tools/shared tools/bdd-traceability <project>/tools/`).
 
 ## Run
 
@@ -73,8 +80,28 @@ it('[BDD:CART-SUBMIT-001] submits a valid cart', async () => {
 
 One test title may reference several IDs. Several tests may reference one ID.
 Markers in comments, `describe` titles, helper variables, computed titles,
-`it.skip`, `test.skip`, or `test.todo` do not satisfy coverage. Unknown
-references still fail when they occur in skipped or todo tests.
+`it.skip`, `test.skip`, `test.todo`, `xit`, `xtest`, or inside a skipped or todo
+`describe` (`describe.skip`, `xdescribe`, `describe.skip.each`, including
+nested ones) do not satisfy coverage. Unknown references still fail when they
+occur in inactive tests.
+
+`.only`, `fit`, and `fdescribe` fail with `BDD010` (exit `1`) and do not count
+as coverage: Jest silently skips every sibling test while a focus is present,
+so a focused suite would otherwise report scenarios as covered that never ran.
+Pass `--allow-focused` for local iteration only; the focus is then reported as
+a non-failing `BDD010` warning and the test keeps counting. Do not use the flag
+in CI or hooks.
+
+An active `[BDD:ID]` test must also contain at least one assertion call in its
+body: `expect(...)` (including `await expect(...).rejects...`), a supertest
+`.expect(...)`, `assert(...)` / `assert.*`, or an `assert`-prefixed helper such
+as `assertCartAccepted(...)`. `expect.assertions(...)` and
+`expect.hasAssertions()` alone do not count. A test with an empty, comment-only,
+non-asserting, or non-inline body (for example `it("...", sharedFn)`) emits
+`BDD011` and does not provide coverage, so its scenario also reports `BDD005`
+unless another asserting test covers it. This proves linkage and
+non-emptiness only, not assertion quality; review still judges whether the
+assertions prove the scenario outcome.
 
 ## Options
 
@@ -83,6 +110,8 @@ references still fail when they occur in skipped or todo tests.
 --scenario-path <path> Scenario file or directory; repeatable
 --test-path <path>     Jest test file or directory; repeatable
 --exclude <name>       Directory name to exclude; repeatable
+--allow-focused        Downgrade .only/fit/fdescribe from an error to a warning
+                        (local iteration only; never in CI)
 --format <text|json>   Report format (default: text)
 --help                 Show help
 ```
@@ -95,12 +124,15 @@ Exit codes:
 
 - `0`: traceability is valid
 - `1`: traceability violations were found
-- `2`: arguments, input discovery, or file access failed
+- `2`: arguments, input discovery, file access, or the `typescript` package
+  failed (`BDD009`)
 
 Text diagnostics and versioned JSON records are sorted deterministically.
+The JSON report has an additive `warnings` array (non-failing diagnostics).
 
 ## Self-test
 
 ```bash
+npm install   # provides the typescript dev dependency used by the test projects
 node --test tools/bdd-traceability/tests/*.test.mjs
 ```

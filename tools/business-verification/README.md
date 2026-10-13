@@ -39,8 +39,8 @@ Copy this directory into the adopting TypeScript/Jest project:
 
 ```bash
 mkdir -p tools
-cp -R /path/to/hgate/tools/business-verification tools/
-npm install --save-dev fast-check
+cp -R /path/to/hgate/tools/business-verification /path/to/hgate/tools/shared tools/
+npm install --save-dev fast-check typescript
 ```
 
 Add project scripts. Keep the project's existing Jest configuration:
@@ -229,8 +229,12 @@ Generator rules:
 
 One Jest title may reference several property IDs and several tests may protect
 one property. Comments, helpers, computed titles, `describe` titles,
-`it.skip`, `test.skip`, `test.todo`, and tests whose body does not execute the
-declared technique do not satisfy coverage.
+`it.skip`, `test.skip`, `test.todo`, `xit`, `xtest`, tests inside a skipped or
+todo `describe` (`describe.skip`, `xdescribe`, `describe.skip.each`), and tests
+whose body does not execute the declared technique do not satisfy coverage.
+`.only`/`fit`/`fdescribe` fail with `PROP015` and do not count as coverage,
+since Jest skips sibling tests while a focus is present. `--allow-focused`
+(local iteration only, never CI) downgrades it to a warning that keeps coverage.
 
 ## Generator adequacy contract
 
@@ -304,13 +308,18 @@ Options:
 --test-path <path>     Jest test file or directory; repeatable
 --exclude <name>       Directory name to exclude; repeatable
 --evidence <path>      JSONL execution evidence from the hGATE wrappers
+--allow-focused        Downgrade .only/fit/fdescribe from an error to a warning
+                        (local iteration only; never in CI)
 --format <text|json>   Report format (default: text)
 --help                 Show help
 ```
 
 The default specification root is `.github/skills`, and the default test root
 is the repository. Explicit property paths scan Markdown files. Test discovery
-accepts `*.spec.ts` and `*.test.ts`.
+accepts `*.spec.ts` and `*.test.ts`. Test files are parsed with the TypeScript
+compiler API resolved from the adopting project's `typescript` package
+(`--root`); if it is missing the verifier fails with `PROP010` and exit `2`.
+The parser is shared with the BDD verifier in `tools/shared/`.
 
 Exit codes:
 
@@ -336,6 +345,7 @@ Diagnostics:
 | `PROP012` | Property test body executes a different technique than declared |
 | `PROP013` | `--evidence` supplied but a covered property lacks complete execution evidence |
 | `PROP014` | Evidence file is unreadable or malformed |
+| `PROP015` | Error: property test is focused with `.only`/`fit`/`fdescribe` (warning with `--allow-focused`) |
 | `PROP030` | Generator adequacy fields missing or malformed |
 | `PROP031` | Min runs below 100 or discard ratio above 20% without rationale |
 | `PROP032` | Covering test file lacks a declared partition label string literal |

@@ -1,0 +1,22 @@
+#!/usr/bin/env sh
+# hGATE pre-commit hook example. Install manually:
+#   cp templates/hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+# or call it from your Husky .husky/pre-commit file. hGATE never installs it.
+#
+# Runs the deterministic traceability verifiers only when a staged change can
+# affect them (tests, scenario or property specs, or the tooling itself).
+
+set -eu
+
+staged=$(git diff --cached --name-only --diff-filter=ACMRD)
+if ! printf '%s\n' "$staged" | grep -Eq '(\.(spec|test)\.ts$|bdd-scenarios\.md$|properties\.md$|^tools/)'; then
+  exit 0
+fi
+
+echo "hGATE: verifying BDD traceability..."
+npm run --silent verify:bdd
+
+if ls .github/skills/*/properties.md >/dev/null 2>&1; then
+  echo "hGATE: verifying business-property traceability..."
+  npm run --silent verify:properties
+fi
