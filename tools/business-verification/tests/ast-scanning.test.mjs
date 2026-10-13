@@ -26,7 +26,7 @@ const property = `
 - **Sensitivity-Waiver:** Exhaustive model; injected reopen edge is covered by the BDD reopen scenario.
 `;
 
-async function verifyTests(testSource) {
+async function verifyTests(testSource, extraOptions = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "hgate-ast-"));
   await symlink(
     fileURLToPath(new URL("../../../node_modules", import.meta.url)),
@@ -42,7 +42,7 @@ async function verifyTests(testSource) {
     await mkdir(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, content, "utf8");
   }
-  return verifyProject({ root });
+  return verifyProject({ root, ...extraOptions });
 }
 
 const body = `() => { exploreFiniteModel(model); }`;
@@ -92,10 +92,20 @@ it("[PROP:CART-STATE-001] real", () => {
   assert.equal(report.summary.testReferences, 1);
 });
 
-test("nested describes keep property tests discoverable and .only warns with PROP015", async () => {
+test(".only fails with PROP015 and does not count as coverage by default", async () => {
   const report = await verifyTests(`
 describe("a", () => { describe.only("b", () => { ${live} }); });
 `);
+
+  assert.equal(report.exitCode, 1);
+  assert.ok(report.diagnostics.some(({ code }) => code === "PROP015"));
+  assert.deepEqual(report.warnings, []);
+});
+
+test("allowFocused downgrades .only to a PROP015 warning and keeps coverage", async () => {
+  const report = await verifyTests(`
+describe("a", () => { describe.only("b", () => { ${live} }); });
+`, { allowFocused: true });
 
   assert.equal(report.exitCode, EXIT_VALID);
   assert.deepEqual(

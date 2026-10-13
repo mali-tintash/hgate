@@ -678,7 +678,7 @@ function evidenceIsComplete(record) {
     : isPositiveInteger(record.statesVisited);
 }
 
-function parseJestTestFile(ts, source, file) {
+function parseJestTestFile(ts, source, file, allowFocused = false) {
   const references = [];
   const diagnostics = [];
   const warnings = [];
@@ -686,7 +686,9 @@ function parseJestTestFile(ts, source, file) {
   for (const testCall of parseTestCalls(ts, source, file)) {
     const titleResult = { value: testCall.title };
     const executionKinds = detectExecutionKinds(testCall.calls);
-    const { active, line } = testCall;
+    const { line } = testCall;
+    const rejectFocus = testCall.focused && !allowFocused;
+    const active = testCall.active && !rejectFocus;
     const markerPattern = /\[PROP:([^\]]*)\]/g;
     const recognizedRanges = [];
     let markerMatch;
@@ -715,13 +717,13 @@ function parseJestTestFile(ts, source, file) {
         executionKinds,
       });
       if (testCall.focused) {
-        warnings.push(
+        (allowFocused ? warnings : diagnostics).push(
           diagnostic(
             "PROP015",
             file,
             line,
             id,
-            `test for "${id}" is focused with .only/fit/fdescribe; Jest skips sibling tests while it is focused`,
+            `test for "${id}" is focused with .only/fit/fdescribe; Jest skips sibling tests while it is focused; remove the focus${allowFocused ? "" : " (or pass --allow-focused for local runs)"}`,
           ),
         );
       }
@@ -809,7 +811,12 @@ export async function verifyProject(options = {}) {
   for (const absolutePath of testFiles) {
     const file = toPosixPath(path.relative(root, absolutePath));
     const source = await readFile(absolutePath, "utf8");
-    const parsed = parseJestTestFile(ts, source, file);
+    const parsed = parseJestTestFile(
+      ts,
+      source,
+      file,
+      options.allowFocused === true,
+    );
     testReferences.push(...parsed.references);
     diagnostics.push(...parsed.diagnostics);
     warnings.push(...parsed.warnings);
@@ -1102,6 +1109,8 @@ Options:
   --exclude <name>       Directory name to exclude; repeatable
   --evidence <path>      JSONL execution evidence written by the hGATE
                          wrappers; validated when supplied
+  --allow-focused        Downgrade .only/fit/fdescribe from an error to a warning
+                         (local iteration only; not for CI)
   --format <text|json>   Report format (default: text)
   --help                 Show help
 `;
@@ -1120,6 +1129,10 @@ function parseArguments(argumentsList) {
     const argument = argumentsList[index];
     if (argument === "--help") {
       return { help: true };
+    }
+    if (argument === "--allow-focused") {
+      options.allowFocused = true;
+      continue;
     }
     const value = argumentsList[index + 1];
     if (

@@ -189,13 +189,15 @@ function isAssertionCall({ path: callPath, member }) {
   );
 }
 
-function parseJestTestFile(ts, source, file) {
+function parseJestTestFile(ts, source, file, allowFocused = false) {
   const references = [];
   const diagnostics = [];
   const warnings = [];
 
   for (const testCall of parseTestCalls(ts, source, file)) {
-    const { active, line } = testCall;
+    const { line } = testCall;
+    const rejectFocus = testCall.focused && !allowFocused;
+    const active = testCall.active && !rejectFocus;
     const titleResult = { value: testCall.title };
     const markerPattern = /\[BDD:([^\]]*)\]/g;
     const recognizedRanges = [];
@@ -225,13 +227,13 @@ function parseJestTestFile(ts, source, file) {
         asserts: testCall.hasFunction && testCall.calls.some(isAssertionCall),
       });
       if (testCall.focused) {
-        warnings.push(
+        (allowFocused ? warnings : diagnostics).push(
           diagnostic(
             "BDD010",
             file,
             line,
             id,
-            `test for "${id}" is focused with .only/fit/fdescribe; Jest skips sibling tests while it is focused`,
+            `test for "${id}" is focused with .only/fit/fdescribe; Jest skips sibling tests while it is focused; remove the focus${allowFocused ? "" : " (or pass --allow-focused for local runs)"}`,
           ),
         );
       }
@@ -309,6 +311,7 @@ export async function verifyProject(options = {}) {
       ts,
       await readFile(absolutePath, "utf8"),
       file,
+      options.allowFocused === true,
     );
     testReferences.push(...parsed.references);
     diagnostics.push(...parsed.diagnostics);
@@ -475,6 +478,8 @@ Options:
   --scenario-path <path> Scenario file or directory; repeatable
   --test-path <path>     Jest test file or directory; repeatable
   --exclude <name>       Directory name to exclude; repeatable
+  --allow-focused        Downgrade .only/fit/fdescribe from an error to a warning
+                         (local iteration only; not for CI)
   --format <text|json>   Report format (default: text)
   --help                 Show this help
 `;
@@ -488,6 +493,10 @@ function parseArguments(argumentsList) {
     const argument = argumentsList[index];
     if (argument === "--help") {
       return { help: true, options, format };
+    }
+    if (argument === "--allow-focused") {
+      options.allowFocused = true;
+      continue;
     }
     const value = argumentsList[index + 1];
     if (

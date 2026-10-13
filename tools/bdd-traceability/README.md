@@ -85,11 +85,12 @@ Markers in comments, `describe` titles, helper variables, computed titles,
 nested ones) do not satisfy coverage. Unknown references still fail when they
 occur in inactive tests.
 
-`.only`, `fit`, and `fdescribe` still count as active coverage, because the
-test does run, but each focused reference emits a non-failing `BDD010`
-warning (report `warnings`, exit code unchanged): Jest silently skips every
-sibling test while a focus is present. Treat the warning as a cue to remove
-the focus before merging.
+`.only`, `fit`, and `fdescribe` fail with `BDD010` (exit `1`) and do not count
+as coverage: Jest silently skips every sibling test while a focus is present,
+so a focused suite would otherwise report scenarios as covered that never ran.
+Pass `--allow-focused` for local iteration only; the focus is then reported as
+a non-failing `BDD010` warning and the test keeps counting. Do not use the flag
+in CI or hooks.
 
 An active `[BDD:ID]` test must also contain at least one assertion call in its
 body: `expect(...)` (including `await expect(...).rejects...`), a supertest
@@ -109,6 +110,8 @@ assertions prove the scenario outcome.
 --scenario-path <path> Scenario file or directory; repeatable
 --test-path <path>     Jest test file or directory; repeatable
 --exclude <name>       Directory name to exclude; repeatable
+--allow-focused        Downgrade .only/fit/fdescribe from an error to a warning
+                        (local iteration only; never in CI)
 --format <text|json>   Report format (default: text)
 --help                 Show help
 ```

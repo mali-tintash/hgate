@@ -283,12 +283,12 @@ const singleScenario = {
 `),
 };
 
-async function verifyTests(testSource) {
+async function verifyTests(testSource, extraOptions = {}) {
   const root = await createProject({
     ...singleScenario,
     "src/cart/cart.service.spec.ts": testSource,
   });
-  return verifyProject({ root });
+  return verifyProject({ root, ...extraOptions });
 }
 
 for (const [name, source] of [
@@ -360,10 +360,23 @@ describe("a", () => {
   assert.equal(report.testReferences[0].line, 4);
 });
 
-test(".only counts as active coverage and emits a BDD010 warning", async () => {
+test(".only fails with BDD010 and does not count as coverage by default", async () => {
   const report = await verifyTests(`
 describe.only("cart", () => { it("[BDD:CART-SUBMIT-001] a", () => { expect(1).toBe(1); }); });
 `);
+
+  assert.equal(report.exitCode, EXIT_INVALID);
+  assert.deepEqual(
+    report.diagnostics.map(({ code }) => code),
+    ["BDD005", "BDD010"],
+  );
+  assert.deepEqual(report.warnings, []);
+});
+
+test("allowFocused downgrades .only to a BDD010 warning and keeps coverage", async () => {
+  const report = await verifyTests(`
+describe.only("cart", () => { it("[BDD:CART-SUBMIT-001] a", () => { expect(1).toBe(1); }); });
+`, { allowFocused: true });
 
   assert.equal(report.exitCode, EXIT_VALID);
   assert.deepEqual(

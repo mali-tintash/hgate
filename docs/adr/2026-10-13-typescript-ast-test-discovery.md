@@ -35,9 +35,12 @@ naming the fix, and exit code `2`. hGATE's own repository declares `typescript`
 as a devDependency solely for its tests and CI.
 
 A test counts as active only when neither it nor any ancestor describe is
-`skip`, `todo`, `xit`, `xtest`, or `xdescribe`. `.only`/`fit`/`fdescribe` still
-count as active but emit a non-failing `BDD010`/`PROP015` warning, because Jest
-silently skips sibling tests while a focus exists.
+`skip`, `todo`, `xit`, `xtest`, or `xdescribe`. `.only`/`fit`/`fdescribe`
+fail with `BDD010`/`PROP015` and do not count as coverage, because Jest
+silently skips sibling tests while a focus exists and the suite would otherwise
+look covered while partly unexecuted. This was initially a non-failing warning
+and was tightened after review. `--allow-focused` downgrades it to a warning
+for local iteration only.
 
 An active `[BDD:ID]` test body must contain at least one assertion call
 (`expect`, `.expect`, `assert*`; `expect.assertions` alone is insufficient);
