@@ -1,7 +1,8 @@
 # BDD Traceability Verifier
 
-This dependency-free Node.js CLI enforces hGATE's TypeScript/Jest traceability
-contract in an adopting project:
+This Node.js CLI has no dependencies of its own. It parses test files with the
+TypeScript compiler API from the adopting project's own `typescript` package,
+and enforces hGATE's TypeScript/Jest traceability contract:
 
 - every Gherkin `Scenario` and `Scenario Outline` has one valid,
   repository-unique `@scenario:<ID>` tag
@@ -12,10 +13,16 @@ contract in an adopting project:
 ## Requirements
 
 - Node.js 18 or later
+- `typescript` installed in the adopting project (any TS/Jest project already
+  has it); the verifier resolves it from `--root`. If it cannot be resolved the
+  verifier prints `BDD009 verifier failure: the "typescript" package could not
+  be resolved ...` and exits `2`.
 - TypeScript tests named `*.spec.ts` or `*.test.ts`
 - BDD specifications under `.github/skills/**/bdd-scenarios.md`
 
-The verifier reads TypeScript source but does not compile or execute it.
+The verifier parses TypeScript source into an AST but does not compile,
+type-check, or execute it. The shared parser lives in `tools/shared/`; copy it
+with this directory (`cp -R tools/shared tools/bdd-traceability <project>/tools/`).
 
 ## Run
 
@@ -73,8 +80,16 @@ it('[BDD:CART-SUBMIT-001] submits a valid cart', async () => {
 
 One test title may reference several IDs. Several tests may reference one ID.
 Markers in comments, `describe` titles, helper variables, computed titles,
-`it.skip`, `test.skip`, or `test.todo` do not satisfy coverage. Unknown
-references still fail when they occur in skipped or todo tests.
+`it.skip`, `test.skip`, `test.todo`, `xit`, `xtest`, or inside a skipped or todo
+`describe` (`describe.skip`, `xdescribe`, `describe.skip.each`, including
+nested ones) do not satisfy coverage. Unknown references still fail when they
+occur in inactive tests.
+
+`.only`, `fit`, and `fdescribe` still count as active coverage, because the
+test does run, but each focused reference emits a non-failing `BDD010`
+warning (report `warnings`, exit code unchanged): Jest silently skips every
+sibling test while a focus is present. Treat the warning as a cue to remove
+the focus before merging.
 
 ## Options
 
@@ -95,12 +110,15 @@ Exit codes:
 
 - `0`: traceability is valid
 - `1`: traceability violations were found
-- `2`: arguments, input discovery, or file access failed
+- `2`: arguments, input discovery, file access, or the `typescript` package
+  failed (`BDD009`)
 
 Text diagnostics and versioned JSON records are sorted deterministically.
+The JSON report has an additive `warnings` array (non-failing diagnostics).
 
 ## Self-test
 
 ```bash
+npm install   # provides the typescript dev dependency used by the test projects
 node --test tools/bdd-traceability/tests/*.test.mjs
 ```

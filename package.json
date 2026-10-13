@@ -1,0 +1,11 @@
+{
+  "name": "hgate",
+  "private": true,
+  "description": "hGATE methodology repository; typescript is a devDependency only for the verifier tests.",
+  "scripts": {
+    "test": "node --test tools/bdd-traceability/tests/*.test.mjs tools/business-verification/tests/*.test.mjs tools/gherkin-viewer/project-viewer.test.js"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

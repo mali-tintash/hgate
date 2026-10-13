@@ -42,9 +42,12 @@ Install the deterministic BDD traceability verifier:
 
 ```bash
 mkdir -p /path/to/your-project/tools
-cp -R tools/bdd-traceability \
+cp -R tools/bdd-traceability tools/shared \
   /path/to/your-project/tools/
 ```
+
+The verifier needs the project's own `typescript` package (already present in
+TS/Jest projects; otherwise `npm install --save-dev typescript`).
 
 For a TypeScript/Jest project, add this required package script:
 
@@ -77,10 +80,10 @@ it for the current BC change.
 If selected:
 
 ```bash
-cp -R tools/business-verification \
+cp -R tools/business-verification tools/shared \
   /path/to/your-project/tools/
 cd /path/to/your-project
-npm install --save-dev fast-check
+npm install --save-dev fast-check typescript
 ```
 
 Add `verify:properties` and a project-specific `test:properties` Jest script as

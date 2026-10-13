@@ -5,6 +5,8 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import { loadTypeScript, parseTestCalls } from "../shared/ts-source.mjs";
+
 export const EXIT_VALID = 0;
 export const EXIT_INVALID = 1;
 export const EXIT_DISCOVERY = 2;
@@ -84,16 +86,6 @@ function toPosixPath(value) {
 
 function compareText(left, right) {
   return left < right ? -1 : left > right ? 1 : 0;
-}
-
-function lineNumberAt(source, offset) {
-  let line = 1;
-  for (let index = 0; index < offset; index += 1) {
-    if (source[index] === "\n") {
-      line += 1;
-    }
-  }
-  return line;
 }
 
 async function collectFiles(root, inputPaths, excludes, predicate) {
@@ -612,115 +604,14 @@ function validateAdequacy(property, file) {
   return result;
 }
 
-function isIdentifierCharacter(value) {
-  return value !== undefined && /[A-Za-z0-9_$]/.test(value);
-}
-
-function skipWhitespaceAndComments(source, initialIndex) {
-  let index = initialIndex;
-  while (index < source.length) {
-    if (/\s/.test(source[index])) {
-      index += 1;
-      continue;
-    }
-    if (source.startsWith("//", index)) {
-      const newline = source.indexOf("\n", index + 2);
-      return newline === -1
-        ? source.length
-        : skipWhitespaceAndComments(source, newline + 1);
-    }
-    if (source.startsWith("/*", index)) {
-      const close = source.indexOf("*/", index + 2);
-      return close === -1
-        ? source.length
-        : skipWhitespaceAndComments(source, close + 2);
-    }
-    break;
-  }
-  return index;
-}
-
-function skipBalanced(source, initialIndex, open, close) {
-  let depth = 0;
-  let index = initialIndex;
-  while (index < source.length) {
-    const value = source[index];
-    if (value === "'" || value === '"' || value === "`") {
-      index = readStaticString(source, index).end;
-      continue;
-    }
-    if (source.startsWith("//", index) || source.startsWith("/*", index)) {
-      index = skipWhitespaceAndComments(source, index);
-      continue;
-    }
-    if (value === open) {
-      depth += 1;
-    } else if (value === close) {
-      depth -= 1;
-      if (depth === 0) {
-        return index + 1;
-      }
-    }
-    index += 1;
-  }
-  return source.length;
-}
-
-function readStaticString(source, initialIndex) {
-  const quote = source[initialIndex];
-  let value = "";
-  let dynamic = false;
-  let index = initialIndex + 1;
-
-  while (index < source.length) {
-    const character = source[index];
-    if (character === "\\") {
-      if (index + 1 < source.length) {
-        value += source[index + 1];
-        index += 2;
-        continue;
-      }
-    }
-    if (quote === "`" && character === "$" && source[index + 1] === "{") {
-      dynamic = true;
-    }
-    if (character === quote) {
-      return { value, dynamic, end: index + 1 };
-    }
-    value += character;
-    index += 1;
-  }
-
-  return { value, dynamic: true, end: source.length };
-}
-
-function stripCommentsAndStrings(source) {
-  let result = "";
-  let index = 0;
-  while (index < source.length) {
-    if (source.startsWith("//", index) || source.startsWith("/*", index)) {
-      index = skipWhitespaceAndComments(source, index);
-      result += " ";
-    } else if ("'\"`".includes(source[index])) {
-      index = readStaticString(source, index).end;
-      result += '""';
-    } else {
-      result += source[index];
-      index += 1;
-    }
-  }
-  return result;
-}
-
 const EXECUTION_PATTERNS = {
-  PROPERTY: /(?<![\w$.])(?:(?:fc|fastCheck)\s*\.\s*assert|hgateProperty)\s*\(/,
-  FINITE_MODEL: /(?<![\w$.])(?:exploreFiniteModel|hgateFiniteModel)\s*\(/,
+  PROPERTY: new Set(["fc.assert", "fastCheck.assert", "hgateProperty"]),
+  FINITE_MODEL: new Set(["exploreFiniteModel", "hgateFiniteModel"]),
 };
 
-function detectExecutionKinds(callBody) {
-  const code = stripCommentsAndStrings(callBody);
+function detectExecutionKinds(calls) {
   return Object.entries(EXECUTION_PATTERNS)
-    .filter(([, pattern]) => pattern.test(code))
+    .filter(([, names]) => calls.some(({ path: name }) => names.has(name)))
     .map(([kind]) => kind);
 }
 
@@ -787,90 +678,15 @@ function evidenceIsComplete(record) {
     : isPositiveInteger(record.statesVisited);
 }
 
-function parseJestTestFile(source, file) {
+function parseJestTestFile(ts, source, file) {
   const references = [];
   const diagnostics = [];
-  let index = 0;
+  const warnings = [];
 
-  while (index < source.length) {
-    if (source.startsWith("//", index) || source.startsWith("/*", index)) {
-      index = skipWhitespaceAndComments(source, index);
-      continue;
-    }
-    if (source[index] === "'" || source[index] === '"' || source[index] === "`") {
-      index = readStaticString(source, index).end;
-      continue;
-    }
-
-    const isTest =
-      source.startsWith("test", index) &&
-      !isIdentifierCharacter(source[index - 1]) &&
-      source[index - 1] !== "." &&
-      !isIdentifierCharacter(source[index + 4]);
-    const isIt =
-      source.startsWith("it", index) &&
-      !isIdentifierCharacter(source[index - 1]) &&
-      source[index - 1] !== "." &&
-      !isIdentifierCharacter(source[index + 2]);
-    if (!isTest && !isIt) {
-      index += 1;
-      continue;
-    }
-
-    const callOffset = index;
-    const modifiers = [];
-    let cursor = index + (isTest ? 4 : 2);
-    cursor = skipWhitespaceAndComments(source, cursor);
-
-    while (source[cursor] === ".") {
-      cursor += 1;
-      const modifierMatch = /^[A-Za-z]+/.exec(source.slice(cursor));
-      if (!modifierMatch) {
-        break;
-      }
-      const modifier = modifierMatch[0];
-      modifiers.push(modifier);
-      cursor += modifier.length;
-      cursor = skipWhitespaceAndComments(source, cursor);
-      if (modifier === "each") {
-        if (source[cursor] === "<") {
-          cursor = skipBalanced(source, cursor, "<", ">");
-          cursor = skipWhitespaceAndComments(source, cursor);
-        }
-        if (source[cursor] === "(") {
-          cursor = skipBalanced(source, cursor, "(", ")");
-          cursor = skipWhitespaceAndComments(source, cursor);
-        } else if (source[cursor] === "`") {
-          cursor = readStaticString(source, cursor).end;
-          cursor = skipWhitespaceAndComments(source, cursor);
-        }
-      }
-    }
-
-    if (source[cursor] !== "(") {
-      index = cursor + 1;
-      continue;
-    }
-    const callOpen = cursor;
-    cursor = skipWhitespaceAndComments(source, cursor + 1);
-    if (!["'", '"', "`"].includes(source[cursor])) {
-      index = cursor + 1;
-      continue;
-    }
-
-    const titleResult = readStaticString(source, cursor);
-    index = titleResult.end;
-    if (titleResult.dynamic) {
-      continue;
-    }
-
-    const executionKinds = detectExecutionKinds(
-      source.slice(titleResult.end, skipBalanced(source, callOpen, "(", ")")),
-    );
-    const active = !modifiers.some((modifier) =>
-      ["skip", "todo"].includes(modifier),
-    );
-    const line = lineNumberAt(source, callOffset);
+  for (const testCall of parseTestCalls(ts, source, file)) {
+    const titleResult = { value: testCall.title };
+    const executionKinds = detectExecutionKinds(testCall.calls);
+    const { active, line } = testCall;
     const markerPattern = /\[PROP:([^\]]*)\]/g;
     const recognizedRanges = [];
     let markerMatch;
@@ -898,6 +714,17 @@ function parseJestTestFile(source, file) {
         active,
         executionKinds,
       });
+      if (testCall.focused) {
+        warnings.push(
+          diagnostic(
+            "PROP015",
+            file,
+            line,
+            id,
+            `test for "${id}" is focused with .only/fit/fdescribe; Jest skips sibling tests while it is focused`,
+          ),
+        );
+      }
     }
 
     let markerStart = titleResult.value.indexOf("[PROP:");
@@ -920,7 +747,7 @@ function parseJestTestFile(source, file) {
     }
   }
 
-  return { references, diagnostics };
+  return { references, diagnostics, warnings };
 }
 
 function compareRecords(left, right) {
@@ -958,6 +785,8 @@ export async function verifyProject(options = {}) {
   const testReferences = [];
   const testSources = new Map();
   const diagnostics = [];
+  const warnings = [];
+  const ts = loadTypeScript(root);
 
   for (const absolutePath of propertyFiles) {
     const file = toPosixPath(path.relative(root, absolutePath));
@@ -980,9 +809,10 @@ export async function verifyProject(options = {}) {
   for (const absolutePath of testFiles) {
     const file = toPosixPath(path.relative(root, absolutePath));
     const source = await readFile(absolutePath, "utf8");
-    const parsed = parseJestTestFile(source, file);
+    const parsed = parseJestTestFile(ts, source, file);
     testReferences.push(...parsed.references);
     diagnostics.push(...parsed.diagnostics);
+    warnings.push(...parsed.warnings);
     testSources.set(file, source);
   }
 
@@ -1169,6 +999,7 @@ export async function verifyProject(options = {}) {
   properties.sort(compareRecords);
   testReferences.sort(compareRecords);
   diagnostics.sort(compareRecords);
+  warnings.sort(compareRecords);
 
   const coveredProperties = [...propertiesById].filter(
     ([id, matches]) => matches.length === 1 && activeReferencesById.has(id),
@@ -1188,6 +1019,7 @@ export async function verifyProject(options = {}) {
     testReferences,
     evidence,
     diagnostics,
+    warnings,
     summary: {
       propertyFiles: propertyFiles.length,
       testFiles: testFiles.length,
@@ -1217,6 +1049,7 @@ export async function verifyProject(options = {}) {
       inactiveTestReferences: testReferences.filter(({ active }) => !active)
         .length,
       errors: diagnostics.length,
+      warnings: warnings.length,
     },
   };
 }
@@ -1228,6 +1061,12 @@ export function formatTextReport(report) {
   if (lines.length === 0) {
     lines.push("PROP000 business-property traceability valid");
   }
+  lines.push(
+    ...report.warnings.map(
+      ({ code, file, line, message }) =>
+        `${code} ${file}:${line} warning: ${message}`,
+    ),
+  );
   const summary = report.summary;
   lines.push(
     [
@@ -1242,7 +1081,8 @@ export function formatTextReport(report) {
       `${summary.sensitivityWaived} sensitivity-waived,`,
       `${summary.testReferences} test reference(s)`,
       `(${summary.activeTestReferences} active, ${summary.inactiveTestReferences} inactive),`,
-      `${summary.errors} error(s)`,
+      `${summary.errors} error(s)${summary.warnings > 0 ? "," : ""}`,
+      ...(summary.warnings > 0 ? [`${summary.warnings} warning(s)`] : []),
     ].join(" "),
   );
   return `${lines.join("\n")}\n`;

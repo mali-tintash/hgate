@@ -39,8 +39,8 @@ Copy this directory into the adopting TypeScript/Jest project:
 
 ```bash
 mkdir -p tools
-cp -R /path/to/hgate/tools/business-verification tools/
-npm install --save-dev fast-check
+cp -R /path/to/hgate/tools/business-verification /path/to/hgate/tools/shared tools/
+npm install --save-dev fast-check typescript
 ```
 
 Add project scripts. Keep the project's existing Jest configuration:
@@ -229,8 +229,11 @@ Generator rules:
 
 One Jest title may reference several property IDs and several tests may protect
 one property. Comments, helpers, computed titles, `describe` titles,
-`it.skip`, `test.skip`, `test.todo`, and tests whose body does not execute the
-declared technique do not satisfy coverage.
+`it.skip`, `test.skip`, `test.todo`, `xit`, `xtest`, tests inside a skipped or
+todo `describe` (`describe.skip`, `xdescribe`, `describe.skip.each`), and tests
+whose body does not execute the declared technique do not satisfy coverage.
+`.only`/`fit`/`fdescribe` count as active but emit a non-failing `PROP015`
+warning, since Jest skips sibling tests while a focus is present.
 
 ## Generator adequacy contract
 
@@ -310,7 +313,10 @@ Options:
 
 The default specification root is `.github/skills`, and the default test root
 is the repository. Explicit property paths scan Markdown files. Test discovery
-accepts `*.spec.ts` and `*.test.ts`.
+accepts `*.spec.ts` and `*.test.ts`. Test files are parsed with the TypeScript
+compiler API resolved from the adopting project's `typescript` package
+(`--root`); if it is missing the verifier fails with `PROP010` and exit `2`.
+The parser is shared with the BDD verifier in `tools/shared/`.
 
 Exit codes:
 
@@ -336,6 +342,7 @@ Diagnostics:
 | `PROP012` | Property test body executes a different technique than declared |
 | `PROP013` | `--evidence` supplied but a covered property lacks complete execution evidence |
 | `PROP014` | Evidence file is unreadable or malformed |
+| `PROP015` | Warning (non-failing): property test is focused with `.only`/`fit`/`fdescribe` |
 | `PROP030` | Generator adequacy fields missing or malformed |
 | `PROP031` | Min runs below 100 or discard ratio above 20% without rationale |
 | `PROP032` | Covering test file lacks a declared partition label string literal |

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -19,8 +19,15 @@ import {
 const execFileAsync = promisify(execFile);
 const verifierPath = fileURLToPath(new URL("../verify.mjs", import.meta.url));
 
-async function createProject(files) {
+async function createProject(files, { withTypescript = true } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "hgate-bdd-"));
+  if (withTypescript) {
+    await symlink(
+      fileURLToPath(new URL("../../../node_modules", import.meta.url)),
+      path.join(root, "node_modules"),
+      "dir",
+    );
+  }
 
   await Promise.all(
     Object.entries(files).map(async ([relativePath, content]) => {
@@ -263,5 +270,123 @@ it("[BDD:CART-SUBMIT-001] submits a valid cart", () => {});
       error.code === EXIT_DISCOVERY &&
       error.stdout.includes("BDD008") &&
       error.stderr === "",
+  );
+});
+
+const singleScenario = {
+  ".github/skills/cart/bdd-scenarios.md": scenarioFile(`
+  @scenario:CART-SUBMIT-001
+  Scenario: Submit a valid cart
+    Given a valid cart
+    When it is submitted
+    Then an order is created
+`),
+};
+
+async function verifyTests(testSource) {
+  const root = await createProject({
+    ...singleScenario,
+    "src/cart/cart.service.spec.ts": testSource,
+  });
+  return verifyProject({ root });
+}
+
+for (const [name, source] of [
+  ["describe.skip", `describe.skip("cart", () => { it("[BDD:CART-SUBMIT-001] a", () => {}); });`],
+  ["xdescribe", `xdescribe("cart", () => { it("[BDD:CART-SUBMIT-001] a", () => {}); });`],
+  ["xit", `xit("[BDD:CART-SUBMIT-001] a", () => {});`],
+  ["xtest", `xtest("[BDD:CART-SUBMIT-001] a", () => {});`],
+  ["it.todo", `it.todo("[BDD:CART-SUBMIT-001] a");`],
+  ["test.todo", `test.todo("[BDD:CART-SUBMIT-001] a");`],
+  ["describe.each skip", `describe.skip.each([1, 2])("cart %s", () => { it("[BDD:CART-SUBMIT-001] a", () => {}); });`],
+  ["nested skipped describe", `describe("outer", () => { describe.skip("inner", () => { it("[BDD:CART-SUBMIT-001] a", () => {}); }); });`],
+]) {
+  test(`${name} does not count as active BDD coverage`, async () => {
+    const report = await verifyTests(source);
+
+    assert.equal(report.exitCode, EXIT_INVALID);
+    assert.deepEqual(
+      report.diagnostics.map(({ code }) => code),
+      ["BDD005"],
+    );
+  });
+}
+
+test("a sibling active test still covers a scenario next to a skipped describe", async () => {
+  const report = await verifyTests(`
+describe.skip("old", () => { it("[BDD:CART-SUBMIT-001] a", () => {}); });
+describe("current", () => { it("[BDD:CART-SUBMIT-001] b", () => {}); });
+`);
+
+  assert.equal(report.exitCode, EXIT_VALID);
+});
+
+test("a regex literal containing an apostrophe does not hide later tests", async () => {
+  const report = await verifyTests(`
+const re = /'/;
+const quote = "it's";
+it("[BDD:CART-SUBMIT-001] a", () => {});
+`);
+
+  assert.equal(report.exitCode, EXIT_VALID);
+  assert.equal(report.summary.coveredScenarios, 1);
+});
+
+test("template literals, comments and strings that mimic tests are ignored", async () => {
+  const report = await verifyTests(`
+// it("[BDD:CART-SUBMIT-001] in a line comment", () => {});
+/* it("[BDD:CART-SUBMIT-001] in a block comment", () => {}); */
+const text = \`it("[BDD:CART-SUBMIT-001] in a template \${1 + 1}", () => {})\`;
+const other = 'it("[BDD:CART-SUBMIT-001] in a string", () => {})';
+`);
+
+  assert.equal(report.testReferences.length, 0);
+  assert.deepEqual(
+    report.diagnostics.map(({ code }) => code),
+    ["BDD005"],
+  );
+});
+
+test("tests nested inside several describes are discovered with their lines", async () => {
+  const report = await verifyTests(`
+describe("a", () => {
+  describe("b", () => {
+    it(\`[BDD:CART-SUBMIT-001] nested\`, () => {});
+  });
+});
+`);
+
+  assert.equal(report.exitCode, EXIT_VALID);
+  assert.equal(report.testReferences[0].line, 4);
+});
+
+test(".only counts as active coverage and emits a BDD010 warning", async () => {
+  const report = await verifyTests(`
+describe.only("cart", () => { it("[BDD:CART-SUBMIT-001] a", () => {}); });
+`);
+
+  assert.equal(report.exitCode, EXIT_VALID);
+  assert.deepEqual(
+    report.warnings.map(({ code }) => code),
+    ["BDD010"],
+  );
+  assert.match(formatTextReport(report), /BDD010 .* warning: /);
+});
+
+test("a missing typescript package fails with a BDD009 diagnostic and exit 2", async () => {
+  const root = await createProject(
+    {
+      ...singleScenario,
+      "src/cart/cart.service.spec.ts": `it("[BDD:CART-SUBMIT-001] a", () => {});`,
+    },
+    { withTypescript: false },
+  );
+
+  await assert.rejects(
+    execFileAsync(process.execPath, [verifierPath, "--root", root]),
+    (error) =>
+      error.code === EXIT_DISCOVERY &&
+      error.stderr.includes("BDD009") &&
+      error.stderr.includes("typescript"),
   );
 });
