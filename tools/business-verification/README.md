@@ -93,6 +93,8 @@ Required fields are:
 - `Technique`
 - `Generator`
 - `Bounds`
+- `Risk` (`LOW`, `MEDIUM`, or `HIGH`)
+- `Sensitivity` (see [Sensitivity evidence](#sensitivity-evidence))
 
 `PROPERTY` declarations also require the generator adequacy fields described
 in [Generator adequacy contract](#generator-adequacy-contract).
@@ -113,6 +115,47 @@ the production algorithm line for line are prohibited.
 Properties specify universal or bounded-universal claims. Concrete journeys and
 named examples remain in `bdd-scenarios.md`. Do not attach a property marker to
 a BDD scenario or use a scenario ID as a property ID.
+
+## Sensitivity evidence
+
+A passing property does not prove it can detect the defect it guards against.
+Like TDD's "observe red first", each property needs a controlled negative check
+whose observed failure is recorded. Cost is risk-tiered:
+
+| Risk | Requirement |
+|---|---|
+| `LOW` | A method, or `Sensitivity: N/A` with a `Sensitivity-Waiver` reason |
+| `MEDIUM` | At least one method |
+| `HIGH` | At least one production-logic method; `ORACLE_VIOLATION` alone is insufficient |
+
+`Sensitivity` is a comma-separated list of:
+
+- `MUTATION` - mutation testing of production logic (Stryker for TypeScript/Jest
+  is a recommended optional tool; hGATE does not require it)
+- `KNOWN_BAD_FIXTURE` - a deliberately defective implementation the property rejects
+- `INJECTED_DEFECT` - a temporary defect in production code observed failing,
+  then reverted
+- `ORACLE_VIOLATION` - a deliberately violating generated value the oracle rejects
+- `REGRESSION_COUNTEREXAMPLE` - a counterexample from a prior defect, kept as a regression
+
+`Sensitivity-Evidence` is `<mutant/defect>; <failure observed>`, for example
+`Stryker mutant M12 removes the zero floor; CART-TOTAL-001 failed, seed 42`.
+Add `- **Sensitivity-Waiver:**` only with `Sensitivity: N/A` on `LOW` risk.
+
+The verifier checks only that declarations are present and well-formed:
+
+| Code | Meaning |
+|---|---|
+| `PROP050` | `Risk` missing or not `LOW`/`MEDIUM`/`HIGH` |
+| `PROP051` | `Sensitivity` missing |
+| `PROP052` | Unknown `Sensitivity` method |
+| `PROP053` | `N/A` without waiver, or `N/A` on `MEDIUM`/`HIGH` |
+| `PROP054` | `Sensitivity-Evidence` missing or not `<defect>; <failure observed>` |
+| `PROP055` | `HIGH` risk with `ORACLE_VIOLATION` only |
+
+Whether the recorded failure was genuinely observed is a human-reviewed claim in
+the sign-off artifact; the verifier cannot execute mutants. Reports include
+`riskTiers`, `sensitivityEvidenced`, and `sensitivityWaived`.
 
 ## Executable contract
 

@@ -243,6 +243,11 @@ property declares an `Oracle source` and an `Oracle independence` statement;
 subject and oracle never share an implementation path, and the verifier
 rejects missing sources or statements (`PROP040`/`PROP041`).
 
+Each property also carries a `Risk` tier and risk-tiered sensitivity evidence
+(mutation testing, known-bad fixture, injected defect, oracle violation, or
+regression counterexample) showing it fails when its defect is present; see
+`tools/business-verification/README.md`.
+
 Goal 3 has its own traceability command, failure semantics, counterexample
 contract, human approval, and immutable artifact under
 `docs/verification/property-signoffs/<module-slug>/`. BDD examples and

@@ -245,6 +245,9 @@ models may claim completeness only inside explicit recorded bounds. Each
 property declares an oracle source and independence statement; circular or
 duplicated oracles are prohibited and flagged in review. The property verifier,
 execution evidence, and human approval remain separate from BDD examples.
+Every property declares `Risk` and `Sensitivity` fields and records the
+mutant/defect and observed failure (waivable only for `LOW` risk). Stryker is a
+recommended optional mutation tool for TypeScript/Jest, not a requirement.
 
 `bc-enhancement` includes a triviality gate. A change with no observable
 behavior, contract, or scenario impact may skip the ghost-behavior audit,

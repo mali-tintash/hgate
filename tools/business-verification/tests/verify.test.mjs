@@ -78,7 +78,10 @@ const generatedProperty = (id = "CART-TOTAL-001") => `
 - **Technique:** \`PROPERTY\`
 - **Generator:** validCartArbitrary
 - **Bounds:** \`N/A\`
-${adequacyFields()}`;
+${adequacyFields()}- **Risk:** \`MEDIUM\`
+- **Sensitivity:** \`MUTATION\`
+- **Sensitivity-Evidence:** Stryker mutant M12 removes the zero floor; CART-TOTAL-001 failed with seed 42.
+`;
 
 const finiteModel = (id = "CART-STATE-001") => `
 ## @property:${id} Terminal carts cannot be reopened
@@ -92,6 +95,9 @@ const finiteModel = (id = "CART-STATE-001") => `
 - **Technique:** \`FINITE_MODEL\`
 - **Generator:** \`N/A\`
 - **Bounds:** States ACTIVE and SUBMITTED; commands submit and reopen; depth 4.
+- **Risk:** \`LOW\`
+- **Sensitivity:** \`N/A\`
+- **Sensitivity-Waiver:** Exhaustive model; injected reopen edge is covered by the BDD reopen scenario.
 `;
 
 test("returns valid for complete declarations covered by active Jest tests", async () => {
@@ -494,7 +500,10 @@ const oracleVariant = (source, independence) => `
 ${source === null ? "" : `- **Oracle source:** \`${source}\`\n`}${independence === null ? "" : `- **Oracle independence:** ${independence}\n`}- **Technique:** \`PROPERTY\`
 - **Generator:** validCartArbitrary
 - **Bounds:** \`N/A\`
-${adequacyFields()}`;
+${adequacyFields()}- **Risk:** \`MEDIUM\`
+- **Sensitivity:** \`MUTATION\`
+- **Sensitivity-Evidence:** Stryker mutant M12 removes the zero floor; CART-TOTAL-001 failed with seed 42.
+`;
 
 const independent =
   "The expected value comes from a hand-derived equation in the test and shares no function with the subject.";
@@ -657,4 +666,127 @@ test("PROP033 rejects a numRuns literal below the declared minimum", async () =>
     `${coverageLabels}\nfc.assert(prop, { numRuns: 250 });`,
   );
   assert.deepEqual(ok.codes, []);
+});
+
+const sensitivityDiagnostics = async (body) => {
+  const root = await createProject({
+    ".github/skills/cart/properties.md": propertyFile(body),
+    "test/verification/cart/cart.property.spec.ts": `
+it("[PROP:CART-TOTAL-001] keeps totals non-negative", () => {});
+`,
+  });
+  const report = await verifyProject({ root });
+  return report.diagnostics
+    .filter(({ code }) => /^PROP05\d$/.test(code))
+    .map(({ code }) => code);
+};
+
+const withSensitivity = (risk, lines) =>
+  generatedProperty()
+    .split("\n")
+    .filter((line) => !/^- \*\*(Risk|Sensitivity[^:]*):\*\*/.test(line))
+    .join("\n") + lines.map((line) => `- **${line}\n`).join("");
+
+test("PROP050 reports a missing or invalid Risk tier", async () => {
+  const missing = await sensitivityDiagnostics(withSensitivity("", []));
+  const invalid = await sensitivityDiagnostics(
+    withSensitivity("", ["Risk:** SEVERE", "Sensitivity:** `MUTATION`", "Sensitivity-Evidence:** m1; failed"]),
+  );
+
+  assert.ok(missing.includes("PROP050"));
+  assert.ok(invalid.includes("PROP050"));
+});
+
+test("PROP051 reports a missing Sensitivity field", async () => {
+  const codes = await sensitivityDiagnostics(
+    withSensitivity("", ["Risk:** `MEDIUM`"]),
+  );
+
+  assert.ok(codes.includes("PROP051"));
+});
+
+test("PROP052 reports unknown sensitivity methods", async () => {
+  const codes = await sensitivityDiagnostics(
+    withSensitivity("", [
+      "Risk:** `MEDIUM`",
+      "Sensitivity:** `VIBES`",
+      "Sensitivity-Evidence:** m1; failed",
+    ]),
+  );
+
+  assert.ok(codes.includes("PROP052"));
+});
+
+test("PROP053 requires a waiver for LOW and forbids N/A for MEDIUM or HIGH", async () => {
+  const lowNoWaiver = await sensitivityDiagnostics(
+    withSensitivity("", ["Risk:** `LOW`", "Sensitivity:** `N/A`"]),
+  );
+  const lowWaived = await sensitivityDiagnostics(
+    withSensitivity("", [
+      "Risk:** `LOW`",
+      "Sensitivity:** `N/A`",
+      "Sensitivity-Waiver:** Trivial pure mapping.",
+    ]),
+  );
+  const medium = await sensitivityDiagnostics(
+    withSensitivity("", [
+      "Risk:** `MEDIUM`",
+      "Sensitivity:** `N/A`",
+      "Sensitivity-Waiver:** Not worth it.",
+    ]),
+  );
+
+  assert.ok(lowNoWaiver.includes("PROP053"));
+  assert.deepEqual(lowWaived, []);
+  assert.ok(medium.includes("PROP053"));
+});
+
+test("PROP054 requires evidence naming the defect and the observed failure", async () => {
+  const missing = await sensitivityDiagnostics(
+    withSensitivity("", ["Risk:** `MEDIUM`", "Sensitivity:** `KNOWN_BAD_FIXTURE`"]),
+  );
+  const oneSegment = await sensitivityDiagnostics(
+    withSensitivity("", [
+      "Risk:** `MEDIUM`",
+      "Sensitivity:** `KNOWN_BAD_FIXTURE`",
+      "Sensitivity-Evidence:** negative-total fixture",
+    ]),
+  );
+
+  assert.ok(missing.includes("PROP054"));
+  assert.ok(oneSegment.includes("PROP054"));
+});
+
+test("PROP055 rejects oracle-violation-only evidence for HIGH risk", async () => {
+  const oracleOnly = await sensitivityDiagnostics(
+    withSensitivity("", [
+      "Risk:** `HIGH`",
+      "Sensitivity:** `ORACLE_VIOLATION`",
+      "Sensitivity-Evidence:** value -1; oracle rejected it",
+    ]),
+  );
+  const withMutation = await sensitivityDiagnostics(
+    withSensitivity("", [
+      "Risk:** `HIGH`",
+      "Sensitivity:** `ORACLE_VIOLATION, MUTATION`",
+      "Sensitivity-Evidence:** mutant M12; CART-TOTAL-001 failed",
+    ]),
+  );
+
+  assert.ok(oracleOnly.includes("PROP055"));
+  assert.deepEqual(withMutation, []);
+});
+
+test("summary counts risk tiers and sensitivity-evidenced properties", async () => {
+  const root = await createProject({
+    ".github/skills/cart/properties.md": propertyFile(
+      generatedProperty() + finiteModel(),
+    ),
+  });
+
+  const report = await verifyProject({ root });
+
+  assert.deepEqual(report.summary.riskTiers, { LOW: 1, MEDIUM: 1, HIGH: 0 });
+  assert.equal(report.summary.sensitivityEvidenced, 1);
+  assert.equal(report.summary.sensitivityWaived, 1);
 });

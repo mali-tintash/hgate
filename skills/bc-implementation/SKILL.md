@@ -273,14 +273,24 @@ discovery procedure inside implementation.
 Build a separate property matrix:
 
 ```text
-| Property ID | Candidate ID | Source rule(s) | Universal claim | Technique | Generator/model | Oracle | Oracle source / independence | Planned Jest test | Bounds |
-|-------------|--------------|----------------|-----------------|-----------|-----------------|--------|------------------------------|-------------------|--------|
+| Property ID | Candidate ID | Source rule(s) | Universal claim | Technique | Generator/model | Oracle | Oracle source / independence | Planned Jest test | Bounds | Risk | Sensitivity method |
+|-------------|--------------|----------------|-----------------|-----------|-----------------|--------|------------------------------|-------------------|--------|------|--------------------|
 ```
 
 Each `PROPERTY` row must also carry the declared generator adequacy fields
 (partitions, boundaries, combinations, min runs, discard ratio, shrinking,
 invalid-input generator, coverage counters); write the counters into the test
 before the generator is considered done.
+
+**Property red phase (sensitivity).** Passing is not enough: observe each
+property fail against its defect before recording it green. Use the declared
+method - mutation testing (Stryker is a recommended optional tool), a
+known-bad fixture, a temporarily injected defect (revert it), a deliberately
+violating value for the oracle, or a regression counterexample. Record the
+mutant/defect and the failure observed in `Sensitivity-Evidence` as
+`<defect>; <failure observed>`. A surviving mutant means strengthen the
+generator or oracle, not accept the property. Risk tiers: `LOW` may waive,
+`MEDIUM` needs a method, `HIGH` needs a production-logic method.
 
 Keep it separate from the BDD scenario matrix. Use `PROPERTY` for generated
 checks against production code and `FINITE_MODEL` only for explicitly bounded,
@@ -539,7 +549,8 @@ The Goal 3 loop must:
   `npm run verify:properties` command against a clean candidate revision
 - Preserve seeds, replay paths, minimized synthetic counterexamples or model
   command sequences, and their dispositions
-- Treat falsification as `CHANGES_REQUIRED`
+- Treat falsification, missing or unreproducible sensitivity evidence, and
+  surviving recorded mutants as `CHANGES_REQUIRED`
 - Treat excessive discards, non-replayable failures, timeouts, invalid bounds,
   state-limit exhaustion, or tooling failures as `BLOCKED`
 - Present property inventory, generators/models, oracles with their sources and
@@ -547,6 +558,7 @@ The Goal 3 loop must:
   ratios, and explicit limitations to the human,
   including the `property-discovery.md` candidate counts
   (ACCEPTED/REJECTED/DEFERRED) and any DEFERRED risks
+  Also present sensitivity evidence (method, mutant/defect, failure observed).
 - Obtain approval separate from BDD sign-off
 - Create one immutable artifact under
   `docs/verification/property-signoffs/<bc-name>/`

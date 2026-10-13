@@ -417,6 +417,11 @@ Each property:
 - Uses `FINITE_MODEL` only for a pure, genuinely finite state space with exact
   states, commands, inputs, and depth bounds.
 - Remains distinct from named Given/When/Then examples in `bdd-scenarios.md`.
+- Declares `Risk` (`LOW`/`MEDIUM`/`HIGH`) and a planned `Sensitivity` method
+  (`MUTATION`, `KNOWN_BAD_FIXTURE`, `INJECTED_DEFECT`, `ORACLE_VIOLATION`,
+  `REGRESSION_COUNTEREXAMPLE`; `N/A` plus `Sensitivity-Waiver` only for `LOW`;
+  `HIGH` needs a production-logic method). `Sensitivity-Evidence` is completed
+  during implementation. See `tools/business-verification/README.md`.
 
 Never claim that property-based testing is proof. Never claim finite-model
 completeness outside the declared bounds. Retire materially changed property
