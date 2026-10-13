@@ -237,8 +237,10 @@ When Goal 3 is selected, property declarations use stable `@property:<ID>`
 headings and executable Jest tests use `[PROP:<ID>]`. Generated properties and
 stateful checks exercise production TypeScript, and a test counts only when its
 body runs the declared technique through `hgateProperty`/`hgateFiniteModel`
-(or `fc.assert`/`exploreFiniteModel`); empty tests are rejected. Pure finite models may claim
-completeness only inside explicit recorded bounds. The property verifier,
+(or `fc.assert`/`exploreFiniteModel`); empty tests are rejected. Pure finite
+models may claim completeness only inside explicit recorded bounds. Each
+property declares an oracle source and independence statement; circular or
+duplicated oracles are prohibited and flagged in review. The property verifier,
 execution evidence, and human approval remain separate from BDD examples.
 
 `bc-enhancement` includes a triviality gate. A change with no observable

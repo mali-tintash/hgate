@@ -98,7 +98,9 @@ For each attempt:
    - repository verifier summary and diagnostics
    - module property claims, techniques, tests, generated-run configuration,
      and finite-model bounds
-   - generator/model/oracle adequacy assessment
+   - generator/model/oracle adequacy assessment, including each oracle's source
+     and independence from the subject (no circular or line-for-line duplicated
+     oracle)
    - every sanitized counterexample and its disposition
    - explicit limitation of each evidence type
 5. Preserve the attempt and feedback for the final artifact.
@@ -145,7 +147,8 @@ discard the failure or call it a business-rule falsification.
 For passing evidence present exactly two outcomes:
 
 - **Sign off Goal 3**: the human accepts the property inventory,
-  generators/models, oracles, bounds, limitations, and counterexample
+  generators/models, oracles (confirming each is independent of the subject),
+  bounds, limitations, and counterexample
   dispositions.
 - **Request Goal 3 changes**: preserve feedback, return through the owning
   spec-first and test-first workflow, and retry from a clean revision.

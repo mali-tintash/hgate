@@ -82,6 +82,8 @@ Required fields are:
 - `Quantification`
 - `Preconditions`
 - `Oracle`
+- `Oracle source`
+- `Oracle independence`
 - `Technique`
 - `Generator`
 - `Bounds`
@@ -90,6 +92,14 @@ Required fields are:
 generator contract and use `Bounds: N/A`. Finite models may use
 `Generator: N/A`, but must state exact states, commands, input domains, and
 depth bounds.
+
+`Oracle source` is exactly one of `REFERENCE_CALCULATION`, `DOMAIN_EQUATION`,
+`CONSERVATION`, `METAMORPHIC`, `ROUND_TRIP`, `TRUSTED_LIBRARY`,
+`STATE_INVARIANT`, or `APPROVED_TABLE`. `Oracle independence` names the
+independent source and why it shares no implementation path with the subject.
+Subject and oracle must never use the same implementation path: circular
+checks such as `expect(f(x)).toEqual(f(x))` and a reference that duplicates
+the production algorithm line for line are prohibited.
 
 Properties specify universal or bounded-universal claims. Concrete journeys and
 named examples remain in `bdd-scenarios.md`. Do not attach a property marker to
@@ -179,8 +189,9 @@ Use `fast-check` model-based commands when:
 
 Use [`finite-model-explorer.ts`](./finite-model-explorer.ts) only when the model
 is pure, finite, and small enough to enumerate completely within declared
-bounds. The model must describe business state and transitions, not copy the
-production implementation line for line.
+bounds. The model must be derived from approved business rules and describe
+business state and transitions; it must not copy the production implementation
+line for line, or it shares the production bugs.
 
 The explorer checks state invariants on every reached state and optional
 transition invariants on every enabled command's before/after pair.
@@ -241,13 +252,18 @@ Diagnostics:
 | `PROP012` | Property test body executes a different technique than declared |
 | `PROP013` | `--evidence` supplied but a covered property lacks complete execution evidence |
 | `PROP014` | Evidence file is unreadable or malformed |
+| `PROP040` | Oracle source is missing or not an allowed value |
+| `PROP041` | Oracle independence is missing, a placeholder, too short, or admits a shared implementation path |
 
 The verifier proves declaration, static linkage, and that a covering test body
 calls the declared technique (plus recorded evidence when `--evidence` is
 supplied). The JSON report is `schemaVersion: 2`: references carry
-`executionKinds`, and `evidence` is `null` or `{ path, records }`.
- Jest execution proves
-that the configured generated or finite checks passed. Human review decides
+`executionKinds`, and `evidence` is `null` or `{ path, records }`. Jest
+execution proves that the configured generated or finite checks passed.
+`PROP040`/`PROP041` check only that an oracle source and a non-circular
+independence statement are declared; they cannot inspect Jest bodies, so
+whether the oracle is truly independent is a review and human-sign-off
+question. Human review decides
 whether the property inventory, generators, model, oracle, and bounds are
 meaningful.
 

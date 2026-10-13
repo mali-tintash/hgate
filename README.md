@@ -238,7 +238,10 @@ wanted for the current change. An opted-in BC specifies independent
 `[PROP:<ID>]`. Generated checks use `fast-check` against production code via
 `hgateProperty`/`hgateFiniteModel`; a `[PROP:<ID>]` test whose body does not
 execute the declared technique is not coverage (`PROP011`/`PROP012`).
-Finite models state exact states, commands, inputs, and depth bounds.
+Finite models state exact states, commands, inputs, and depth bounds. Every
+property declares an `Oracle source` and an `Oracle independence` statement;
+subject and oracle never share an implementation path, and the verifier
+rejects missing sources or statements (`PROP040`/`PROP041`).
 
 Goal 3 has its own traceability command, failure semantics, counterexample
 contract, human approval, and immutable artifact under

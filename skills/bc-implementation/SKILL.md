@@ -271,14 +271,20 @@ property claims inside implementation.
 Build a separate property matrix:
 
 ```text
-| Property ID | Universal claim | Technique | Generator/model | Oracle | Planned Jest test | Bounds |
-|-------------|-----------------|-----------|-----------------|--------|-------------------|--------|
+| Property ID | Universal claim | Technique | Generator/model | Oracle | Oracle source / independence | Planned Jest test | Bounds |
+|-------------|-----------------|-----------|-----------------|--------|------------------------------|-------------------|--------|
 ```
 
 Keep it separate from the BDD scenario matrix. Use `PROPERTY` for generated
 checks against production code and `FINITE_MODEL` only for explicitly bounded,
 exhaustively enumerable models. A `[PROP:<ID>]` test must execute that technique
 in its body via `hgateProperty`/`hgateFiniteModel`; empty tests are not coverage.
+
+Implement each oracle from its declared `Oracle source`. Never use the same
+implementation path as both subject and oracle, never write a "reference" that
+duplicates the production algorithm line for line, and never copy production
+transition logic into a finite model. If an independent oracle cannot be
+built, return to `bc-refinement` rather than weakening the claim.
 
 Use the scenario IDs already defined in `bdd-scenarios.md`; do not invent
 implementation-local aliases such as `S1`. Every executable test that claims
@@ -529,8 +535,8 @@ The Goal 3 loop must:
 - Treat falsification as `CHANGES_REQUIRED`
 - Treat excessive discards, non-replayable failures, timeouts, invalid bounds,
   state-limit exhaustion, or tooling failures as `BLOCKED`
-- Present property inventory, generators/models, oracles, bounds, and explicit
-  limitations to the human
+- Present property inventory, generators/models, oracles with their sources and
+  independence statements, bounds, and explicit limitations to the human
 - Obtain approval separate from BDD sign-off
 - Create one immutable artifact under
   `docs/verification/property-signoffs/<bc-name>/`

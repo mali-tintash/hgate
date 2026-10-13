@@ -87,7 +87,9 @@ If accepted:
 - Finite-model completeness is claimed only within explicit recorded bounds.
 - Invalid, flaky, non-replayable, timed-out, or incomplete evidence is blocked,
   not converted into a pass or falsification.
-- A verifier pass proves static linkage, not generator, model, or oracle quality.
+- A verifier pass proves static linkage and declared oracle source/independence
+  (`PROP040`/`PROP041`), not generator, model, or oracle quality; oracles must
+  never share an implementation path with the subject.
 - Goal 3 approval is explicit and never inferred from BDD approval.
 - Declining Goal 3 never weakens the existing BDD/TDD close gate.
 - External solver support remains deferred until hGATE can address model/code

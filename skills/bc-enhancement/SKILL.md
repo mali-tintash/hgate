@@ -329,7 +329,7 @@ Files that commonly need updates:
 | A port method added/removed | `domain-model.md` → port interface block |
 | A port added/removed or its purpose/contract changes | `domain-model.md` → structured Ports table |
 | A business or architectural choice is concluded | `decisions.md` → add one Asked / Findings / Decision/Action entry |
-| Goal 3 is selected | `properties.md` → add or update stable universal claims, generators/models, oracles, and bounds |
+| Goal 3 is selected | `properties.md` → add or update stable universal claims, generators/models, oracles (with `Oracle source` and `Oracle independence`), and bounds |
 | Goal 3 is declined | `decisions.md` → record scoped decline and rationale; create no property artifact |
 
 Scenario ID rules during enhancement:
