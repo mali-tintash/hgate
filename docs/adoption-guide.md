@@ -235,7 +235,9 @@ persist the final decision in the owning module's sign-off directory.
 
 When Goal 3 is selected, property declarations use stable `@property:<ID>`
 headings and executable Jest tests use `[PROP:<ID>]`. Generated properties and
-stateful checks exercise production TypeScript. Pure finite models may claim
+stateful checks exercise production TypeScript, and a test counts only when its
+body runs the declared technique through `hgateProperty`/`hgateFiniteModel`
+(or `fc.assert`/`exploreFiniteModel`); empty tests are rejected. Pure finite models may claim
 completeness only inside explicit recorded bounds. The property verifier,
 execution evidence, and human approval remain separate from BDD examples.
 

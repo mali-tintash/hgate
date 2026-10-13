@@ -174,6 +174,10 @@ If `properties.md` exists, review it independently from BDD scenarios:
   complete and falsifiable.
 - `FINITE_MODEL` claims state exact completeness bounds and do not claim
   unbounded proof.
+- Each `[PROP:<ID>]` test body executes the declared technique
+  (`hgateProperty`/`fc.assert` or `hgateFiniteModel`/`exploreFiniteModel`); a
+  reference with an empty or non-executing body (`PROP011`/`PROP012`) is a
+  coverage gap, not coverage.
 - Generated properties use synthetic data and cannot persist secrets, personal
   data, or production identifiers.
 
@@ -351,7 +355,8 @@ whether each referenced test meaningfully asserts the scenario outcome; the
 tool proves linkage, not assertion quality.
 
 When `properties.md` exists, also run `npm run verify:properties` and the
-project's configured property/model Jest suite. Build a separate property
+project's configured property/model Jest suite with `HGATE_PROPERTY_EVIDENCE`
+set, passing the file to the verifier via `--evidence`. Build a separate property
 traceability map:
 
 ```text

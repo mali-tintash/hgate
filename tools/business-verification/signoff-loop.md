@@ -80,13 +80,17 @@ For each attempt:
    Jest configuration:
 
    ```bash
-   npm run --silent test:properties
+   rm -f "$HGATE_PROPERTY_EVIDENCE"
+   HGATE_PROPERTY_EVIDENCE=.hgate-property-evidence.jsonl npm run --silent test:properties
    ```
+
+   Property tests call `hgateProperty`/`hgateFiniteModel` so this run emits
+   execution evidence (`numRuns`, `seed`, finite-model size).
 
 3. Run the repository-wide property verifier and preserve exit status and JSON:
 
    ```bash
-   npm run --silent verify:properties -- --format json
+   npm run --silent verify:properties -- --evidence .hgate-property-evidence.jsonl --format json
    ```
 
 4. Build the human report:
@@ -109,7 +113,8 @@ Any relevant change invalidates the attempt and requires a new clean candidate.
 | Finite model finds an invariant violation | `CHANGES_REQUIRED` | Preserve the shortest breadth-first command path and state; correct through the owning workflow |
 | Verifier exit `1` | `CHANGES_REQUIRED` | Fix declaration or traceability diagnostics |
 | Verifier exit `0` and Jest passes | `AWAITING_SIGN_OFF` | Present evidence and ask for separate Goal 3 approval |
-| Verifier exit `2` or `PROP010` | `BLOCKED` | Correct discovery, configuration, access, or tooling |
+| Any `PROP011`/`PROP012` (test body executes no matching property) or `PROP013` (missing evidence) | `CHANGES_REQUIRED` | Make the test execute the declared technique through the hGATE wrapper; an empty or stub test is not coverage |
+| Verifier exit `2`, `PROP010`, or `PROP014` | `BLOCKED` | Correct discovery, configuration, access, or tooling |
 | Excessive generator discards, timeout, non-replayable failure, flaky result, invalid model/bounds, or finite-model state-limit exhaustion | `BLOCKED` | Repair evidence; do not infer a property failure or pass |
 
 Sign-off is unavailable unless the verifier exits `0`, the property/model Jest

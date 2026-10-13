@@ -235,7 +235,9 @@ node tools/business-verification/verify.mjs --root .
 `bc-implementation` and behavioral `bc-enhancement` ask whether Goal 3 is
 wanted for the current change. An opted-in BC specifies independent
 `@property:<ID>` claims in `properties.md`; Jest tests reference them as
-`[PROP:<ID>]`. Generated checks use `fast-check` against production code.
+`[PROP:<ID>]`. Generated checks use `fast-check` against production code via
+`hgateProperty`/`hgateFiniteModel`; a `[PROP:<ID>]` test whose body does not
+execute the declared technique is not coverage (`PROP011`/`PROP012`).
 Finite models state exact states, commands, inputs, and depth bounds.
 
 Goal 3 has its own traceability command, failure semantics, counterexample

@@ -369,6 +369,99 @@ function readStaticString(source, initialIndex) {
   return { value, dynamic: true, end: source.length };
 }
 
+function stripCommentsAndStrings(source) {
+  let result = "";
+  let index = 0;
+  while (index < source.length) {
+    if (source.startsWith("//", index) || source.startsWith("/*", index)) {
+      index = skipWhitespaceAndComments(source, index);
+      result += " ";
+    } else if ("'\"`".includes(source[index])) {
+      index = readStaticString(source, index).end;
+      result += '""';
+    } else {
+      result += source[index];
+      index += 1;
+    }
+  }
+  return result;
+}
+
+const EXECUTION_PATTERNS = {
+  PROPERTY: /(?<![\w$.])(?:(?:fc|fastCheck)\s*\.\s*assert|hgateProperty)\s*\(/,
+  FINITE_MODEL: /(?<![\w$.])(?:exploreFiniteModel|hgateFiniteModel)\s*\(/,
+};
+
+function detectExecutionKinds(callBody) {
+  const code = stripCommentsAndStrings(callBody);
+  return Object.entries(EXECUTION_PATTERNS)
+    .filter(([, pattern]) => pattern.test(code))
+    .map(([kind]) => kind);
+}
+
+async function readEvidence(root, evidencePath) {
+  const file = toPosixPath(evidencePath);
+  const fail = (message) => ({
+    file,
+    records: [],
+    diagnostics: [diagnostic("PROP014", file, 1, null, message)],
+  });
+  let text;
+  try {
+    text = await readFile(path.resolve(root, evidencePath), "utf8");
+  } catch (error) {
+    return fail(`execution evidence file cannot be read: ${error.message}`);
+  }
+
+  const records = [];
+  const lines = text.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index].trim() === "") {
+      continue;
+    }
+    let record;
+    try {
+      record = JSON.parse(lines[index]);
+    } catch {
+      return fail(`execution evidence line ${index + 1} is not valid JSON`);
+    }
+    if (
+      record === null ||
+      typeof record !== "object" ||
+      typeof record.id !== "string" ||
+      !TECHNIQUES.has(record.technique)
+    ) {
+      return fail(
+        `execution evidence line ${index + 1} needs a string id and a PROPERTY or FINITE_MODEL technique`,
+      );
+    }
+    records.push({
+      id: record.id,
+      technique: record.technique,
+      numRuns: record.numRuns,
+      seed: record.seed,
+      statesVisited: record.statesVisited,
+      transitionsExplored: record.transitionsExplored,
+    });
+  }
+  records.sort(
+    (left, right) =>
+      compareText(left.id, right.id) ||
+      compareText(left.technique, right.technique),
+  );
+  return { file, records, diagnostics: [] };
+}
+
+function isPositiveInteger(value) {
+  return Number.isInteger(value) && value >= 1;
+}
+
+function evidenceIsComplete(record) {
+  return record.technique === "PROPERTY"
+    ? isPositiveInteger(record.numRuns) && Number.isInteger(record.seed)
+    : isPositiveInteger(record.statesVisited);
+}
+
 function parseJestTestFile(source, file) {
   const references = [];
   const diagnostics = [];
@@ -433,6 +526,7 @@ function parseJestTestFile(source, file) {
       index = cursor + 1;
       continue;
     }
+    const callOpen = cursor;
     cursor = skipWhitespaceAndComments(source, cursor + 1);
     if (!["'", '"', "`"].includes(source[cursor])) {
       index = cursor + 1;
@@ -445,6 +539,9 @@ function parseJestTestFile(source, file) {
       continue;
     }
 
+    const executionKinds = detectExecutionKinds(
+      source.slice(titleResult.end, skipBalanced(source, callOpen, "(", ")")),
+    );
     const active = !modifiers.some((modifier) =>
       ["skip", "todo"].includes(modifier),
     );
@@ -474,6 +571,7 @@ function parseJestTestFile(source, file) {
         line,
         title: titleResult.value,
         active,
+        executionKinds,
       });
     }
 
@@ -614,7 +712,40 @@ export async function verifyProject(options = {}) {
         ),
       );
     }
-    if (reference.active) {
+    const declarations = propertiesById.get(reference.id) ?? [];
+    const counts =
+      reference.active &&
+      (declarations.length !== 1 ||
+        reference.executionKinds.includes(declarations[0].technique));
+    if (
+      reference.active &&
+      declarations.length === 1 &&
+      !reference.executionKinds.includes(declarations[0].technique)
+    ) {
+      const technique = declarations[0].technique;
+      const expected =
+        technique === "PROPERTY"
+          ? "fc.assert(...) or hgateProperty(...)"
+          : "exploreFiniteModel(...) or hgateFiniteModel(...)";
+      diagnostics.push(
+        reference.executionKinds.length === 0
+          ? diagnostic(
+              "PROP011",
+              reference.file,
+              reference.line,
+              reference.id,
+              `test for ${technique} property "${reference.id}" never executes a property; its body must call ${expected}`,
+            )
+          : diagnostic(
+              "PROP012",
+              reference.file,
+              reference.line,
+              reference.id,
+              `test for ${technique} property "${reference.id}" executes ${reference.executionKinds.join(", ")} instead; its body must call ${expected}`,
+            ),
+      );
+    }
+    if (counts) {
       const matches = activeReferencesById.get(reference.id) ?? [];
       matches.push(reference);
       activeReferencesById.set(reference.id, matches);
@@ -636,6 +767,36 @@ export async function verifyProject(options = {}) {
     }
   }
 
+  let evidence = null;
+  if (options.evidencePath !== undefined) {
+    const loaded = await readEvidence(root, options.evidencePath);
+    evidence = { path: loaded.file, records: loaded.records };
+    diagnostics.push(...loaded.diagnostics);
+    for (const [id, matches] of propertiesById) {
+      if (matches.length !== 1 || !activeReferencesById.has(id)) {
+        continue;
+      }
+      const property = matches[0];
+      const complete = loaded.records.some(
+        (record) =>
+          record.id === id &&
+          record.technique === property.technique &&
+          evidenceIsComplete(record),
+      );
+      if (!complete && loaded.diagnostics.length === 0) {
+        diagnostics.push(
+          diagnostic(
+            "PROP013",
+            property.file,
+            property.line,
+            id,
+            `no complete ${property.technique} execution evidence for "${id}" in ${loaded.file}`,
+          ),
+        );
+      }
+    }
+  }
+
   properties.sort(compareRecords);
   testReferences.sort(compareRecords);
   diagnostics.sort(compareRecords);
@@ -643,17 +804,20 @@ export async function verifyProject(options = {}) {
   const coveredProperties = [...propertiesById].filter(
     ([id, matches]) => matches.length === 1 && activeReferencesById.has(id),
   ).length;
-  const exitCode = diagnostics.some(({ code }) => code === "PROP009")
+  const exitCode = diagnostics.some(
+    ({ code }) => code === "PROP009" || code === "PROP014",
+  )
     ? EXIT_DISCOVERY
     : diagnostics.length > 0
       ? EXIT_INVALID
       : EXIT_VALID;
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     exitCode,
     properties,
     testReferences,
+    evidence,
     diagnostics,
     summary: {
       propertyFiles: propertyFiles.length,
@@ -708,6 +872,8 @@ Options:
   --property-path <path> Property file or directory; repeatable
   --test-path <path>     Jest test file or directory; repeatable
   --exclude <name>       Directory name to exclude; repeatable
+  --evidence <path>      JSONL execution evidence written by the hGATE
+                         wrappers; validated when supplied
   --format <text|json>   Report format (default: text)
   --help                 Show help
 `;
@@ -734,6 +900,7 @@ function parseArguments(argumentsList) {
         "--property-path",
         "--test-path",
         "--exclude",
+        "--evidence",
         "--format",
       ].includes(argument) ||
       value === undefined
@@ -749,6 +916,8 @@ function parseArguments(argumentsList) {
       options.testPaths.push(value);
     } else if (argument === "--exclude") {
       options.excludes.push(value);
+    } else if (argument === "--evidence") {
+      options.evidencePath = value;
     } else if (argument === "--format") {
       options.format = value;
     }
