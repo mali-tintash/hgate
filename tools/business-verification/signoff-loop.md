@@ -107,13 +107,16 @@ Any relevant change invalidates the attempt and requires a new clean candidate.
 |---|---|---|
 | Generated property or stateful command falsifies a claim | `CHANGES_REQUIRED` | Preserve seed, replay path, minimized input/commands, and disposition; correct through spec-first and test-first workflow |
 | Finite model finds an invariant violation | `CHANGES_REQUIRED` | Preserve the shortest breadth-first command path and state; correct through the owning workflow |
+| A recorded mutant/defect survives (property still passes) or the recorded failure cannot be reproduced | `CHANGES_REQUIRED` | Strengthen the generator/oracle through the owning workflow, then re-observe the failure |
+| Sensitivity evidence missing for a `MEDIUM`/`HIGH` property, or HIGH evidence is oracle-only | `CHANGES_REQUIRED` | Run a controlled negative check and record method, defect, and observed failure |
+| Mutation tool unavailable, timed out, or flaky | `BLOCKED` | Repair tooling or choose another declared method; do not infer sensitivity |
 | Verifier exit `1` | `CHANGES_REQUIRED` | Fix declaration or traceability diagnostics |
 | Verifier exit `0` and Jest passes | `AWAITING_SIGN_OFF` | Present evidence and ask for separate Goal 3 approval |
 | Verifier exit `2` or `PROP010` | `BLOCKED` | Correct discovery, configuration, access, or tooling |
 | Excessive generator discards, timeout, non-replayable failure, flaky result, invalid model/bounds, or finite-model state-limit exhaustion | `BLOCKED` | Repair evidence; do not infer a property failure or pass |
 
 Sign-off is unavailable unless the verifier exits `0`, the property/model Jest
-suite passes, every prior counterexample has a recorded disposition, and the
+suite passes, every property's sensitivity evidence was observed and recorded, every prior counterexample has a recorded disposition, and the
 human separately approves Goal 3 evidence.
 
 ## Counterexample handling

@@ -271,9 +271,19 @@ property claims inside implementation.
 Build a separate property matrix:
 
 ```text
-| Property ID | Universal claim | Technique | Generator/model | Oracle | Planned Jest test | Bounds |
-|-------------|-----------------|-----------|-----------------|--------|-------------------|--------|
+| Property ID | Universal claim | Technique | Generator/model | Oracle | Planned Jest test | Bounds | Risk | Sensitivity method |
+|-------------|-----------------|-----------|-----------------|--------|-------------------|--------|------|--------------------|
 ```
+
+**Property red phase (sensitivity).** Passing is not enough: observe each
+property fail against its defect before recording it green. Use the declared
+method - mutation testing (Stryker is a recommended optional tool), a
+known-bad fixture, a temporarily injected defect (revert it), a deliberately
+violating value for the oracle, or a regression counterexample. Record the
+mutant/defect and the failure observed in `Sensitivity-Evidence` as
+`<defect>; <failure observed>`. A surviving mutant means strengthen the
+generator or oracle, not accept the property. Risk tiers: `LOW` may waive,
+`MEDIUM` needs a method, `HIGH` needs a production-logic method.
 
 Keep it separate from the BDD scenario matrix. Use `PROPERTY` for generated
 checks against production code and `FINITE_MODEL` only for explicitly bounded,
@@ -525,11 +535,13 @@ The Goal 3 loop must:
   `npm run verify:properties` command against a clean candidate revision
 - Preserve seeds, replay paths, minimized synthetic counterexamples or model
   command sequences, and their dispositions
-- Treat falsification as `CHANGES_REQUIRED`
+- Treat falsification, missing or unreproducible sensitivity evidence, and
+  surviving recorded mutants as `CHANGES_REQUIRED`
 - Treat excessive discards, non-replayable failures, timeouts, invalid bounds,
   state-limit exhaustion, or tooling failures as `BLOCKED`
-- Present property inventory, generators/models, oracles, bounds, and explicit
-  limitations to the human
+- Present property inventory, generators/models, oracles, bounds, sensitivity
+  evidence (method, mutant/defect, failure observed), and explicit limitations
+  to the human
 - Obtain approval separate from BDD sign-off
 - Create one immutable artifact under
   `docs/verification/property-signoffs/<bc-name>/`

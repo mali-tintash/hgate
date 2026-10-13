@@ -21,6 +21,9 @@ repository-unique ID:
 - **Technique:** `PROPERTY`
 - **Generator:** <Named generator contract and the domain values it constructs.>
 - **Bounds:** `N/A`
+- **Risk:** `MEDIUM`
+- **Sensitivity:** `MUTATION`
+- **Sensitivity-Evidence:** <mutant or defect id and what it changes>; <failing test/seed/message observed>
 
 ## @property:<BC>-<CAPABILITY>-002 <Bounded finite-state claim>
 
@@ -31,6 +34,9 @@ repository-unique ID:
 - **Technique:** `FINITE_MODEL`
 - **Generator:** `N/A`
 - **Bounds:** <Exact states, commands, input domains, and maximum depth claimed complete.>
+- **Risk:** `LOW`
+- **Sensitivity:** `N/A`
+- **Sensitivity-Waiver:** <Why a controlled negative check is not worth its cost (LOW risk only).>
 
 ### Authoring rules
 
@@ -45,4 +51,12 @@ repository-unique ID:
   separately.
 - Never use production data, credentials, tokens, or personal information in a
   generator or persisted counterexample.
+- Assign `Risk` (`LOW`, `MEDIUM`, `HIGH`) by business consequence of an
+  undetected defect. Every property needs sensitivity evidence: a controlled
+  negative check showing the property fails when its defect is present.
+  `Sensitivity` is a comma-separated list of `MUTATION`, `KNOWN_BAD_FIXTURE`,
+  `INJECTED_DEFECT`, `ORACLE_VIOLATION`, or `REGRESSION_COUNTEREXAMPLE`.
+  `LOW` may use `N/A` with a `Sensitivity-Waiver`; `MEDIUM` and `HIGH` need a
+  method; `HIGH` needs a production-logic method, not `ORACLE_VIOLATION` alone.
+  `Sensitivity-Evidence` is `<mutant/defect>; <failure observed>`.
 - Do not restate a named Given/When/Then example as a universal property.

@@ -280,7 +280,9 @@ BDD-to-TDD path.
 
 If accepted, Phase 3 must create or update `properties.md` from
 `bc-refinement/assets/properties-template.md`. Keep universal property claims
-separate from concrete BDD examples.
+separate from concrete BDD examples. Each new or changed property needs `Risk`
+and `Sensitivity`; changed production logic or a changed claim invalidates old
+`Sensitivity-Evidence`, so re-observe the failure and re-record it.
 
 ### Phase 2b — Ripple Effect Analysis
 
@@ -531,7 +533,8 @@ If Goal 3 was selected in Phase 2a.1, then follow
 `tools/business-verification/signoff-loop.md` after BDD-to-TDD sign-off. Run the
 property/model Jest suite and `npm run verify:properties` against a clean
 candidate revision. Preserve reproducible, sanitized counterexamples and their
-dispositions. Falsification requires changes; invalid or incomplete evidence is
+dispositions and sensitivity evidence (method, mutant/defect, failure
+observed). Falsification or missing sensitivity evidence requires changes; invalid or incomplete evidence is
 blocked. Obtain separate human approval and create one immutable artifact under
 `docs/verification/property-signoffs/<bc-name>/`.
 

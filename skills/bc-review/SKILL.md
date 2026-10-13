@@ -174,6 +174,11 @@ If `properties.md` exists, review it independently from BDD scenarios:
   complete and falsifiable.
 - `FINITE_MODEL` claims state exact completeness bounds and do not claim
   unbounded proof.
+- `Risk` and `Sensitivity` are declared; `MEDIUM`/`HIGH` properties have
+  `Sensitivity-Evidence` naming a mutant/defect and the observed failure; `HIGH`
+  uses a production-logic method (not `ORACLE_VIOLATION` alone); `LOW` waivers
+  have a credible reason. Flag evidence that looks asserted rather than
+  observed, and any surviving mutants without disposition.
 - Generated properties use synthetic data and cannot persist secrets, personal
   data, or production identifiers.
 
@@ -355,7 +360,7 @@ project's configured property/model Jest suite. Build a separate property
 traceability map:
 
 ```text
-| Property ID | Universal claim | Technique | Executable tests | Generator/model and bounds | Coverage assessment |
+| Property ID | Universal claim | Technique | Executable tests | Generator/model and bounds | Risk / sensitivity method | Coverage assessment |
 ```
 
 Classify generated-run success and bounded finite-model completeness exactly as

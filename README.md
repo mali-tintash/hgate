@@ -238,6 +238,11 @@ wanted for the current change. An opted-in BC specifies independent
 `[PROP:<ID>]`. Generated checks use `fast-check` against production code.
 Finite models state exact states, commands, inputs, and depth bounds.
 
+Each property also carries a `Risk` tier and risk-tiered sensitivity evidence
+(mutation testing, known-bad fixture, injected defect, oracle violation, or
+regression counterexample) showing it fails when its defect is present; see
+`tools/business-verification/README.md`.
+
 Goal 3 has its own traceability command, failure semantics, counterexample
 contract, human approval, and immutable artifact under
 `docs/verification/property-signoffs/<module-slug>/`. BDD examples and

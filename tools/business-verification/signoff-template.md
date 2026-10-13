@@ -39,6 +39,18 @@ Repository summary:
 |---|---|---|---|---|---|
 | `<ID>` | `<claim>` | `PROPERTY` / `FINITE_MODEL` | `<file:line - title>` | `<runs or exact finite bounds>` | Generator/model and oracle are adequate |
 
+## Sensitivity Evidence
+
+Controlled negative check per property: the property must fail when its defect
+is present. `LOW` risk may be waived with a reason; `HIGH` needs a
+production-logic method.
+
+| Property ID | Risk | Method | Mutant / defect | Failure observed | Waiver |
+|---|---|---|---|---|---|
+| `<ID>` | `LOW` / `MEDIUM` / `HIGH` | `MUTATION` / `KNOWN_BAD_FIXTURE` / `INJECTED_DEFECT` / `ORACLE_VIOLATION` / `REGRESSION_COUNTEREXAMPLE` | `<mutant id or defect description>` | `<failing test, seed, message>` | `<reason or N/A>` |
+
+Surviving mutants and their disposition: `<none or list>`
+
 ## Attempt History
 
 | Attempt | Candidate revision | Jest | Verifier | Resulting state | Human feedback |
@@ -64,7 +76,9 @@ Repository summary:
 
 **Evidence:** <explicit approval statement or concise faithful summary>
 
-**Limitations acknowledged:** Generated property success applies to the recorded
+**Limitations acknowledged:** Sensitivity evidence shows detection of the
+recorded defects only; it does not show the property detects every defect.
+Generated property success applies to the recorded
 runs and replay configuration. Finite-model success applies only to the exact
 recorded model and bounds. Neither result is an unbounded proof or proof of an
 external formal model's equivalence to production code.

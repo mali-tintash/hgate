@@ -238,6 +238,9 @@ headings and executable Jest tests use `[PROP:<ID>]`. Generated properties and
 stateful checks exercise production TypeScript. Pure finite models may claim
 completeness only inside explicit recorded bounds. The property verifier,
 execution evidence, and human approval remain separate from BDD examples.
+Every property declares `Risk` and `Sensitivity` fields and records the
+mutant/defect and observed failure (waivable only for `LOW` risk). Stryker is a
+recommended optional mutation tool for TypeScript/Jest, not a requirement.
 
 `bc-enhancement` includes a triviality gate. A change with no observable
 behavior, contract, or scenario impact may skip the ghost-behavior audit,

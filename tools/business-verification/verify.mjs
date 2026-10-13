@@ -29,6 +29,14 @@ const REQUIRED_FIELDS = [
   "Bounds",
 ];
 const TECHNIQUES = new Set(["PROPERTY", "FINITE_MODEL"]);
+const RISK_TIERS = ["LOW", "MEDIUM", "HIGH"];
+const SENSITIVITY_METHODS = new Set([
+  "MUTATION",
+  "KNOWN_BAD_FIXTURE",
+  "INJECTED_DEFECT",
+  "ORACLE_VIOLATION",
+  "REGRESSION_COUNTEREXAMPLE",
+]);
 
 function toPosixPath(value) {
   return value.split(path.sep).join("/");
@@ -102,6 +110,62 @@ function normalizeMetadataValue(value) {
     return trimmed.slice(1, -1);
   }
   return trimmed;
+}
+
+function checkSensitivity(property, file, diagnostics) {
+  const report = (code, message) =>
+    diagnostics.push(diagnostic(code, file, property.line, property.id, message));
+  const { Risk, Sensitivity, "Sensitivity-Evidence": evidence } =
+    property.fields;
+  const waiver = property.fields["Sensitivity-Waiver"];
+
+  if (!RISK_TIERS.includes(Risk)) {
+    report("PROP050", `Risk must be one of ${RISK_TIERS.join(", ")}`);
+    return;
+  }
+  property.risk = Risk;
+
+  if (!Sensitivity) {
+    report("PROP051", "property declaration is missing Sensitivity");
+    return;
+  }
+
+  if (Sensitivity.toUpperCase() === "N/A") {
+    if (Risk !== "LOW") {
+      report("PROP053", `${Risk} risk properties must declare a sensitivity method`);
+    } else if (!waiver) {
+      report("PROP053", "Sensitivity: N/A requires a Sensitivity-Waiver reason");
+    } else {
+      property.sensitivityWaived = true;
+    }
+    return;
+  }
+
+  const methods = Sensitivity.split(",").map((method) => method.trim());
+  const unknown = methods.filter((method) => !SENSITIVITY_METHODS.has(method));
+  if (unknown.length > 0) {
+    report("PROP052", `unknown Sensitivity method(s): ${unknown.join(", ")}`);
+    return;
+  }
+  property.sensitivityMethods = methods;
+
+  const segments = (evidence ?? "").split(";").map((part) => part.trim());
+  if (segments.length < 2 || segments.some((part) => !part)) {
+    report(
+      "PROP054",
+      "Sensitivity-Evidence must name the mutant/defect and the observed failure as '<defect>; <failure observed>'",
+    );
+    return;
+  }
+
+  if (Risk === "HIGH" && methods.every((method) => method === "ORACLE_VIOLATION")) {
+    report(
+      "PROP055",
+      "HIGH risk properties need a production-logic method (MUTATION, KNOWN_BAD_FIXTURE, INJECTED_DEFECT, or REGRESSION_COUNTEREXAMPLE), not ORACLE_VIOLATION alone",
+    );
+    return;
+  }
+  property.sensitivityEvidenced = true;
 }
 
 function parsePropertyFile(source, file) {
@@ -279,6 +343,8 @@ function parsePropertyFile(source, file) {
         );
       }
     }
+
+    checkSensitivity(property, file, diagnostics);
 
     properties.push(property);
     index = cursor - 1;
@@ -666,6 +732,18 @@ export async function verifyProject(options = {}) {
       finiteModelTests: properties.filter(
         ({ technique }) => technique === "FINITE_MODEL",
       ).length,
+      riskTiers: Object.fromEntries(
+        RISK_TIERS.map((tier) => [
+          tier,
+          properties.filter(({ risk }) => risk === tier).length,
+        ]),
+      ),
+      sensitivityEvidenced: properties.filter(
+        ({ sensitivityEvidenced }) => sensitivityEvidenced,
+      ).length,
+      sensitivityWaived: properties.filter(
+        ({ sensitivityWaived }) => sensitivityWaived,
+      ).length,
       testReferences: testReferences.length,
       errors: diagnostics.length,
     },
@@ -689,6 +767,8 @@ export function formatTextReport(report) {
       `${summary.coveredProperties} covered,`,
       `${summary.propertyTests} generated property test(s),`,
       `${summary.finiteModelTests} finite model test(s),`,
+      `${summary.sensitivityEvidenced} sensitivity-evidenced,`,
+      `${summary.sensitivityWaived} sensitivity-waived,`,
       `${summary.testReferences} test reference(s),`,
       `${summary.errors} error(s)`,
     ].join(" "),
