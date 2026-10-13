@@ -30,7 +30,7 @@ universal claims are independent evidence.
 Repository summary:
 
 ```text
-<property files, test files, declarations, covered properties, techniques, references, errors>
+<property files, test files, declarations, covered properties, PROPERTY/FINITE_MODEL declarations, active/inactive test references, errors>
 ```
 
 ## Module Property Evidence

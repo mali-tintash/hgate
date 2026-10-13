@@ -650,7 +650,7 @@ export async function verifyProject(options = {}) {
       : EXIT_VALID;
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     exitCode,
     properties,
     testReferences,
@@ -660,13 +660,17 @@ export async function verifyProject(options = {}) {
       testFiles: testFiles.length,
       properties: properties.length,
       coveredProperties,
-      propertyTests: properties.filter(
+      propertyDeclarations: properties.filter(
         ({ technique }) => technique === "PROPERTY",
       ).length,
-      finiteModelTests: properties.filter(
+      finiteModelDeclarations: properties.filter(
         ({ technique }) => technique === "FINITE_MODEL",
       ).length,
       testReferences: testReferences.length,
+      activeTestReferences: testReferences.filter(({ active }) => active)
+        .length,
+      inactiveTestReferences: testReferences.filter(({ active }) => !active)
+        .length,
       errors: diagnostics.length,
     },
   };
@@ -687,9 +691,10 @@ export function formatTextReport(report) {
       `${summary.testFiles} test file(s),`,
       `${summary.properties} property declaration(s),`,
       `${summary.coveredProperties} covered,`,
-      `${summary.propertyTests} generated property test(s),`,
-      `${summary.finiteModelTests} finite model test(s),`,
-      `${summary.testReferences} test reference(s),`,
+      `${summary.propertyDeclarations} PROPERTY declaration(s),`,
+      `${summary.finiteModelDeclarations} FINITE_MODEL declaration(s),`,
+      `${summary.testReferences} test reference(s)`,
+      `(${summary.activeTestReferences} active, ${summary.inactiveTestReferences} inactive),`,
       `${summary.errors} error(s)`,
     ].join(" "),
   );

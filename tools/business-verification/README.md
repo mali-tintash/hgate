@@ -51,6 +51,12 @@ Add project scripts. Keep the project's existing Jest configuration:
 Only projects that have opted into Goal 3 need these scripts or `fast-check`.
 Run both commands in CI once at least one current `properties.md` exists.
 
+JSON report `schemaVersion` is `2`. `summary.propertyDeclarations` and
+`summary.finiteModelDeclarations` count declarations by technique (they replaced
+`propertyTests` and `finiteModelTests`, which overstated execution);
+`summary.activeTestReferences` and `summary.inactiveTestReferences` count marker
+references in Jest tests. These are marker counts, not proof of executed checks.
+
 ## Specification contract
 
 Each opted-in BC owns:
