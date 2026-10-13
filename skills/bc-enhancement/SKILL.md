@@ -279,8 +279,11 @@ not create a skipped property sign-off artifact. Continue with the normal
 BDD-to-TDD path.
 
 If accepted, Phase 3 must create or update `properties.md` from
-`bc-refinement/assets/properties-template.md`. Keep universal property claims
-separate from concrete BDD examples.
+`bc-refinement/assets/properties-template.md`, and update
+`property-discovery.md` (from `bc-refinement/assets/property-discovery-template.md`)
+by re-running the discovery procedure in `bc-refinement` section 5e for every
+changed or new rule across all candidate families. Keep universal property
+claims separate from concrete BDD examples.
 
 ### Phase 2b — Ripple Effect Analysis
 

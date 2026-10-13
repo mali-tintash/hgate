@@ -172,6 +172,7 @@ docs/
     domain-model.md
     bdd-scenarios.md
     properties.md               # optional Goal 3 claims
+    property-discovery.md       # required with properties.md: rule-to-property candidate inventory
     decisions.md
     status.md
     *-acl.md
@@ -233,7 +234,9 @@ behavioral-enhancement completion. The BDD-to-TDD sign-off loop requires a
 human to assess the linked Jest tests, request changes or approve them, and
 persist the final decision in the owning module's sign-off directory.
 
-When Goal 3 is selected, property declarations use stable `@property:<ID>`
+When Goal 3 is selected, a required `property-discovery.md` inventory records,
+for every approved business rule, each candidate property family and whether it
+was ACCEPTED, REJECTED, or DEFERRED with a reason; `bc-review` checks it. Property declarations use stable `@property:<ID>`
 headings and executable Jest tests use `[PROP:<ID>]`. Generated properties and
 stateful checks exercise production TypeScript. Pure finite models may claim
 completeness only inside explicit recorded bounds. The property verifier,

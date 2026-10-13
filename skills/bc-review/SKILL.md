@@ -180,6 +180,23 @@ If `properties.md` exists, review it independently from BDD scenarios:
 Absence of `properties.md` is not a finding. Goal 3 is optional at every
 adoption level.
 
+When `properties.md` exists, also review `property-discovery.md`; a missing
+inventory is a finding:
+
+- Every approved rule in scope appears in the inventory and has a candidate row
+  for every family (operation-preserved invariants, conservation/accounting,
+  idempotence, monotonicity, round-trip, order independence, alternate-path
+  equivalence, lifecycle transition safety, authorization/tenant isolation,
+  failure atomicity, retry/replay, boundary/overflow).
+- Every row is `ACCEPTED`, `REJECTED`, or `DEFERRED`; REJECTED reasons are
+  rule-specific (not "N/A" or "trivial"); DEFERRED rows name owner, risk, and
+  revisit trigger.
+- Every `ACCEPTED` row links to an existing `@property:` ID, and every property
+  cites its source rules and candidate (no orphan properties or dangling links).
+- The accepted set is not ceremony-only (non-negative totals, non-empty IDs,
+  no-exception); flag rules whose only coverage is ceremonial.
+- BDD examples are not restated as properties.
+
 ### Lens 5 — Authorization and tenant isolation
 
 Check separately:

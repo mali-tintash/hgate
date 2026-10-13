@@ -15,6 +15,8 @@ repository-unique ID:
 ## @property:<BC>-<CAPABILITY>-001 <Universal business claim>
 
 - **Claim:** <One falsifiable invariant stated in domain language.>
+- **Source rules:** <Approved rule refs from `SKILL.md`/`bdd-scenarios.md`.>
+- **Candidate:** <`@candidate:<BC>-NNN` from `property-discovery.md`.>
 - **Quantification:** <For every generated value or reachable state covered.>
 - **Preconditions:** <Conditions that define valid inputs or starting states.>
 - **Oracle:** <Observable outcome that decides whether the claim holds.>
@@ -25,6 +27,8 @@ repository-unique ID:
 ## @property:<BC>-<CAPABILITY>-002 <Bounded finite-state claim>
 
 - **Claim:** <One invariant over the bounded lifecycle or policy model.>
+- **Source rules:** <Approved rule refs from `SKILL.md`/`bdd-scenarios.md`.>
+- **Candidate:** <`@candidate:<BC>-NNN` from `property-discovery.md`.>
 - **Quantification:** <For every reachable state and enabled command.>
 - **Preconditions:** <Initial states and command-enablement rules.>
 - **Oracle:** <Invariant checked in every reachable state or transition.>
@@ -34,6 +38,10 @@ repository-unique ID:
 
 ### Authoring rules
 
+- Complete `property-discovery.md` (from
+  `assets/property-discovery-template.md`) first; declare only properties
+  whose candidate is `ACCEPTED` there. Every declaration cites its source
+  rules and candidate.
 - Use `PROPERTY` for generated examples against real production domain or
   application code.
 - Use `FINITE_MODEL` only for a pure, genuinely finite model that can be

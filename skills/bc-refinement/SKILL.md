@@ -395,6 +395,8 @@ refinement if an approved property specification is needed.
 
 Each property:
 
+- Is discovered through the required property-discovery procedure below, not
+  invented ad hoc.
 - Has one stable, repository-unique
   `@property:<BC>-<CAPABILITY>-<three-digit-sequence>` ID.
 - States one falsifiable universal or bounded-universal claim.
@@ -408,6 +410,28 @@ Each property:
 Never claim that property-based testing is proof. Never claim finite-model
 completeness outside the declared bounds. Retire materially changed property
 IDs in `decisions.md`, just as retired scenario IDs are recorded.
+
+#### Required property-discovery procedure
+
+Before writing any declaration, create
+`.github/skills/<bc-name>/property-discovery.md` from
+`assets/property-discovery-template.md`:
+
+1. List every approved business rule in `SKILL.md` and `bdd-scenarios.md` that
+   is in scope, with a stable rule ref.
+2. For each rule, evaluate every candidate family: operation-preserved
+   invariants, conservation/accounting, idempotence, monotonicity, round-trip,
+   order independence, alternate-path equivalence, lifecycle transition
+   safety, authorization/tenant isolation, failure atomicity, retry/replay,
+   boundary/overflow.
+3. Record each candidate as `ACCEPTED`, `REJECTED`, or `DEFERRED` with a
+   rule-specific reason. `ACCEPTED` links to a `@property:` ID; `DEFERRED`
+   names an owner, accepted risk, and revisit trigger.
+4. Do not count ceremonial claims (non-negative totals, non-empty IDs, no
+   exception) as coverage unless the rule itself states them.
+5. Every property cites its source rules and candidate; BDD examples may seed
+   candidates but are never restated as properties.
+6. Present the inventory with `properties.md` for explicit human approval.
 
 ### 5f. `decisions.md`
 

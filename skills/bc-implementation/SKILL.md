@@ -264,15 +264,17 @@ If declined:
 2. Do not create a property sign-off artifact.
 3. Continue with the existing BDD/TDD workflow.
 
-If accepted, require an approved `.github/skills/<bc-name>/properties.md`. If it
-does not exist or lacks a needed claim, return to `bc-refinement`; do not invent
-property claims inside implementation.
+If accepted, require an approved `.github/skills/<bc-name>/properties.md` and its
+approved `property-discovery.md` candidate inventory. If either does not exist,
+lacks a needed claim, or has `DEFERRED`/unresolved candidates relevant to this
+scope, return to `bc-refinement`; do not invent property claims or skip the
+discovery procedure inside implementation.
 
 Build a separate property matrix:
 
 ```text
-| Property ID | Universal claim | Technique | Generator/model | Oracle | Planned Jest test | Bounds |
-|-------------|-----------------|-----------|-----------------|--------|-------------------|--------|
+| Property ID | Candidate ID | Source rule(s) | Universal claim | Technique | Generator/model | Oracle | Planned Jest test | Bounds |
+|-------------|--------------|----------------|-----------------|-----------|-----------------|--------|-------------------|--------|
 ```
 
 Keep it separate from the BDD scenario matrix. Use `PROPERTY` for generated
@@ -529,7 +531,8 @@ The Goal 3 loop must:
 - Treat excessive discards, non-replayable failures, timeouts, invalid bounds,
   state-limit exhaustion, or tooling failures as `BLOCKED`
 - Present property inventory, generators/models, oracles, bounds, and explicit
-  limitations to the human
+  limitations to the human, including the `property-discovery.md` candidate
+  counts (ACCEPTED/REJECTED/DEFERRED) and any DEFERRED risks
 - Obtain approval separate from BDD sign-off
 - Create one immutable artifact under
   `docs/verification/property-signoffs/<bc-name>/`

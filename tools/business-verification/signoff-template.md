@@ -14,6 +14,7 @@ reviewer: <supplied identity or session identity>
 
 - **Owning workflow:** `bc-implementation` | `bc-enhancement`
 - **Property specification:** `.github/skills/<module-slug>/properties.md`
+- **Discovery inventory:** `.github/skills/<module-slug>/property-discovery.md` (ACCEPTED <n> / REJECTED <n> / DEFERRED <n>; deferred risks: <none | list>)
 - **Change:** <short description>
 - **Verified revision:** `<git-sha>`
 

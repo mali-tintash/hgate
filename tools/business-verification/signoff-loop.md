@@ -108,7 +108,7 @@ Any relevant change invalidates the attempt and requires a new clean candidate.
 | Generated property or stateful command falsifies a claim | `CHANGES_REQUIRED` | Preserve seed, replay path, minimized input/commands, and disposition; correct through spec-first and test-first workflow |
 | Finite model finds an invariant violation | `CHANGES_REQUIRED` | Preserve the shortest breadth-first command path and state; correct through the owning workflow |
 | Verifier exit `1` | `CHANGES_REQUIRED` | Fix declaration or traceability diagnostics |
-| Verifier exit `0` and Jest passes | `AWAITING_SIGN_OFF` | Present evidence and ask for separate Goal 3 approval |
+| Verifier exit `0` and Jest passes | `AWAITING_SIGN_OFF` | Present evidence, the `property-discovery.md` inventory (candidate counts, rejections, deferred risks), and ask for separate Goal 3 approval |
 | Verifier exit `2` or `PROP010` | `BLOCKED` | Correct discovery, configuration, access, or tooling |
 | Excessive generator discards, timeout, non-replayable failure, flaky result, invalid model/bounds, or finite-model state-limit exhaustion | `BLOCKED` | Repair evidence; do not infer a property failure or pass |
 
