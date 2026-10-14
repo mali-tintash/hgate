@@ -681,8 +681,9 @@
     container.replaceChildren();
     const layout = layoutProject(project);
     const NODE_HEIGHT = 80;
+    const canvasHeight = Math.max(layout.height, 560);
+    const view = { width: 0, height: canvasHeight, zoom: 1 };
     const svg = svgElement("svg", {
-      viewBox: `0 0 ${layout.width} ${layout.height}`,
       role: "img",
       "aria-label": "Bounded context topology",
     });
@@ -783,6 +784,20 @@
       }
     };
 
+    const applyView = () => {
+      const available = container.clientWidth ? container.clientWidth - 26 : 0;
+      const pixelWidth = Math.max(available, 320);
+      view.width = pixelWidth / view.zoom;
+      view.height = canvasHeight / view.zoom;
+      svg.setAttribute("viewBox", `0 0 ${view.width} ${view.height}`);
+      svg.style.width = `${pixelWidth}px`;
+      svg.style.height = `${canvasHeight}px`;
+    };
+    const setZoom = (percent) => {
+      view.zoom = percent / 100;
+      applyView();
+    };
+
     const toSvgPoint = (event) => {
       const matrix = svg.getScreenCTM();
       if (!matrix) return { x: event.clientX, y: event.clientY };
@@ -825,8 +840,8 @@
         if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 4) return;
         drag.moved = true;
         const pointer = toSvgPoint(event);
-        position.x = Math.max(0, Math.min(layout.width - NODE_WIDTH, pointer.x - drag.dx));
-        position.y = Math.max(0, Math.min(layout.height - NODE_HEIGHT, pointer.y - drag.dy));
+        position.x = Math.max(0, Math.min(Math.max(0, view.width - NODE_WIDTH), pointer.x - drag.dx));
+        position.y = Math.max(0, Math.min(Math.max(0, view.height - NODE_HEIGHT), pointer.y - drag.dy));
         place();
         updateEdges();
       });
@@ -853,6 +868,8 @@
     }
     updateEdges();
     container.append(svg);
+    applyView();
+    return { setZoom };
   }
 
   function renderDetails(project, bcId, container) {
@@ -986,11 +1003,12 @@
     const zoomLevel = document.getElementById("zoomLevel");
     if (!scenarioTab || !projectTab || !folderInput) return;
     let diagramZoom = 100;
+    let topology = null;
 
     const updateZoom = (nextZoom) => {
       diagramZoom = clampZoom(nextZoom);
       const svg = graph.querySelector("svg");
-      if (svg) svg.style.width = `${diagramZoom}%`;
+      if (topology) topology.setZoom(diagramZoom);
       zoomLevel.value = `${diagramZoom}%`;
       zoomLevel.textContent = `${diagramZoom}%`;
       zoomOutButton.disabled = !svg || diagramZoom <= MIN_ZOOM;
@@ -1020,7 +1038,7 @@
         renderSummary(loaded.project, summary);
         renderDiagnostics(loaded.diagnostics, diagnostics);
         const select = (bcId) => renderDetails(loaded.project, bcId, details);
-        renderTopology(loaded.project, graph, select);
+        topology = renderTopology(loaded.project, graph, select);
         updateZoom(100);
         select(loaded.project.boundedContexts[0] && loaded.project.boundedContexts[0].id);
       } catch (error) {
