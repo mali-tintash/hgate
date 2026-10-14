@@ -177,7 +177,6 @@ otherwise use `IMPLEMENTED -> BLOCKED`.
 
 Update only `.github/skills/<bc-name>/status.md` as authoritative content.
 Record report evidence, blockers, recommended next skill, and transition
-history. Then synchronize only the projected lifecycle in
-`docs/hgate-project.json`, preserve all unrelated entries and stable IDs, omit
-timestamps, sort deterministically, and validate against
-`docs/hgate-project.schema.json`.
+history. Then run `npm run project:sync` followed by `npm run project:check`.
+Do not edit `docs/hgate-project.json` by hand; the generator preserves stable
+IDs, ordering, and schema validity.

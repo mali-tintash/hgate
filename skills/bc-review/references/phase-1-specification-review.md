@@ -212,6 +212,6 @@ For `spec-only`, update local lifecycle metadata after reporting:
   state.
 
 Modify only `.github/skills/<bc-name>/status.md` as authoritative content, then
-synchronize only its lifecycle in the derived `docs/hgate-project.json`.
+run `npm run project:sync`; the generator projects its lifecycle.
 
 For `spec-only`, stop here.

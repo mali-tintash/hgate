@@ -30,3 +30,10 @@ reflect this. The README workflow diagram and adoption guide were updated to
 show bc-enhancement as the iterative loop rather than a bug/change-only path.
 
 - [Phase-granular skill loading](../../docs/adr/2026-10-14-phase-granular-skill-loading.md)
+## Generate the project projection procedurally
+
+- **Asked:** Should this skill hand-sync `docs/hgate-project.json`?
+- **Findings:** The sync is mechanical and costs LLM tokens; see
+  [ADR-008](../../docs/adr/2026-10-14-procedural-project-projection.md).
+- **Decision/Action:** Run `npm run project:sync` (and `project:check` for
+  drift) instead of editing the JSON by hand.

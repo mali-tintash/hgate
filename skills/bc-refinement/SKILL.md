@@ -50,8 +50,8 @@ and addressed in a separate session. It will NOT be designed or implemented here
 At session start, update this BC's `status.md` from `DISCOVERED`, `REFINED`, or
 `SPEC_REVIEWED` to `REFINING`. If the file does not exist, create it from
 `assets/status-template.md` and record why lifecycle tracking was initialized
-late. Immediately synchronize the lifecycle into `docs/hgate-project.json` and
-validate the projection; `status.md` remains authoritative.
+late. Immediately run `npm run project:sync` (the generator reads the lifecycle from
+`status.md`, which remains authoritative).
 
 ---
 

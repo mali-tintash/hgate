@@ -17,7 +17,8 @@ Perform a repeatable, evidence-based review of one Bounded Context (BC):
 This is a read-only review of specifications and source code. Do not modify
 specification, source, migration, or test files. The only authoritative write is
 the target BC's local `status.md` after the final report is complete. When that
-lifecycle value changes, also update the derived `docs/hgate-project.json`.
+lifecycle value changes, also run `npm run project:sync` to refresh the derived
+`docs/hgate-project.json`.
 
 ## Inputs
 

@@ -27,6 +27,9 @@ run() {
   }
 }
 
+if [ -f tools/project-projection/generate.mjs ]; then
+  run npm run --silent project:check
+fi
 run npm run --silent verify:bdd
 if ls .github/skills/*/properties.md >/dev/null 2>&1; then
   run npm run --silent verify:properties

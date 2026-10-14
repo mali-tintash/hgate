@@ -18,12 +18,14 @@ After updating all files, self-check:
     `@scenario:<ID>` tag; no ID is duplicated or reused.
 12. `domain-model.md` contains the structured Ports table and every port has a
     name, direction, purpose, and contract.
-13. If the refined authoritative artifacts changed projected information,
-    synchronize `docs/hgate-project.json`. Include the BC's stable ID, name,
-    domain ID, classification, boundary role, lifecycle from `status.md`,
-    ownership, capabilities, structured ports, ACL metadata, and source paths.
-    Preserve unrelated entries and deterministic ordering, omit timestamps, and
-    validate against `docs/hgate-project.schema.json`.
+13. If the refined authoritative artifacts changed projected information, run
+    `npm run project:sync` (`node tools/project-projection/generate.mjs --root .`)
+    and then `npm run project:check`. Never hand-edit `docs/hgate-project.json`.
+    Ensure each `*-acl.md` has `acl`/`system`/`direction` frontmatter, the
+    `domain-model.md` Ports table is complete, and `docs/domain-map.md` has the
+    `**Project:**` line and inventory rows the generator reads. The generator
+    validates against `docs/hgate-project.schema.json`; fix the Markdown if it
+    reports problems.
 14. If Goal 3 was explicitly selected, every property declaration has complete
     metadata and one valid, repository-unique `@property:<ID>`; no property
     merely restates one named BDD example.

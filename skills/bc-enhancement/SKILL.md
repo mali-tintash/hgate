@@ -129,8 +129,8 @@ Proceed to Phase 1. First update local lifecycle status:
 IMPLEMENTED | VERIFIED -> CHANGING
 ```
 
-Immediately synchronize that lifecycle into `docs/hgate-project.json` and
-validate it; the transition remains owned by `status.md`.
+Immediately run `npm run project:sync`; the transition remains owned by
+`status.md`.
 
 If the BC is not in an eligible state, stop and resolve the status/code
 mismatch before implementation.
@@ -282,13 +282,12 @@ selected Goal 3 sign-off pass, update:
 CHANGING -> IMPLEMENTED
 ```
 
-After authoritative specifications and `status.md` are final, synchronize
-`docs/hgate-project.json` only if projected information changed. Preserve stable
-BC/relationship/journey IDs and unrelated entries; derive lifecycle from
-`status.md`; include structured ports, ACLs, and source paths; omit timestamps;
-sort deterministically; and validate against
-`docs/hgate-project.schema.json`. The projection records confirmed truth but
-never decides it independently.
+After authoritative specifications and `status.md` are final, run
+`npm run project:sync` and then `npm run project:check` if projected
+information changed. The generator derives lifecycle from `status.md`, ports,
+ACLs, and source paths from the Markdown, orders deterministically, omits
+timestamps, and validates against `docs/hgate-project.schema.json`. Never
+hand-edit the JSON; it records confirmed truth but never decides it.
 
 This intentionally makes any previous `VERIFIED` status stale. Run
 `bc-review full` for independent verification. If blocked, record
