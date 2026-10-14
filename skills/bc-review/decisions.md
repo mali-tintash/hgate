@@ -6,3 +6,5 @@
 - [BDD scenario-to-test traceability](../../docs/adr/2026-08-07-bdd-scenario-test-traceability.md)
 - [BDD-to-TDD human sign-off loop](../../docs/adr/2026-10-05-bdd-tdd-human-signoff-loop.md)
 - [Optional business-logic verification](../../docs/adr/2026-10-05-optional-business-logic-verification.md)
+
+- [Phase-granular skill loading](../../docs/adr/2026-10-14-phase-granular-skill-loading.md)

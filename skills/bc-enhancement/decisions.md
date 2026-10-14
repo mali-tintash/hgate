@@ -28,3 +28,5 @@ implementation work: iterative new slices, changed rules, bug fixes, and gap
 closure. The frontmatter, overview, and partial-implement rule were updated to
 reflect this. The README workflow diagram and adoption guide were updated to
 show bc-enhancement as the iterative loop rather than a bug/change-only path.
+
+- [Phase-granular skill loading](../../docs/adr/2026-10-14-phase-granular-skill-loading.md)

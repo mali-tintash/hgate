@@ -16,3 +16,5 @@
   `Oracle independence`; subject and oracle never share an implementation path.
   The verifier enforces declaration (`PROP040`/`PROP041`); `bc-review` and
   human sign-off assess real independence.
+
+- [Phase-granular skill loading](../../docs/adr/2026-10-14-phase-granular-skill-loading.md)

@@ -24,3 +24,5 @@ approval, implements in red-green-refactor business slices, audits BC isolation
 and wiring, and proves every approved rule and critical BDD scenario through a
 final traceability report. Existing BC changes continue to use
 `bc-enhancement`.
+
+- [Phase-granular skill loading](../../docs/adr/2026-10-14-phase-granular-skill-loading.md)
