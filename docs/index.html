@@ -374,37 +374,29 @@
       </div>
       <div class="feat-card">
         <span class="tag">PROPERTY</span>
-        <h3>Property-based business-logic verification</h3>
-        <p>Optional Goal 3: after BDD/TDD, an opted-in BC states universal invariants in
-          <code class="mono">properties.md</code> as independent <code class="mono">@property:&lt;ID&gt;</code>
-          claims. Jest tests reference them as <code class="mono">[PROP:&lt;ID&gt;]</code> and run
-          <code class="mono">fast-check</code> against production code via
-          <code class="mono">hgateProperty</code>, or exhaustively via <code class="mono">hgateFiniteModel</code>
-          where the bounded state space is practical. Each claim names an independent oracle and a risk tier
-          with sensitivity evidence, so a property that can't fail isn't coverage.</p>
+        <h3>Test the rules, not just the examples</h3>
+        <p>Example scenarios only cover the cases someone thought of. For the business rules that must
+          always hold, hGATE can check them across thousands of generated cases and flag any that break.
+          Optional, and added where the risk justifies it.</p>
       </div>
       <div class="feat-card">
         <span class="tag">SIGN-OFF</span>
-        <h3>Human sign-off loops</h3>
-        <p>BDD examples and universal claims never substitute for one another. Each has its own verifier,
-          counterexample contract, and human approval, stored as an immutable record under
-          <code class="mono">docs/verification/</code> (<code class="mono">bdd-signoffs</code> and
-          <code class="mono">property-signoffs</code>).</p>
+        <h3>Human sign-off</h3>
+        <p>A person reviews and approves the behavior examples and the business rules separately, and each
+          approval is kept as a permanent record. Passing tests never replace that judgment.</p>
       </div>
       <div class="feat-card">
         <span class="tag">VERIFY-SPEC</span>
-        <h3>Deterministic spec gates</h3>
-        <p><code class="mono">tools/verify-spec</code> runs the mechanical bc-refinement and
-          bc-implementation readiness checks with stable <code class="mono">VSP###</code> codes and
-          <code class="mono">file:line</code> output, so the agent spends tokens on judgment, not checklists.</p>
+        <h3>Automatic spec checks</h3>
+        <p>Routine consistency checks on your specifications run automatically and report only what's
+          wrong, with the exact file and line. The AI saves its effort for the questions that need
+          judgment.</p>
       </div>
       <div class="feat-card">
         <span class="tag">PROJECTION</span>
-        <h3>Project JSON generator</h3>
-        <p><code class="mono">docs/hgate-project.json</code> is a generated, schema-validated projection of
-          BCs, relationships, and journeys for the project viewer. Markdown stays authoritative;
-          <code class="mono">project:sync</code> regenerates it and <code class="mono">project:check</code>
-          fails CI on drift.</p>
+        <h3>Always-current project map</h3>
+        <p>The project overview used by the viewer is generated from your specs, so it never goes stale
+          or gets edited by hand. CI tells you if it falls out of date.</p>
       </div>
     </div>
   </div>
