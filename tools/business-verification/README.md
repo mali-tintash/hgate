@@ -122,7 +122,7 @@ a BDD scenario or use a scenario ID as a property ID.
 `hgateFiniteModel` only on a statically reachable path of the test body: not in
 a constant-false branch, after `return`/`throw`, in a helper never called, or in
 a callback that is not immediately invoked or passed to a known invoker (full
-rules in the [BDD README](../bdd-traceability/README.md#bdd-test-references)).
+rules in the [BDD README](../bdd-traceability/README.md)).
 This is static analysis and cannot prove the property is meaningful or that a
 callback fires at runtime; the `Sensitivity` evidence below is the runtime
 backstop.
