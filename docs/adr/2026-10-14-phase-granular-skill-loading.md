@@ -21,7 +21,7 @@ followed by a mandatory "read this file in full before doing any work in this
 phase" instruction. No rule text was rewritten.
 
 `tools/skill-split/verify.mjs` (run by `npm test`) compares against the
-pre-split baseline commit `c2aa637`: every original line and heading must appear
+pre-split baseline commit `hgate-pre-split-baseline` (a git tag: the unsplit skills plus the generator and verify-spec changes, derived from `c2aa637`): every original line and heading must appear
 exactly once across core and references, nothing else may be added except the
 stub and reference-intro lines, and all links and reference pointers must resolve.
 

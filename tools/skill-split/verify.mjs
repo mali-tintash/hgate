@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 // Last commit before the large skills were split into core + references.
-export const BASELINE_REF = "c2aa637";
+export const BASELINE_REF = "hgate-pre-split-baseline";
 export const SPLIT_SKILLS = ["bc-enhancement", "bc-implementation", "bc-refinement", "bc-review"];
 
 const INTRO_RE = /^Reference for the ".*" section of `SKILL\.md`\./;
