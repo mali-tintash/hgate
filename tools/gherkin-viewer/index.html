@@ -234,6 +234,18 @@
         padding: 12px;
       }
 
+      .examples {
+        border-collapse: collapse;
+        margin: 8px 0 0 16px;
+      }
+
+      .examples th,
+      .examples td {
+        border: 1px solid #bae6fd;
+        padding: 3px 10px;
+        text-align: left;
+      }
+
       .project-graph {
         overflow: auto;
       }
@@ -510,74 +522,127 @@ Feature: Portal User Authentication (AdminAuthMiddleware)
         return blocks;
       }
 
-      function parseBlocks(blocks) {
+      // Pasted markdown often has escaped fences (\`\`\`) and Feature headings outside the code block.
+      function normalizeMarkdown(markdown) {
+        return markdown.replace(/\\`/g, "`").replace(/\r\n?/g, "\n");
+      }
+
+      function parseMarkdown(markdown) {
         const parsed = [];
-        for (const block of blocks) {
-          const lines = block.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-          let currentFeature = null;
-          let pendingTags = [];
-          for (const line of lines) {
-            if (line.startsWith("@")) {
-              pendingTags = line.split(/\s+/).filter(Boolean);
-              continue;
-            }
-            if (line.startsWith("Feature:")) {
-              currentFeature = {
-                title: line.slice("Feature:".length).trim(),
-                description: [],
-                backgroundSteps: [],
-                scenarios: [],
-              };
-              parsed.push(currentFeature);
-              continue;
-            }
-            if (!currentFeature) {
-              continue;
-            }
-            if (line.startsWith("Background:")) {
-              currentFeature.backgroundSteps.push({
-                keyword: "Background",
-                text: "",
-              });
-              continue;
-            }
-            if (line.startsWith("Scenario:") || line.startsWith("Scenario Outline:")) {
-              currentFeature.scenarios.push({
-                title: line.replace(/^Scenario( Outline)?:/, "").trim(),
-                kind: line.startsWith("Scenario Outline:") ? "Scenario Outline" : "Scenario",
-                tags: pendingTags,
-                steps: [],
-              });
+        let inBlock = false;
+        let headingFeature = null;
+        let currentFeature = null;
+        let pendingTags = [];
+        let currentScenario = null;
+        let inExamples = false;
+        let inBackground = false;
+
+        const startFeature = (title, description) => {
+          currentFeature = { title, description: description ? [description] : [], backgroundSteps: [], scenarios: [] };
+          parsed.push(currentFeature);
+          currentScenario = null;
+          inExamples = false;
+          inBackground = false;
+          return currentFeature;
+        };
+
+        for (const rawLine of markdown.split("\n")) {
+          const line = rawLine.trim();
+          const fence = line.match(/^```\s*(\w*)/);
+          if (fence) {
+            if (inBlock) {
+              inBlock = false;
+            } else if (fence[1].toLowerCase() === "gherkin") {
+              inBlock = true;
+              blockCount += 1;
               pendingTags = [];
+            }
+            continue;
+          }
+          if (!inBlock) {
+            const heading = line.match(/^#{1,6}\s*Feature:\s*(.*)$/i);
+            if (heading) {
+              headingFeature = { title: heading[1].trim(), description: [] };
+              currentFeature = null;
               continue;
             }
-            const stepMatch = line.match(/^(Given|When|Then|And|But)\s+(.*)$/);
-            if (stepMatch && currentFeature.scenarios.length > 0) {
-              currentFeature.scenarios[currentFeature.scenarios.length - 1].steps.push({
-                keyword: stepMatch[1],
-                text: stepMatch[2],
-              });
-              continue;
+            if (headingFeature && line && !line.startsWith("#") && headingFeature.description.length < 5) {
+              headingFeature.description.push(line);
             }
-            if (stepMatch && currentFeature.backgroundSteps.length > 0) {
-              currentFeature.backgroundSteps.push({
-                keyword: stepMatch[1],
-                text: stepMatch[2],
-              });
-              continue;
+            continue;
+          }
+          if (!line || line.startsWith("#")) continue;
+
+          if (line.startsWith("@")) {
+            pendingTags = line.split(/\s+/).filter(Boolean);
+            continue;
+          }
+          if (line.startsWith("Feature:")) {
+            startFeature(line.slice("Feature:".length).trim());
+            headingFeature = null;
+            continue;
+          }
+          const isScenario = /^Scenario( Outline| Template)?:/.test(line);
+          if (!currentFeature && (isScenario || /^Background:/.test(line))) {
+            const source = headingFeature || { title: "Scenarios", description: [] };
+            startFeature(source.title, source.description.join(" "));
+            if (headingFeature) headingFeature.consumed = true;
+          }
+          if (!currentFeature) continue;
+
+          if (line.startsWith("Background:")) {
+            inBackground = true;
+            inExamples = false;
+            currentScenario = null;
+            currentFeature.backgroundSteps.push({ keyword: "Background", text: "" });
+            continue;
+          }
+          if (isScenario) {
+            inBackground = false;
+            inExamples = false;
+            currentScenario = {
+              title: line.replace(/^Scenario( Outline| Template)?:/, "").trim(),
+              kind: /^Scenario (Outline|Template)/.test(line) ? "Scenario Outline" : "Scenario",
+              tags: pendingTags,
+              steps: [],
+              examples: [],
+            };
+            currentFeature.scenarios.push(currentScenario);
+            pendingTags = [];
+            continue;
+          }
+          if (/^Examples:/.test(line)) {
+            inExamples = true;
+            continue;
+          }
+          if (line.startsWith("|")) {
+            if (inExamples && currentScenario) {
+              currentScenario.examples.push(
+                line.replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim()),
+              );
             }
-            if (currentFeature.scenarios.length === 0) {
-              currentFeature.description.push(line);
-            }
+            continue;
+          }
+          const stepMatch = line.match(/^(Given|When|Then|And|But)\s+(.*)$/);
+          if (stepMatch) {
+            const target = inBackground || !currentScenario ? currentFeature.backgroundSteps : currentScenario.steps;
+            target.push({ keyword: stepMatch[1], text: stepMatch[2] });
+            continue;
+          }
+          if (!currentScenario && !inBackground) {
+            currentFeature.description.push(line);
           }
         }
         return parsed;
       }
 
+      let blockCount = 0;
+
       function render() {
-        const markdown = sourceInput.value;
-        const blocks = extractGherkinBlocks(markdown);
-        const features = parseBlocks(blocks);
+        const markdown = normalizeMarkdown(sourceInput.value);
+        blockCount = 0;
+        const features = parseMarkdown(markdown);
+        const blocks = { length: blockCount };
         const filter = filterInput.value.trim().toLowerCase();
 
         let featureCount = 0;
@@ -636,6 +701,14 @@ Feature: Portal User Authentication (AdminAuthMiddleware)
             html += `<h3>${escapeHtml(scenario.kind)}: ${escapeHtml(scenario.title)}</h3>`;
             for (const step of scenario.steps) {
               html += `<div class="step ${escapeHtml(step.keyword)}"><strong>${escapeHtml(step.keyword)}</strong> ${escapeHtml(step.text)}</div>`;
+            }
+            if (scenario.examples.length > 0) {
+              html += `<table class="examples"><tbody>`;
+              scenario.examples.forEach((row, rowIndex) => {
+                const cell = rowIndex === 0 ? "th" : "td";
+                html += `<tr>${row.map((value) => `<${cell}>${escapeHtml(value)}</${cell}>`).join("")}</tr>`;
+              });
+              html += `</tbody></table>`;
             }
             html += `</article>`;
           }
