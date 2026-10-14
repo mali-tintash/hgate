@@ -3,7 +3,10 @@
   "private": true,
   "description": "hGATE methodology repository; typescript is a devDependency only for the verifier tests.",
   "scripts": {
-    "test": "node --test tools/bdd-traceability/tests/*.test.mjs tools/business-verification/tests/*.test.mjs tools/gherkin-viewer/project-viewer.test.js"
+    "project:sync": "node tools/project-projection/generate.mjs --root .",
+    "project:check": "node tools/project-projection/generate.mjs --root . --check",
+    "verify:spec": "node tools/verify-spec/verify.mjs --root .",
+    "test": "node --test tools/project-projection/tests/*.test.mjs tools/verify-spec/tests/*.test.mjs tools/bdd-traceability/tests/*.test.mjs tools/business-verification/tests/*.test.mjs tools/gherkin-viewer/project-viewer.test.js"
   },
   "devDependencies": {
     "typescript": "^5.6.0"

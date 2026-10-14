@@ -68,10 +68,11 @@ project policy requires it.
    `VERIFIED`.
 6. Cross-BC validation does not change BC lifecycle state. It records feature
    findings and routes each failure to its owning BC.
-7. After a valid transition, the owning specialist synchronizes that lifecycle
-   into `docs/hgate-project.json`, preserves unrelated entries and stable IDs,
-   uses deterministic ordering with no timestamps, and validates against
-   `docs/hgate-project.schema.json`.
+7. After a valid transition, the owning specialist runs `npm run project:sync`
+   (`tools/project-projection/generate.mjs`), which regenerates
+   `docs/hgate-project.json` deterministically from `status.md` and the other
+   Markdown sources and validates it against `docs/hgate-project.schema.json`.
+   The JSON is never edited by hand.
 8. A lifecycle transition is not complete for repository tooling until the
    projection is synchronized and valid. A projection-only edit never counts as
    a transition.

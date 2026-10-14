@@ -3,14 +3,25 @@
 #   cp templates/hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
 # or call it from your Husky .husky/pre-commit file. hGATE never installs it.
 #
-# Runs the deterministic traceability verifiers only when a staged change can
+# Checks the generated project projection and runs the deterministic
+# traceability verifiers only when a staged change can
 # affect them (tests, scenario or property specs, or the tooling itself).
 
 set -eu
 
 staged=$(git diff --cached --name-only --diff-filter=ACMRD)
-if ! printf '%s\n' "$staged" | grep -Eq '(\.(spec|test)\.ts$|bdd-scenarios\.md$|properties\.md$|^tools/)'; then
+if printf '%s\n' "$staged" | grep -Eq '(domain-map\.md$|context-map\.md$|/(SKILL|status|domain-model|bdd-scenarios)\.md$|-acl\.md$|hgate-project\.json$)'; then
+  echo "hGATE: checking docs/hgate-project.json projection..."
+  npm run --silent project:check
+fi
+
+if ! printf '%s\n' "$staged" | grep -Eq '(\.(spec|test)\.ts$|bdd-scenarios\.md$|properties\.md$|\.github/skills/.*\.md$|\.event\.ts$|^tools/)'; then
   exit 0
+fi
+
+if [ -f tools/verify-spec/verify.mjs ]; then
+  echo "hGATE: verifying specification consistency..."
+  npm run --silent verify:spec
 fi
 
 echo "hGATE: verifying BDD traceability..."

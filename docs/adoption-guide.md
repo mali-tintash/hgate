@@ -46,7 +46,25 @@ cp -R tools/bdd-traceability tools/shared \
   /path/to/your-project/tools/
 ```
 
-The verifier needs the project's own `typescript` package (already present in
+Also install the specification verifier (`verify-spec`, no dependencies) so
+refinement and readiness gates run deterministically instead of as LLM
+checklists:
+
+```bash
+cp -R tools/verify-spec /path/to/your-project/tools/
+```
+
+```json
+{
+  "scripts": {
+    "verify:spec": "node tools/verify-spec/verify.mjs --root ."
+  }
+}
+```
+
+See [`tools/verify-spec/README.md`](../tools/verify-spec/README.md).
+
+The traceability verifier needs the project's own `typescript` package (already present in
 TS/Jest projects; otherwise `npm install --save-dev typescript`).
 
 For a TypeScript/Jest project, add this required package script:
@@ -121,7 +139,7 @@ installed automatically.
 | Pre-commit hook | `templates/hooks/pre-commit` | copy to `.git/hooks/pre-commit` (or call from `.husky/pre-commit`) and `chmod +x` |
 | Agent Stop hook (Claude Code format) | `templates/hooks/hgate-verify-stop.sh` + `templates/hooks/claude-settings.stop-hook.json` | copy the script to `.claude/hooks/`, `chmod +x`, merge the JSON into `.claude/settings.json` |
 
-All three run `npm run verify:bdd`, and `npm run verify:properties` when a
+All three run `npm run verify:spec` (when `tools/verify-spec` is installed), `npm run verify:bdd`, and `npm run verify:properties` when a
 `properties.md` exists, so the `verify:*` scripts above must be defined and
 `typescript` must be a project dependency. Mark the CI job as a required status
 check in branch protection; hooks are local and bypassable, CI is not. The Stop
@@ -240,12 +258,17 @@ ports, ACLs, and source paths. Relationships and journeys also use stable IDs.
 After an authoritative projected change:
 
 1. Update the owning Markdown artifact first.
-2. Regenerate or surgically synchronize the affected projection entries without
-   changing unrelated entries.
+2. Regenerate the projection with `npm run project:sync`
+   (`tools/project-projection/generate.mjs`); never hand-edit it. The generator
+   needs the `**Project:**`/`**Description:**` lines in `docs/domain-map.md`,
+   the Ports table in each `domain-model.md`, and `acl`/`system`/`direction`
+   frontmatter in each `*-acl.md`.
 3. Read lifecycle only from the BC's `status.md`.
 4. Omit timestamps and sort arrays deterministically by stable ID; sort nested
    ports and ACLs by name.
-5. Validate against `docs/hgate-project.schema.json`.
+5. The generator validates against `docs/hgate-project.schema.json`; gate drift
+   with `npm run project:check` in the pre-commit hook and CI (see
+   `templates/`).
 
 Do not block viewing older projects that only have Markdown maps. The viewer
 prefers valid JSON when present and falls back to legacy Markdown.
@@ -296,7 +319,7 @@ it updates the spec first, then implements, then sweeps for ghost behavior.
 1. Run `domain-exploration` in a fork.
 2. Confirm the problem, language, capabilities, domains, and BC boundaries.
 3. Persist `docs/domain-map.md` and `docs/context-map.md`.
-4. Create and validate the synchronized `docs/hgate-project.json` projection.
+4. Generate `docs/hgate-project.json` with `npm run project:sync`.
 5. Initialize one local `status.md` per confirmed BC.
 6. Choose one BC and run `bc-refinement` in a separate fork.
 7. Optionally run `bc-review spec-only`.
@@ -382,8 +405,8 @@ Coordination rules:
 2. Keep decisions and status in the owning BC directory.
 3. Change domain/context maps only when confirmed boundaries or relationships
    change.
-4. Synchronize `docs/hgate-project.json` only when projected authoritative
-   information changes; deterministic updates must preserve unrelated entries.
+4. Run `npm run project:sync` when projected authoritative information
+   changes; the result is deterministic and `project:check` gates drift.
 5. Define provider contracts in the owning BC and consumer behavior in the
    consuming BC.
 6. Link both BCs to one ADR when a decision is genuinely cross-cutting.

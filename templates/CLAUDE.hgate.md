@@ -165,11 +165,13 @@ Relationships project `id`, `from`, `to`, `information`, `sourceOfTruth`,
 `id`, `name`, `boundedContextIds`, `entryPoint`, `outcome`, and
 `validationArtifact`.
 
-Synchronize the projection only when projected authoritative information
-changes. Preserve unrelated entries and stable IDs, omit timestamps, order
-collections deterministically by stable ID (nested ports and ACLs by name), and
-validate against `docs/hgate-project.schema.json`. Do not report the workflow
-complete with a stale or invalid projection. When information is undecided,
+Never edit the projection by hand. Generate it with
+`npm run project:sync` (`node tools/project-projection/generate.mjs --root .`)
+when projected authoritative information changes; the generator orders by
+stable ID (nested ports and ACLs by name), omits timestamps, and validates
+against `docs/hgate-project.schema.json`. `npm run project:check` exits non-zero
+on drift. Do not report the workflow complete with a stale or invalid
+projection. When information is undecided,
 resolve it in the owning Markdown artifact or use an allowed `UNCONFIRMED`
 value; never decide it directly in JSON.
 

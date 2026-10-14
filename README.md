@@ -24,7 +24,7 @@ repository:
 mkdir -p /path/to/your-project/.github/skills
 cp -R skills/* /path/to/your-project/.github/skills/
 mkdir -p /path/to/your-project/tools
-cp -R tools/bdd-traceability tools/shared \
+cp -R tools/bdd-traceability tools/verify-spec tools/shared \
   /path/to/your-project/tools/
 ```
 
@@ -154,9 +154,10 @@ conflicts during parallel work.
 
 `docs/hgate-project.json` is the single canonical machine-readable projection
 used by the project viewer. Authoritative Markdown remains the source of truth,
-and BC-local `status.md` remains authoritative for lifecycle. Specialist
-workflows synchronize the projection only when projected information changes,
-using stable IDs, deterministic ordering, no timestamps, and schema validation.
+and BC-local `status.md` remains authoritative for lifecycle. The projection is
+generated, not hand-edited, by `tools/project-projection/generate.mjs`
+(see [`tools/project-projection/README.md`](tools/project-projection/README.md)):
+stable IDs, deterministic ordering, no timestamps, and schema validation.
 Projects without the projection remain supported through their legacy Markdown
 maps.
 
@@ -195,7 +196,27 @@ paths.
 The JSON is derived, not a place to decide boundaries or status. Update the
 owning Markdown first, synchronize only affected projected information,
 preserve unrelated entries, omit timestamps, sort deterministically, and
-validate against `docs/hgate-project.schema.json`.
+validate against `docs/hgate-project.schema.json` by running the generator:
+
+```bash
+npm run project:sync    # node tools/project-projection/generate.mjs --root .
+npm run project:check   # same, but exits 1 on drift; use in hooks and CI
+```
+
+## Specification Verifier
+
+`tools/verify-spec/verify.mjs` is a dependency-free CLI that replaces the
+mechanical `bc-refinement` Phase 6 self-checks and the `bc-implementation`
+Phase 1 readiness checks (aggregate/class, event table/files, ACL docs,
+glossary, scenario tags, Ports table, lifecycle). It prints failures only, with
+stable `VSP###` codes and `file:line`:
+
+```bash
+node tools/verify-spec/verify.mjs --root . [--bc <name>] [--phase implementation]
+```
+
+See [`tools/verify-spec/README.md`](tools/verify-spec/README.md).
+
 ## BDD Traceability Verifier
 
 `tools/bdd-traceability/verify.mjs` deterministically checks adopted

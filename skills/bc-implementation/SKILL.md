@@ -159,6 +159,19 @@ Validate the specification before planning source code.
 
 #### Required consistency checks
 
+Run the deterministic part first and treat each failure as a blocking gap
+(`G#`) with its `file:line`; do not re-derive these by reading the files:
+
+```bash
+npm run verify:spec -- --bc <bc-name> --phase implementation
+```
+
+It enforces checks 1 (VSP001), 4 (VSP003/004/102/103), 5 (VSP002/101), 6
+(VSP105), and the clean-spec preconditions (VSP006-013, VSP104 unresolved
+`[OPEN]` questions, VSP106 lifecycle `REFINED`/`SPEC_REVIEWED`). If the tool is
+not installed, perform the list manually. Checks 2, 3, 7, 8, 9, and 10 stay
+judgment checks; apply them yourself.
+
 1. Every aggregate in `SKILL.md` is defined in `domain-model.md`.
 2. Every business rule has at least one BDD scenario.
 3. Every lifecycle state has defined allowed transitions and actors.
@@ -219,104 +232,7 @@ decisions file.
 
 ### Phase 2 - Build the Traceability Matrix
 
-Map each approved behavior to executable evidence before writing tests:
-
-```text
-| ID | Spec source | Behavior | Test level | Planned test | Production components |
-|----|-------------|----------|------------|--------------|-----------------------|
-| R1 | SKILL rule 1 | [...] | Unit | [...] | Aggregate, service |
-| CART-SUBMIT-001 | BDD scenario | [...] | Integration | [BDD:CART-SUBMIT-001] [...] | Controller -> repository |
-```
-
-Include:
-
-- Every core business rule
-- Every BDD scenario
-- Every allowed and rejected state transition
-- Every authorization branch
-- Every external integration success and failure path
-- Every concurrency or idempotency invariant
-
-Use the smallest meaningful test level:
-
-| Test level | Use for |
-|---|---|
-| Domain unit | Aggregate invariants, value objects, policies, transitions |
-| Application unit | Use-case orchestration, port calls, exception branches |
-| Repository integration | Queries, mappings, constraints, transactions, schema routing |
-| ACL adapter unit/integration | Translation, authentication, retries, error mapping |
-| Presentation unit | DTO mapping, service delegation, response shape |
-| Acceptance/integration | Critical BDD journeys across the BC's public boundary |
-
-Avoid duplicating the same assertion at every layer. Each test should protect the
-layer's responsibility.
-
-#### Optional Goal 3 decision and property matrix
-
-Before planning source code, ask one focused question:
-
-> Do you want Goal 3 business-logic verification for this BC implementation?
-
-If declined:
-
-1. Record the implementation scope and supplied rationale as a concluded
-   **Asked -> Findings -> Decision/Action** entry in the BC's `decisions.md`.
-2. Do not create a property sign-off artifact.
-3. Continue with the existing BDD/TDD workflow.
-
-If accepted, require an approved `.github/skills/<bc-name>/properties.md` and its
-approved `property-discovery.md` candidate inventory. If either does not exist,
-lacks a needed claim, or has `DEFERRED`/unresolved candidates relevant to this
-scope, return to `bc-refinement`; do not invent property claims or skip the
-discovery procedure inside implementation.
-
-Build a separate property matrix:
-
-```text
-| Property ID | Candidate ID | Source rule(s) | Universal claim | Technique | Generator/model | Oracle | Oracle source / independence | Planned Jest test | Bounds | Risk | Sensitivity method |
-|-------------|--------------|----------------|-----------------|-----------|-----------------|--------|------------------------------|-------------------|--------|------|--------------------|
-```
-
-Each `PROPERTY` row must also carry the declared generator adequacy fields
-(partitions, boundaries, combinations, min runs, discard ratio, shrinking,
-invalid-input generator, coverage counters); write the counters into the test
-before the generator is considered done.
-
-**Property red phase (sensitivity).** Passing is not enough: observe each
-property fail against its defect before recording it green. Use the declared
-method - mutation testing (Stryker is a recommended optional tool), a
-known-bad fixture, a temporarily injected defect (revert it), a deliberately
-violating value for the oracle, or a regression counterexample. Record the
-mutant/defect and the failure observed in `Sensitivity-Evidence` as
-`<defect>; <failure observed>`. A surviving mutant means strengthen the
-generator or oracle, not accept the property. Risk tiers: `LOW` may waive,
-`MEDIUM` needs a method, `HIGH` needs a production-logic method.
-
-Keep it separate from the BDD scenario matrix. Use `PROPERTY` for generated
-checks against production code and `FINITE_MODEL` only for explicitly bounded,
-exhaustively enumerable models. A `[PROP:<ID>]` test must execute that technique
-in its body via `hgateProperty`/`hgateFiniteModel`; empty tests are not coverage.
-
-Implement each oracle from its declared `Oracle source`. Never use the same
-implementation path as both subject and oracle, never write a "reference" that
-duplicates the production algorithm line for line, and never copy production
-transition logic into a finite model. If an independent oracle cannot be
-built, return to `bc-refinement` rather than weakening the claim.
-
-Use the scenario IDs already defined in `bdd-scenarios.md`; do not invent
-implementation-local aliases such as `S1`. Every executable test that claims
-scenario coverage must include `[BDD:<scenario-id>]` in its static Jest
-`it(...)` or `test(...)` title:
-
-```typescript
-it('[BDD:CART-SUBMIT-001] submits a valid cart', async () => {
-  // ...
-});
-```
-
-One scenario may map to several tests and one integration test may reference
-several scenario IDs, but every approved scenario ID needs at least one
-meaningful executable test.
+**Before doing any work in this phase, read `references/phase-2-build-the-traceability-matrix.md` in full and follow it exactly. It contains the complete body of this phase; do not proceed from memory or skip it.**
 
 ### Phase 3 - Implementation Plan and Approval
 
@@ -369,74 +285,7 @@ migrations, or tests before approval.
 
 ### Phase 4 - Test-First Execution
 
-Implement one approved slice at a time using red-green-refactor.
-
-#### 4a. Red
-
-1. Write tests derived from the traceability matrix, including the applicable
-   `[BDD:<scenario-id>]` marker.
-2. Run the smallest targeted test command.
-3. Confirm the test fails for the expected missing behavior.
-4. If it passes before implementation, determine whether:
-   - Existing code already implements the behavior
-   - The assertion is ineffective
-   - The test exercises the wrong path
-5. Correct the test or reclassify the initial-build eligibility. Never count an
-   unexplained pre-existing pass as a valid red phase.
-
-Do not weaken assertions merely to obtain a passing test.
-
-#### 4b. Green
-
-Write the minimum complete production behavior required by the approved slice:
-
-1. Domain types, value objects, aggregates, policies, and events
-2. Application use cases and domain port interfaces
-3. Persistence models, migrations, repository adapters, and transactions
-4. ACL adapters for external systems
-5. Presentation controllers, consumers, DTOs, and validation
-6. Module wiring and dependency injection
-
-Run the targeted tests until they pass.
-
-"Minimum" means no speculative behavior. It does not permit omitting specified
-failure paths, authorization, persistence guarantees, or integration handling.
-
-#### 4c. Refactor
-
-After the slice is green:
-
-- Remove duplication
-- Improve names to match ubiquitous language
-- Confirm dependency direction
-- Remove test-only production seams that are not part of the design
-- Re-run the targeted tests
-
-Do not refactor unrelated BCs.
-
-#### Whole-file awareness
-
-For every file changed:
-
-1. Read the relevant method and its immediate callers/callees.
-2. Wire every new interface into its implementation and DI registration.
-3. Search for stale placeholder names and unresolved references.
-4. Update related tests and mocks in the same slice.
-
-#### No orphan code
-
-For every new component confirm:
-
-- A port has a real adapter or an explicitly approved test stub
-- An adapter is registered and reachable
-- An application use case has a public caller or consumer
-- A migration is included in the project's migration runner
-- A domain event is emitted from the specified transition
-- An event consumer is registered if it belongs to this BC
-- A DTO is used by an actual entry point
-- A test targets behavior rather than merely constructing the class
-
-Delete unused speculative components instead of leaving them for future work.
+**Before doing any work in this phase, read `references/phase-4-test-first-execution.md` in full and follow it exactly. It contains the complete body of this phase; do not proceed from memory or skip it.**
 
 ### Phase 5 - BC Isolation and Integration Audit
 
@@ -477,120 +326,7 @@ Fix all violations before completion.
 
 ### Phase 6 - Specification Conformance and Validation
 
-#### 6a. Traceability verification
-
-Update the traceability matrix with actual files and test names. Every item must
-be classified:
-
-| Status | Meaning |
-|---|---|
-| Implemented | Production behavior exists and meaningful tests pass |
-| Blocked | Cannot be implemented because an approved dependency or decision is unavailable |
-| Deferred | Explicitly excluded from the approved implementation |
-| Missing | Required behavior has not been implemented |
-
-Do not complete the task while any approved item is `Missing`.
-
-#### 6b. Test audit
-
-Read every test file created or changed for the BC and confirm:
-
-- Happy paths and specified failures are covered
-- Tests assert outcomes, not logs or implementation trivia
-- Mocks represent port boundaries rather than bypassing business logic
-- Integration tests exercise real mappings and constraints where required
-- Every approved BDD scenario ID has meaningful executable coverage
-- Every `[BDD:<scenario-id>]` test reference resolves to a current scenario
-- No test claims coverage using a retired, unknown, or malformed scenario ID
-- Tests are isolated and deterministic
-
-#### 6c. Validation order
-
-Run the smallest existing commands that prove the implementation:
-
-1. Targeted tests for the BC
-2. The BDD-to-TDD sign-off loop described below
-3. Type checking or build
-4. Targeted linting, if supported
-5. Broader integration or full test suite only when needed by project policy or
-   shared wiring changes
-
-If the project has adopted hGATE but the traceability command is missing, stop
-and install `tools/bdd-traceability/verify.mjs` and its package script rather
-than replacing the deterministic check with manual review.
-
-#### 6d. BDD-to-TDD human sign-off
-
-Follow `tools/bdd-traceability/signoff-loop.md` for this BC before writing the
-final conformance report.
-
-The loop must:
-
-- Run relevant Jest tests and the repository-wide verifier against a clean
-  candidate revision
-- Present module scenario evidence and all repository diagnostics to the human
-- Keep the BC at `IMPLEMENTING` while changes are requested or the attempt is
-  blocked
-- Repeat test-first corrections until Jest passes and the verifier exits `0`
-- Obtain explicit human sign-off; verifier success alone is not approval
-- Create and commit one immutable artifact under
-  `docs/verification/bdd-signoffs/<bc-name>/`
-
-Do not proceed to close reporting until the loop reaches `SIGNED_OFF`.
-
-#### 6e. Goal 3 business-logic verification when selected
-
-After BDD-to-TDD reaches `SIGNED_OFF`, follow
-`tools/business-verification/signoff-loop.md`.
-
-The Goal 3 loop must:
-
-- Run the configured property/model Jest suite and repository-wide
-  `npm run verify:properties` command against a clean candidate revision
-- Preserve seeds, replay paths, minimized synthetic counterexamples or model
-  command sequences, and their dispositions
-- Treat falsification, missing or unreproducible sensitivity evidence, and
-  surviving recorded mutants as `CHANGES_REQUIRED`
-- Treat excessive discards, non-replayable failures, timeouts, invalid bounds,
-  state-limit exhaustion, or tooling failures as `BLOCKED`
-- Present property inventory, generators/models, oracles with their sources and
-  independence statements, bounds, observed partition statistics and discard
-  ratios, and explicit limitations to the human,
-  including the `property-discovery.md` candidate counts
-  (ACCEPTED/REJECTED/DEFERRED) and any DEFERRED risks
-  Also present sensitivity evidence (method, mutant/defect, failure observed).
-- Obtain approval separate from BDD sign-off
-- Create one immutable artifact under
-  `docs/verification/property-signoffs/<bc-name>/`
-
-Property-based success applies only to configured generated runs. Finite-model
-success applies only to declared bounds. Do not report either as unbounded
-proof.
-
-If Goal 3 was declined, report the BC-local decision entry instead and do not
-run or simulate this loop.
-
-#### 6f. Final conformance report
-
-```text
-## Specification Conformance
-
-Business rules: <implemented>/<total>
-BDD scenario IDs: <covered>/<total>
-Goal 3 properties: <covered>/<total> / DECLINED
-Ports and adapters: <implemented>/<specified>
-Migrations and constraints: <implemented>/<specified>
-
-BC isolation: CLEAR | VIOLATIONS FOUND
-Tests: PASS | FAIL
-Build/type check: PASS | FAIL | NOT AVAILABLE
-
-Missing approved behavior:
-- None | [...]
-
-Deferred items:
-- None | [...]
-```
+**Before doing any work in this phase, read `references/phase-6-specification-conformance-and-validation.md` in full and follow it exactly. It contains the complete body of this phase; do not proceed from memory or skip it.**
 
 ### Phase 7 - Close Report
 

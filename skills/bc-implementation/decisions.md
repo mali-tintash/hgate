@@ -24,3 +24,15 @@ approval, implements in red-green-refactor business slices, audits BC isolation
 and wiring, and proves every approved rule and critical BDD scenario through a
 final traceability report. Existing BC changes continue to use
 `bc-enhancement`.
+
+- [Phase-granular skill loading](../../docs/adr/2026-10-14-phase-granular-skill-loading.md)
+## Phase 1 consistency checks run by tool
+
+- **Asked:** Should the agent hand-verify mechanical spec consistency (aggregate
+  classes, event files, ACL docs, scenario tags, Ports table)?
+- **Findings:** These are deterministic and cost many tokens as an LLM
+  checklist. See [ADR-008](../../docs/adr/2026-10-14-deterministic-spec-verification.md).
+- **Decision/Action:** Run `npm run verify:spec` (`tools/verify-spec`) and fix
+  its failures; keep ambiguity, YAGNI, BC isolation, rule coverage and VO
+  discipline as agent judgment. Fall back to manual checks only when the tool is
+  not installed.

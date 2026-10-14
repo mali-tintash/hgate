@@ -1,5 +1,8 @@
 # Domain Map
 
+**Project:** [Project name]
+**Description:** [Confirmed project purpose]
+
 ## Purpose
 
 This document records confirmed business domains, subdomains, bounded contexts,
