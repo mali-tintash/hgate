@@ -20,10 +20,11 @@ phases to `references/phase-*.md`; each moved phase keeps its heading in the cor
 followed by a mandatory "read this file in full before doing any work in this
 phase" instruction. No rule text was rewritten.
 
-`tools/skill-split/verify.mjs` (run by `npm test`) compares against the
-pre-split baseline commit `hgate-pre-split-baseline` (a git tag: the unsplit skills plus the generator and verify-spec changes, derived from `c2aa637`): every original line and heading must appear
-exactly once across core and references, nothing else may be added except the
-stub and reference-intro lines, and all links and reference pointers must resolve.
+Content preservation was verified once during the migration with a throwaway
+script comparing every original line and heading, plus all links and reference
+pointers, against the unsplit skills. The tool was not kept. The unsplit
+originals remain available at the `pre-skill-split` tag on `main`
+(commit `c2aa637`).
 
 | Skill | Before (bytes) | After core (bytes) |
 | --- | --- | --- |
