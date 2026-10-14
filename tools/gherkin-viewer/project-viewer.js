@@ -680,6 +680,7 @@
   function renderTopology(project, container, onSelect) {
     container.replaceChildren();
     const layout = layoutProject(project);
+    const NODE_HEIGHT = 80;
     const svg = svgElement("svg", {
       viewBox: `0 0 ${layout.width} ${layout.height}`,
       role: "img",
@@ -699,6 +700,9 @@
     defs.append(marker);
     svg.append(defs);
 
+    const positions = new Map();
+    for (const [id, position] of layout.positions) positions.set(id, { x: position.x, y: position.y });
+
     for (const [domainId] of layout.columns) {
       const first = Array.from(layout.positions.values()).find((position) => position.domainId === domainId);
       if (!first) continue;
@@ -708,79 +712,146 @@
       svg.append(label);
     }
 
+    const pairCounts = new Map();
+    const edges = [];
+    const edgeLayer = svgElement("g");
+    const labelLayer = svgElement("g");
+    const nodeLayer = svgElement("g");
+    svg.append(edgeLayer, nodeLayer, labelLayer);
+
     for (const relation of project.relationships) {
-      const from = layout.positions.get(relation.from);
-      const to = layout.positions.get(relation.to);
-      if (!from || !to) continue;
-      const line = svgElement("line", {
-        x1: from.x + NODE_WIDTH,
-        y1: from.y + 40,
-        x2: to.x,
-        y2: to.y + 40,
-        class: "graph-edge",
-        "marker-end": "url(#project-arrow)",
-      });
-      svg.append(line);
+      if (!positions.has(relation.from) || !positions.has(relation.to) || relation.from === relation.to) continue;
+      const pairKey = [relation.from, relation.to].sort().join("|");
+      const index = pairCounts.get(pairKey) || 0;
+      pairCounts.set(pairKey, index + 1);
       const fullLabel = relation.information || relation.interaction || "";
       const displayLabel = abbreviateEdgeLabel(fullLabel);
-      const labelX = (from.x + NODE_WIDTH + to.x) / 2;
-      const labelY = (from.y + to.y) / 2 + 19;
       const labelWidth = Math.min(178, Math.max(54, displayLabel.length * 6.2 + 14));
+      const path = svgElement("path", { class: "graph-edge", "marker-end": "url(#project-arrow)", fill: "none" });
       const labelBackground = svgElement("rect", {
-        x: labelX - labelWidth / 2,
-        y: labelY - 14,
         width: labelWidth,
         height: 19,
         rx: 7,
         class: "graph-edge-label-background",
       });
-      const edgeLabel = svgElement("text", {
-        x: labelX,
-        y: labelY,
-        class: "graph-edge-label",
-      });
+      const edgeLabel = svgElement("text", { class: "graph-edge-label", "text-anchor": "middle" });
       edgeLabel.textContent = displayLabel;
       const title = svgElement("title");
       title.textContent = fullLabel;
       edgeLabel.append(title);
-      svg.append(labelBackground, edgeLabel);
+      edgeLayer.append(path);
+      labelLayer.append(labelBackground, edgeLabel);
+      edges.push({ relation, index, pairKey, path, labelBackground, edgeLabel, labelWidth });
     }
 
+    const borderPoint = (position, toward) => {
+      const cx = position.x + NODE_WIDTH / 2;
+      const cy = position.y + NODE_HEIGHT / 2;
+      const dx = toward.x - cx;
+      const dy = toward.y - cy;
+      if (dx === 0 && dy === 0) return { x: cx, y: cy };
+      const scale = 1 / Math.max(Math.abs(dx) / (NODE_WIDTH / 2 + 4), Math.abs(dy) / (NODE_HEIGHT / 2 + 4));
+      return { x: cx + dx * scale, y: cy + dy * scale };
+    };
+
+    const updateEdges = () => {
+      for (const edge of edges) {
+        const from = positions.get(edge.relation.from);
+        const to = positions.get(edge.relation.to);
+        const fromCenter = { x: from.x + NODE_WIDTH / 2, y: from.y + NODE_HEIGHT / 2 };
+        const toCenter = { x: to.x + NODE_WIDTH / 2, y: to.y + NODE_HEIGHT / 2 };
+        const start = borderPoint(from, toCenter);
+        const end = borderPoint(to, fromCenter);
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const length = Math.hypot(dx, dy) || 1;
+        // Normal is oriented by canonical pair order so opposite edges curve apart.
+        const sign = edge.relation.from < edge.relation.to ? 1 : -1;
+        const bend = edge.index === 0 ? 0 : (edge.index % 2 === 1 ? 1 : -1) * Math.ceil(edge.index / 2) * 36;
+        const offset = bend * sign;
+        const nx = (-dy / length) * offset;
+        const ny = (dx / length) * offset;
+        const cx = (start.x + end.x) / 2 + nx * 2;
+        const cy = (start.y + end.y) / 2 + ny * 2;
+        edge.path.setAttribute("d", `M ${start.x} ${start.y} Q ${cx} ${cy} ${end.x} ${end.y}`);
+        const mx = 0.25 * start.x + 0.5 * cx + 0.25 * end.x;
+        const my = 0.25 * start.y + 0.5 * cy + 0.25 * end.y;
+        edge.labelBackground.setAttribute("x", mx - edge.labelWidth / 2);
+        edge.labelBackground.setAttribute("y", my - 10);
+        edge.edgeLabel.setAttribute("x", mx);
+        edge.edgeLabel.setAttribute("y", my + 4);
+      }
+    };
+
+    const toSvgPoint = (event) => {
+      const matrix = svg.getScreenCTM();
+      if (!matrix) return { x: event.clientX, y: event.clientY };
+      const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
+      return { x: point.x, y: point.y };
+    };
+
     for (const bc of project.boundedContexts) {
-      const position = layout.positions.get(bc.id);
+      const position = positions.get(bc.id);
       if (!position) continue;
       const group = svgElement("g", {
         class: `graph-node classification-${bc.classification.toLowerCase()} role-${bc.role.toLowerCase()}${bc.inferred ? " inferred" : ""}`,
         tabindex: "0",
         role: "button",
         "aria-label": `${bc.name}, ${bc.classification}, ${bc.role}`,
+        style: "cursor: grab; touch-action: none",
       });
-      group.append(
-        svgElement("rect", {
-          x: position.x,
-          y: position.y,
-          width: NODE_WIDTH,
-          height: 80,
-          rx: 12,
-        }),
-      );
-      const title = svgElement("text", { x: position.x + 12, y: position.y + 28, class: "graph-node-title" });
+      group.append(svgElement("rect", { x: 0, y: 0, width: NODE_WIDTH, height: NODE_HEIGHT, rx: 12 }));
+      const title = svgElement("text", { x: 12, y: 28, class: "graph-node-title" });
       title.textContent = bc.name;
-      const meta = svgElement("text", { x: position.x + 12, y: position.y + 52, class: "graph-node-meta" });
+      const meta = svgElement("text", { x: 12, y: 52, class: "graph-node-meta" });
       meta.textContent = `${bc.classification} · ${bc.role}`;
-      const lifecycle = svgElement("text", { x: position.x + 12, y: position.y + 69, class: "graph-node-lifecycle" });
+      const lifecycle = svgElement("text", { x: 12, y: 69, class: "graph-node-lifecycle" });
       lifecycle.textContent = bc.lifecycle || "Unconfirmed";
       group.append(title, meta, lifecycle);
+      const place = () => group.setAttribute("transform", `translate(${position.x} ${position.y})`);
+      place();
+
       const select = () => onSelect(bc.id);
-      group.addEventListener("click", select);
+      let drag = null;
+      group.addEventListener("pointerdown", (event) => {
+        const pointer = toSvgPoint(event);
+        drag = { dx: pointer.x - position.x, dy: pointer.y - position.y, startX: event.clientX, startY: event.clientY, moved: false };
+        group.setPointerCapture(event.pointerId);
+        group.style.cursor = "grabbing";
+        nodeLayer.append(group);
+      });
+      group.addEventListener("pointermove", (event) => {
+        if (!drag) return;
+        if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 4) return;
+        drag.moved = true;
+        const pointer = toSvgPoint(event);
+        position.x = Math.max(0, Math.min(layout.width - NODE_WIDTH, pointer.x - drag.dx));
+        position.y = Math.max(0, Math.min(layout.height - NODE_HEIGHT, pointer.y - drag.dy));
+        place();
+        updateEdges();
+      });
+      const end = (event) => {
+        if (!drag) return;
+        const wasClick = !drag.moved;
+        drag = null;
+        group.style.cursor = "grab";
+        if (group.hasPointerCapture(event.pointerId)) group.releasePointerCapture(event.pointerId);
+        if (wasClick) select();
+      };
+      group.addEventListener("pointerup", end);
+      group.addEventListener("pointercancel", () => {
+        drag = null;
+        group.style.cursor = "grab";
+      });
       group.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           select();
         }
       });
-      svg.append(group);
+      nodeLayer.append(group);
     }
+    updateEdges();
     container.append(svg);
   }
 
