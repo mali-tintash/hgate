@@ -154,9 +154,10 @@ conflicts during parallel work.
 
 `docs/hgate-project.json` is the single canonical machine-readable projection
 used by the project viewer. Authoritative Markdown remains the source of truth,
-and BC-local `status.md` remains authoritative for lifecycle. Specialist
-workflows synchronize the projection only when projected information changes,
-using stable IDs, deterministic ordering, no timestamps, and schema validation.
+and BC-local `status.md` remains authoritative for lifecycle. The projection is
+generated, not hand-edited, by `tools/project-projection/generate.mjs`
+(see [`tools/project-projection/README.md`](tools/project-projection/README.md)):
+stable IDs, deterministic ordering, no timestamps, and schema validation.
 Projects without the projection remain supported through their legacy Markdown
 maps.
 
@@ -195,7 +196,12 @@ paths.
 The JSON is derived, not a place to decide boundaries or status. Update the
 owning Markdown first, synchronize only affected projected information,
 preserve unrelated entries, omit timestamps, sort deterministically, and
-validate against `docs/hgate-project.schema.json`.
+validate against `docs/hgate-project.schema.json` by running the generator:
+
+```bash
+npm run project:sync    # node tools/project-projection/generate.mjs --root .
+npm run project:check   # same, but exits 1 on drift; use in hooks and CI
+```
 ## BDD Traceability Verifier
 
 `tools/bdd-traceability/verify.mjs` deterministically checks adopted

@@ -290,8 +290,12 @@ for schema version 1. It projects:
 - journey participants, entry point, outcome, and validation artifact
 
 It contains no timestamps and uses deterministic ordering. It supports tooling
-without replacing the legacy Markdown maps. Specialist workflows synchronize
-and schema-validate it only when projected authoritative information changes;
+without replacing the legacy Markdown maps. It is generated, never hand-edited:
+specialist workflows run `npm run project:sync`
+(`tools/project-projection/generate.mjs`) when projected authoritative
+information changes, and `npm run project:check` reports drift (exit 1). To
+diagnose a suspected stale projection, run the check rather than reading the
+JSON by eye;
 `status.md` remains the lifecycle authority. Decisions remain in their local
 Markdown owner and are never made directly in the global projection.
 
@@ -305,5 +309,5 @@ The guide interaction is complete when:
 - Its inputs, outputs, mode, and completion signal are explained
 - The nearest alternative is ruled out
 - No skill was invoked and no lifecycle state was changed automatically
-- Any projection drift observed was reported rather than silently treated as
-  authoritative
+- Any projection drift observed (via `npm run project:check`) was reported
+  rather than silently treated as authoritative

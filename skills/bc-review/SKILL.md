@@ -17,7 +17,8 @@ Perform a repeatable, evidence-based review of one Bounded Context (BC):
 This is a read-only review of specifications and source code. Do not modify
 specification, source, migration, or test files. The only authoritative write is
 the target BC's local `status.md` after the final report is complete. When that
-lifecycle value changes, also update the derived `docs/hgate-project.json`.
+lifecycle value changes, also run `npm run project:sync` to refresh the derived
+`docs/hgate-project.json`.
 
 ## Inputs
 
@@ -312,7 +313,7 @@ For `spec-only`, update local lifecycle metadata after reporting:
   state.
 
 Modify only `.github/skills/<bc-name>/status.md` as authoritative content, then
-synchronize only its lifecycle in the derived `docs/hgate-project.json`.
+run `npm run project:sync`; the generator projects its lifecycle.
 
 For `spec-only`, stop here.
 
@@ -495,10 +496,9 @@ otherwise use `IMPLEMENTED -> BLOCKED`.
 
 Update only `.github/skills/<bc-name>/status.md` as authoritative content.
 Record report evidence, blockers, recommended next skill, and transition
-history. Then synchronize only the projected lifecycle in
-`docs/hgate-project.json`, preserve all unrelated entries and stable IDs, omit
-timestamps, sort deterministically, and validate against
-`docs/hgate-project.schema.json`.
+history. Then run `npm run project:sync` followed by `npm run project:check`.
+Do not edit `docs/hgate-project.json` by hand; the generator preserves stable
+IDs, ordering, and schema validity.
 
 ## Quality Checklist
 
