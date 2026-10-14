@@ -99,9 +99,42 @@ as `assertCartAccepted(...)`. `expect.assertions(...)` and
 `expect.hasAssertions()` alone do not count. A test with an empty, comment-only,
 non-asserting, or non-inline body (for example `it("...", sharedFn)`) emits
 `BDD011` and does not provide coverage, so its scenario also reports `BDD005`
-unless another asserting test covers it. This proves linkage and
-non-emptiness only, not assertion quality; review still judges whether the
-assertions prove the scenario outcome.
+unless another asserting test covers it. The assertion must also be reachable
+(see below) and non-tautological: `expect(true).toBe(true)`, `expect(x).toBe(x)`
+or `expect(1).toBeTruthy()` (a literal checked against itself, identical pure
+operands, or a truthiness matcher on a literal) can never fail and are ignored.
+`BDD011` keeps one code; its message gives the reason (no assertion,
+only tautological assertions, or statically unreachable assertions).
+`.not`, `.resolves` and `.rejects` chains are never flagged as tautologies.
+`expect.assertions(n)` is fine next to a real assertion but never enough alone.
+
+Reachability rules (shared by `BDD011` and `PROP011`): a call counts only if it
+is on a statically reachable path of the test body. These do **not** count:
+
+- code in a constant-false branch (`if (false)`, `false && ...`, the `else` of
+  `if (true)`, `while (false)`, `for (x of [])`) or after
+  `return`/`throw`/`break`/`continue` (including after an `if/else` whose
+  branches all exit);
+- a function or arrow that is declared but never called;
+- a nested callback that is not immediately invoked and not passed to a known
+  invoker.
+
+Known invokers (their callbacks are treated as run): immediately invoked
+functions, `forEach`/`map`/`filter`/`some`/`every`/`find`/`findIndex`/
+`findLast`/`findLastIndex`/`reduce`/`reduceRight`/`flatMap`, promise
+`then`/`catch`/`finally`, `waitFor`, `act`, and `fc.property`/`fc.asyncProperty`/
+`fc.assert`/`hgateProperty`/`hgateFiniteModel`/`exploreFiniteModel`. A helper
+declared in the same file counts when it is called (or passed to one of those
+invokers) from a reachable path, in which case its body is analysed too; awaited
+helper calls are ordinary calls. Event handlers, `mockImplementation`, timers
+and similar callbacks are assumed never to fire.
+
+This remains static analysis. It proves linkage, non-emptiness and that an
+assertion sits on a reachable path, not assertion quality: whether a callback
+fires at runtime is undecidable in general, and an assertion can be reachable
+yet weak (`expect(result).toBeDefined()`). Use the mutation/sensitivity evidence
+in the property workflow (`Sensitivity`, `Sensitivity-Evidence`) as the runtime
+backstop for important behaviour, and keep human review of the assertions.
 
 ## Options
 

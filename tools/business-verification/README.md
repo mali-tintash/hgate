@@ -116,6 +116,17 @@ Properties specify universal or bounded-universal claims. Concrete journeys and
 named examples remain in `bdd-scenarios.md`. Do not attach a property marker to
 a BDD scenario or use a scenario ID as a property ID.
 
+## Reachability of the executing call
+
+`PROP011` counts `fc.assert`/`hgateProperty`/`exploreFiniteModel`/
+`hgateFiniteModel` only on a statically reachable path of the test body: not in
+a constant-false branch, after `return`/`throw`, in a helper never called, or in
+a callback that is not immediately invoked or passed to a known invoker (full
+rules in the [BDD README](../bdd-traceability/README.md#bdd-test-references)).
+This is static analysis and cannot prove the property is meaningful or that a
+callback fires at runtime; the `Sensitivity` evidence below is the runtime
+backstop.
+
 ## Sensitivity evidence
 
 A passing property does not prove it can detect the defect it guards against.
@@ -341,7 +352,7 @@ Diagnostics:
 | `PROP008` | Jest property reference is malformed |
 | `PROP009` | No property specification was discovered |
 | `PROP010` | Verifier invocation or execution failed |
-| `PROP011` | Property test body executes no property or finite model |
+| `PROP011` | Property test body executes no property or finite model on a statically reachable path (the message says when the call exists but is unreachable) |
 | `PROP012` | Property test body executes a different technique than declared |
 | `PROP013` | `--evidence` supplied but a covered property lacks complete execution evidence |
 | `PROP014` | Evidence file is unreadable or malformed |

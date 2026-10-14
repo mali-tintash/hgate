@@ -189,6 +189,17 @@ function isAssertionCall({ path: callPath, member }) {
   );
 }
 
+// Why an active test has no countable assertion, as a diagnostic suffix.
+function assertionShortfall(testCall) {
+  if (!testCall.hasFunction || !testCall.allCalls.some(isAssertionCall)) {
+    return "contains no assertion; its body must call expect(...) or an assert helper";
+  }
+  if (testCall.calls.some((call) => call.tautology && isAssertionCall(call))) {
+    return "only has tautological assertions (identical operands or a literal checked against itself) that can never fail";
+  }
+  return "has assertions that are statically unreachable (constant-false branch, after return/throw, or in a helper or callback that is never invoked)";
+}
+
 function parseJestTestFile(ts, source, file, allowFocused = false) {
   const references = [];
   const diagnostics = [];
@@ -224,7 +235,10 @@ function parseJestTestFile(ts, source, file, allowFocused = false) {
         line,
         title: titleResult.value,
         active,
-        asserts: testCall.hasFunction && testCall.calls.some(isAssertionCall),
+        asserts:
+          testCall.hasFunction &&
+          testCall.calls.some((call) => isAssertionCall(call) && !call.tautology),
+        shortfall: assertionShortfall(testCall),
       });
       if (testCall.focused) {
         (allowFocused ? warnings : diagnostics).push(
@@ -379,7 +393,7 @@ export async function verifyProject(options = {}) {
           reference.file,
           reference.line,
           reference.id,
-          `test for "${reference.id}" contains no assertion; its body must call expect(...) or an assert helper`,
+          `test for "${reference.id}" ${reference.shortfall}`,
         ),
       );
     } else if (reference.active) {

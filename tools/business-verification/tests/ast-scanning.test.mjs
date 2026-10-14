@@ -113,3 +113,39 @@ describe("a", () => { describe.only("b", () => { ${live} }); });
     ["PROP015"],
   );
 });
+
+const prop = (inner, outer = "") =>
+  `${outer}\nit("[PROP:CART-STATE-001] a", () => { ${inner} });`;
+
+for (const [name, source] of [
+  ["helper never called", prop("run();", "")],
+  ["if (false)", prop("if (false) { exploreFiniteModel(model); }")],
+  ["after return", prop("return; exploreFiniteModel(model);")],
+  ["callback that never fires", prop("bus.on('x', () => { exploreFiniteModel(model); });")],
+  ["declared local helper never called", prop("function run() { exploreFiniteModel(model); } noop();")],
+]) {
+  test(`${name} does not count as property execution`, async () => {
+    const report = await verifyTests(source);
+
+    assert.equal(report.exitCode, EXIT_INVALID);
+    const reachability = report.diagnostics.filter(({ code }) => code === "PROP011");
+    assert.equal(reachability.length, 1);
+    if (name !== "helper never called") {
+      assert.match(reachability[0].message, /statically reachable path/);
+    }
+  });
+}
+
+for (const [name, source] of [
+  ["helper that is called", prop("run();", "function run() { exploreFiniteModel(model); }")],
+  ["awaited async helper", prop("await run();", "async function run() { exploreFiniteModel(model); }")],
+  ["forEach callback", prop("[1].forEach(() => { exploreFiniteModel(model); });")],
+  ["constant-true branch", prop("if (true) { exploreFiniteModel(model); }")],
+]) {
+  test(`${name} counts as property execution`, async () => {
+    const report = await verifyTests(source);
+
+    assert.equal(report.diagnostics.length, 0, JSON.stringify(report.diagnostics));
+    assert.equal(report.exitCode, EXIT_VALID);
+  });
+}

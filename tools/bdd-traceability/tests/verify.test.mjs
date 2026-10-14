@@ -65,10 +65,10 @@ test("returns valid for unique scenarios covered by active Jest tests", async ()
     Then submission is rejected
 `),
     "src/cart/cart.service.spec.ts": `
-it("[BDD:CART-SUBMIT-001] submits a valid cart", async () => { expect(1).toBe(1); });
+it("[BDD:CART-SUBMIT-001] submits a valid cart", async () => { expect(submit()).toBe(1); });
 test.each<{ problem: string }>([{ problem: "empty" }, { problem: "expired" }])(
   \`[BDD:CART-SUBMIT-002] rejects %s carts\`,
-  async () => { expect(1).toBe(1); },
+  async () => { expect(submit()).toBe(1); },
 );
 `,
   });
@@ -131,8 +131,8 @@ test("reports uncovered scenarios and orphaned or malformed Jest references", as
     Then it is submitted
 `),
     "src/cart/cart.service.spec.ts": `
-it("[BDD:ORDER-CREATE-999] creates an order", () => { expect(1).toBe(1); });
-it("[BDD:cart-submit-001] uses a malformed marker", () => { expect(1).toBe(1); });
+it("[BDD:ORDER-CREATE-999] creates an order", () => { expect(submit()).toBe(1); });
+it("[BDD:cart-submit-001] uses a malformed marker", () => { expect(submit()).toBe(1); });
 `,
   });
 
@@ -154,12 +154,12 @@ test("does not count comments, describe blocks, helpers, dynamic titles, skipped
     Then it is submitted
 `),
     "src/cart/cart.service.spec.ts": `
-// it("[BDD:CART-SUBMIT-001] commented out", () => { expect(1).toBe(1); });
+// it("[BDD:CART-SUBMIT-001] commented out", () => { expect(submit()).toBe(1); });
 const title = "[BDD:CART-SUBMIT-001] helper";
-describe("[BDD:CART-SUBMIT-001] suite", () => { expect(1).toBe(1); });
-runner.test("[BDD:CART-SUBMIT-001] non-Jest method", () => { expect(1).toBe(1); });
+describe("[BDD:CART-SUBMIT-001] suite", () => { expect(submit()).toBe(1); });
+runner.test("[BDD:CART-SUBMIT-001] non-Jest method", () => { expect(submit()).toBe(1); });
 it(title, () => {});
-it.skip("[BDD:CART-SUBMIT-001] skipped", () => { expect(1).toBe(1); });
+it.skip("[BDD:CART-SUBMIT-001] skipped", () => { expect(submit()).toBe(1); });
 test.todo("[BDD:CART-SUBMIT-001] todo");
 `,
   });
@@ -187,8 +187,8 @@ test("supports multiple IDs per test, multiple tests per ID, and stable reports"
     Then an order is created
 `),
     "src/cart/cart.service.spec.ts": `
-it("[BDD:CART-SUBMIT-001] [BDD:ORDER-CREATE-001] completes checkout", () => { expect(1).toBe(1); });
-test.concurrent('[BDD:CART-SUBMIT-001] remains idempotent', () => { expect(1).toBe(1); });
+it("[BDD:CART-SUBMIT-001] [BDD:ORDER-CREATE-001] completes checkout", () => { expect(submit()).toBe(1); });
+test.concurrent('[BDD:CART-SUBMIT-001] remains idempotent', () => { expect(submit()).toBe(1); });
 `,
   });
 
@@ -210,7 +210,7 @@ test("supports explicit downstream scenario and test paths", async () => {
     Then it is captured
 `),
     "acceptance/payment.spec.ts": `
-it("[BDD:PAYMENT-CAPTURE-001] captures payment", () => { expect(1).toBe(1); });
+it("[BDD:PAYMENT-CAPTURE-001] captures payment", () => { expect(submit()).toBe(1); });
 `,
   });
 
@@ -245,7 +245,7 @@ test("CLI emits versioned JSON and uses the documented exit codes", async () => 
     Then it is submitted
 `),
     "src/cart/cart.service.spec.ts": `
-it("[BDD:CART-SUBMIT-001] submits a valid cart", () => { expect(1).toBe(1); });
+it("[BDD:CART-SUBMIT-001] submits a valid cart", () => { expect(submit()).toBe(1); });
 `,
   });
   const emptyRoot = await createProject({
@@ -292,14 +292,14 @@ async function verifyTests(testSource, extraOptions = {}) {
 }
 
 for (const [name, source] of [
-  ["describe.skip", `describe.skip("cart", () => { it("[BDD:CART-SUBMIT-001] a", () => { expect(1).toBe(1); }); });`],
-  ["xdescribe", `xdescribe("cart", () => { it("[BDD:CART-SUBMIT-001] a", () => { expect(1).toBe(1); }); });`],
-  ["xit", `xit("[BDD:CART-SUBMIT-001] a", () => { expect(1).toBe(1); });`],
-  ["xtest", `xtest("[BDD:CART-SUBMIT-001] a", () => { expect(1).toBe(1); });`],
+  ["describe.skip", `describe.skip("cart", () => { it("[BDD:CART-SUBMIT-001] a", () => { expect(submit()).toBe(1); }); });`],
+  ["xdescribe", `xdescribe("cart", () => { it("[BDD:CART-SUBMIT-001] a", () => { expect(submit()).toBe(1); }); });`],
+  ["xit", `xit("[BDD:CART-SUBMIT-001] a", () => { expect(submit()).toBe(1); });`],
+  ["xtest", `xtest("[BDD:CART-SUBMIT-001] a", () => { expect(submit()).toBe(1); });`],
   ["it.todo", `it.todo("[BDD:CART-SUBMIT-001] a");`],
   ["test.todo", `test.todo("[BDD:CART-SUBMIT-001] a");`],
-  ["describe.each skip", `describe.skip.each([1, 2])("cart %s", () => { it("[BDD:CART-SUBMIT-001] a", () => { expect(1).toBe(1); }); });`],
-  ["nested skipped describe", `describe("outer", () => { describe.skip("inner", () => { it("[BDD:CART-SUBMIT-001] a", () => { expect(1).toBe(1); }); }); });`],
+  ["describe.each skip", `describe.skip.each([1, 2])("cart %s", () => { it("[BDD:CART-SUBMIT-001] a", () => { expect(submit()).toBe(1); }); });`],
+  ["nested skipped describe", `describe("outer", () => { describe.skip("inner", () => { it("[BDD:CART-SUBMIT-001] a", () => { expect(submit()).toBe(1); }); }); });`],
 ]) {
   test(`${name} does not count as active BDD coverage`, async () => {
     const report = await verifyTests(source);
@@ -314,8 +314,8 @@ for (const [name, source] of [
 
 test("a sibling active test still covers a scenario next to a skipped describe", async () => {
   const report = await verifyTests(`
-describe.skip("old", () => { it("[BDD:CART-SUBMIT-001] a", () => { expect(1).toBe(1); }); });
-describe("current", () => { it("[BDD:CART-SUBMIT-001] b", () => { expect(1).toBe(1); }); });
+describe.skip("old", () => { it("[BDD:CART-SUBMIT-001] a", () => { expect(submit()).toBe(1); }); });
+describe("current", () => { it("[BDD:CART-SUBMIT-001] b", () => { expect(submit()).toBe(1); }); });
 `);
 
   assert.equal(report.exitCode, EXIT_VALID);
@@ -325,7 +325,7 @@ test("a regex literal containing an apostrophe does not hide later tests", async
   const report = await verifyTests(`
 const re = /'/;
 const quote = "it's";
-it("[BDD:CART-SUBMIT-001] a", () => { expect(1).toBe(1); });
+it("[BDD:CART-SUBMIT-001] a", () => { expect(submit()).toBe(1); });
 `);
 
   assert.equal(report.exitCode, EXIT_VALID);
@@ -334,10 +334,10 @@ it("[BDD:CART-SUBMIT-001] a", () => { expect(1).toBe(1); });
 
 test("template literals, comments and strings that mimic tests are ignored", async () => {
   const report = await verifyTests(`
-// it("[BDD:CART-SUBMIT-001] in a line comment", () => { expect(1).toBe(1); });
-/* it("[BDD:CART-SUBMIT-001] in a block comment", () => { expect(1).toBe(1); }); */
-const text = \`it("[BDD:CART-SUBMIT-001] in a template \${1 + 1}", () => { expect(1).toBe(1); })\`;
-const other = 'it("[BDD:CART-SUBMIT-001] in a string", () => { expect(1).toBe(1); })';
+// it("[BDD:CART-SUBMIT-001] in a line comment", () => { expect(submit()).toBe(1); });
+/* it("[BDD:CART-SUBMIT-001] in a block comment", () => { expect(submit()).toBe(1); }); */
+const text = \`it("[BDD:CART-SUBMIT-001] in a template \${1 + 1}", () => { expect(submit()).toBe(1); })\`;
+const other = 'it("[BDD:CART-SUBMIT-001] in a string", () => { expect(submit()).toBe(1); })';
 `);
 
   assert.equal(report.testReferences.length, 0);
@@ -351,7 +351,7 @@ test("tests nested inside several describes are discovered with their lines", as
   const report = await verifyTests(`
 describe("a", () => {
   describe("b", () => {
-    it(\`[BDD:CART-SUBMIT-001] nested\`, () => { expect(1).toBe(1); });
+    it(\`[BDD:CART-SUBMIT-001] nested\`, () => { expect(submit()).toBe(1); });
   });
 });
 `);
@@ -362,7 +362,7 @@ describe("a", () => {
 
 test(".only fails with BDD010 and does not count as coverage by default", async () => {
   const report = await verifyTests(`
-describe.only("cart", () => { it("[BDD:CART-SUBMIT-001] a", () => { expect(1).toBe(1); }); });
+describe.only("cart", () => { it("[BDD:CART-SUBMIT-001] a", () => { expect(submit()).toBe(1); }); });
 `);
 
   assert.equal(report.exitCode, EXIT_INVALID);
@@ -375,7 +375,7 @@ describe.only("cart", () => { it("[BDD:CART-SUBMIT-001] a", () => { expect(1).to
 
 test("allowFocused downgrades .only to a BDD010 warning and keeps coverage", async () => {
   const report = await verifyTests(`
-describe.only("cart", () => { it("[BDD:CART-SUBMIT-001] a", () => { expect(1).toBe(1); }); });
+describe.only("cart", () => { it("[BDD:CART-SUBMIT-001] a", () => { expect(submit()).toBe(1); }); });
 `, { allowFocused: true });
 
   assert.equal(report.exitCode, EXIT_VALID);
@@ -390,7 +390,7 @@ test("a missing typescript package fails with a BDD009 diagnostic and exit 2", a
   const root = await createProject(
     {
       ...singleScenario,
-      "src/cart/cart.service.spec.ts": `it("[BDD:CART-SUBMIT-001] a", () => { expect(1).toBe(1); });`,
+      "src/cart/cart.service.spec.ts": `it("[BDD:CART-SUBMIT-001] a", () => { expect(submit()).toBe(1); });`,
     },
     { withTypescript: false },
   );

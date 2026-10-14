@@ -686,6 +686,9 @@ function parseJestTestFile(ts, source, file, allowFocused = false) {
   for (const testCall of parseTestCalls(ts, source, file)) {
     const titleResult = { value: testCall.title };
     const executionKinds = detectExecutionKinds(testCall.calls);
+    const unreachableExecution =
+      executionKinds.length === 0 &&
+      detectExecutionKinds(testCall.allCalls).length > 0;
     const { line } = testCall;
     const rejectFocus = testCall.focused && !allowFocused;
     const active = testCall.active && !rejectFocus;
@@ -715,6 +718,7 @@ function parseJestTestFile(ts, source, file, allowFocused = false) {
         title: titleResult.value,
         active,
         executionKinds,
+        unreachableExecution,
       });
       if (testCall.focused) {
         (allowFocused ? warnings : diagnostics).push(
@@ -899,7 +903,7 @@ export async function verifyProject(options = {}) {
               reference.file,
               reference.line,
               reference.id,
-              `test for ${technique} property "${reference.id}" never executes a property; its body must call ${expected}`,
+              `test for ${technique} property "${reference.id}" never executes a property; its body must call ${expected}${reference.unreachableExecution ? " on a statically reachable path (the existing call is in a constant-false branch, after return/throw, or in a helper or callback that is never invoked)" : ""}`,
             )
           : diagnostic(
               "PROP012",

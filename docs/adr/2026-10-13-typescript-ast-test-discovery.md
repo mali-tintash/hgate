@@ -45,7 +45,14 @@ for local iteration only.
 An active `[BDD:ID]` test body must contain at least one assertion call
 (`expect`, `.expect`, `assert*`; `expect.assertions` alone is insufficient);
 otherwise `BDD011` is reported and the test does not count as coverage. The
-check proves linkage and non-emptiness, not assertion quality.
+assertion (and, for property tests, the `PROP011` executing call) must be on a
+statically reachable path: constant-false branches, code after return/throw,
+uncalled local helpers and callbacks that are neither immediately invoked nor
+passed to a documented invoker are ignored, and tautological expects (literal
+vs same literal, identical operands) do not count. This is static analysis; it
+proves linkage, non-emptiness and reachability, not assertion quality, and
+runtime-never-firing callbacks are undecidable in general. Sensitivity
+(mutation) evidence remains the runtime backstop.
 
 ## Consequences
 

@@ -146,7 +146,7 @@ Sign-off is unavailable unless Jest evidence passes and the verifier exits `0`.
 | `BDD006` | Correct a stale/incorrect test reference, or restore behavior only through an approved specification decision |
 | `BDD007` | Correct the malformed or unclosed `[BDD:<ID>]` marker |
 | `BDD008` | Correct scenario discovery or configured paths |
-| `BDD011` | Add a real assertion that proves the scenario outcome to the `[BDD:<ID>]` test (an empty or non-asserting body is not coverage) |
+| `BDD011` | Add a real assertion that proves the scenario outcome to the `[BDD:<ID>]` test (empty, tautological such as `expect(true).toBe(true)`, or statically unreachable assertions are not coverage; the message states which) |
 | `BDD009` | Treat the verifier failure as a blocked tooling attempt |
 
 Behavior or specification changes return to the owning skill's spec-first phase.

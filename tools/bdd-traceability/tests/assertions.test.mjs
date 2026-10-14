@@ -44,7 +44,7 @@ for (const [name, body] of [
   ["empty body", `it("[BDD:CART-SUBMIT-001] a", () => {});`],
   [
     "comment-only body",
-    `it("[BDD:CART-SUBMIT-001] a", () => { // expect(1).toBe(1)\n  /* assert(true) */ });`,
+    `it("[BDD:CART-SUBMIT-001] a", () => { // expect(submit()).toBe(1)\n  /* assert(true) */ });`,
   ],
   [
     "non-asserting body",
@@ -56,7 +56,7 @@ for (const [name, body] of [
   ],
   [
     "assertion text in a string",
-    `it("[BDD:CART-SUBMIT-001] a", () => { log("expect(1).toBe(1)"); });`,
+    `it("[BDD:CART-SUBMIT-001] a", () => { log("expect(submit()).toBe(1)"); });`,
   ],
   [
     "non-function second argument",
@@ -114,7 +114,7 @@ test("skipped and todo tests are not reported for missing assertions", async () 
 test("a sibling asserting test still covers a scenario next to an empty one", async () => {
   const report = await verifyTests(`
 it("[BDD:CART-SUBMIT-001] empty", () => {});
-it("[BDD:CART-SUBMIT-001] real", () => { expect(1).toBe(1); });
+it("[BDD:CART-SUBMIT-001] real", () => { expect(submit()).toBe(1); });
 `);
 
   assert.deepEqual(codes(report), ["BDD011"]);
