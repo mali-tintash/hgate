@@ -9,8 +9,13 @@
 set -eu
 
 staged=$(git diff --cached --name-only --diff-filter=ACMRD)
-if ! printf '%s\n' "$staged" | grep -Eq '(\.(spec|test)\.ts$|bdd-scenarios\.md$|properties\.md$|^tools/)'; then
+if ! printf '%s\n' "$staged" | grep -Eq '(\.(spec|test)\.ts$|bdd-scenarios\.md$|properties\.md$|\.github/skills/.*\.md$|\.event\.ts$|^tools/)'; then
   exit 0
+fi
+
+if [ -f tools/verify-spec/verify.mjs ]; then
+  echo "hGATE: verifying specification consistency..."
+  npm run --silent verify:spec
 fi
 
 echo "hGATE: verifying BDD traceability..."

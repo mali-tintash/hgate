@@ -159,6 +159,19 @@ Validate the specification before planning source code.
 
 #### Required consistency checks
 
+Run the deterministic part first and treat each failure as a blocking gap
+(`G#`) with its `file:line`; do not re-derive these by reading the files:
+
+```bash
+npm run verify:spec -- --bc <bc-name> --phase implementation
+```
+
+It enforces checks 1 (VSP001), 4 (VSP003/004/102/103), 5 (VSP002/101), 6
+(VSP105), and the clean-spec preconditions (VSP006-013, VSP104 unresolved
+`[OPEN]` questions, VSP106 lifecycle `REFINED`/`SPEC_REVIEWED`). If the tool is
+not installed, perform the list manually. Checks 2, 3, 7, 8, 9, and 10 stay
+judgment checks; apply them yourself.
+
 1. Every aggregate in `SKILL.md` is defined in `domain-model.md`.
 2. Every business rule has at least one BDD scenario.
 3. Every lifecycle state has defined allowed transitions and actors.

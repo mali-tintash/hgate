@@ -46,7 +46,25 @@ cp -R tools/bdd-traceability tools/shared \
   /path/to/your-project/tools/
 ```
 
-The verifier needs the project's own `typescript` package (already present in
+Also install the specification verifier (`verify-spec`, no dependencies) so
+refinement and readiness gates run deterministically instead of as LLM
+checklists:
+
+```bash
+cp -R tools/verify-spec /path/to/your-project/tools/
+```
+
+```json
+{
+  "scripts": {
+    "verify:spec": "node tools/verify-spec/verify.mjs --root ."
+  }
+}
+```
+
+See [`tools/verify-spec/README.md`](../tools/verify-spec/README.md).
+
+The traceability verifier needs the project's own `typescript` package (already present in
 TS/Jest projects; otherwise `npm install --save-dev typescript`).
 
 For a TypeScript/Jest project, add this required package script:
@@ -121,7 +139,7 @@ installed automatically.
 | Pre-commit hook | `templates/hooks/pre-commit` | copy to `.git/hooks/pre-commit` (or call from `.husky/pre-commit`) and `chmod +x` |
 | Agent Stop hook (Claude Code format) | `templates/hooks/hgate-verify-stop.sh` + `templates/hooks/claude-settings.stop-hook.json` | copy the script to `.claude/hooks/`, `chmod +x`, merge the JSON into `.claude/settings.json` |
 
-All three run `npm run verify:bdd`, and `npm run verify:properties` when a
+All three run `npm run verify:spec` (when `tools/verify-spec` is installed), `npm run verify:bdd`, and `npm run verify:properties` when a
 `properties.md` exists, so the `verify:*` scripts above must be defined and
 `typescript` must be a project dependency. Mark the CI job as a required status
 check in branch protection; hooks are local and bypassable, CI is not. The Stop

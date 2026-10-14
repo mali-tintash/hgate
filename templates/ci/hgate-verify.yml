@@ -2,6 +2,7 @@
 # adopting project. hGATE never installs this for you.
 #
 # Requires package.json scripts:
+#   "verify:spec":       "node tools/verify-spec/verify.mjs --root ."  (optional, no dependencies)
 #   "verify:bdd":        "node tools/bdd-traceability/verify.mjs --root ."
 #   "verify:properties": "node tools/business-verification/verify.mjs --root ."  (optional Goal 3)
 # and `typescript` in devDependencies (the verifiers resolve it from the project).
@@ -22,6 +23,11 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - name: Specification consistency (skipped when verify-spec is not installed)
+        run: |
+          if [ -f tools/verify-spec/verify.mjs ]; then
+            npm run --silent verify:spec -- --phase implementation
+          fi
       - name: BDD scenario-to-test traceability
         run: npm run --silent verify:bdd
       - name: Business-property traceability (skipped when no properties.md exists)

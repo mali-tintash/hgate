@@ -16,3 +16,14 @@
   `Oracle independence`; subject and oracle never share an implementation path.
   The verifier enforces declaration (`PROP040`/`PROP041`); `bc-review` and
   human sign-off assess real independence.
+
+## Phase 6 mechanical checks run by tool
+
+- **Asked:** Should the agent hand-verify mechanical spec consistency (aggregate
+  classes, event files, ACL docs, scenario tags, Ports table)?
+- **Findings:** These are deterministic and cost many tokens as an LLM
+  checklist. See [ADR-008](../../docs/adr/2026-10-14-deterministic-spec-verification.md).
+- **Decision/Action:** Run `npm run verify:spec` (`tools/verify-spec`) and fix
+  its failures; keep ambiguity, YAGNI, BC isolation, rule coverage and VO
+  discipline as agent judgment. Fall back to manual checks only when the tool is
+  not installed.
