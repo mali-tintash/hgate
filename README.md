@@ -24,7 +24,7 @@ repository:
 mkdir -p /path/to/your-project/.github/skills
 cp -R skills/* /path/to/your-project/.github/skills/
 mkdir -p /path/to/your-project/tools
-cp -R tools/bdd-traceability tools/shared \
+cp -R tools/bdd-traceability tools/verify-spec tools/shared \
   /path/to/your-project/tools/
 ```
 
@@ -202,6 +202,21 @@ validate against `docs/hgate-project.schema.json` by running the generator:
 npm run project:sync    # node tools/project-projection/generate.mjs --root .
 npm run project:check   # same, but exits 1 on drift; use in hooks and CI
 ```
+
+## Specification Verifier
+
+`tools/verify-spec/verify.mjs` is a dependency-free CLI that replaces the
+mechanical `bc-refinement` Phase 6 self-checks and the `bc-implementation`
+Phase 1 readiness checks (aggregate/class, event table/files, ACL docs,
+glossary, scenario tags, Ports table, lifecycle). It prints failures only, with
+stable `VSP###` codes and `file:line`:
+
+```bash
+node tools/verify-spec/verify.mjs --root . [--bc <name>] [--phase implementation]
+```
+
+See [`tools/verify-spec/README.md`](tools/verify-spec/README.md).
+
 ## BDD Traceability Verifier
 
 `tools/bdd-traceability/verify.mjs` deterministically checks adopted

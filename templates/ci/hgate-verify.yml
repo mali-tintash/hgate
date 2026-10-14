@@ -3,6 +3,7 @@
 #
 # Requires package.json scripts:
 #   "project:check":     "node tools/project-projection/generate.mjs --root . --check"
+#   "verify:spec":       "node tools/verify-spec/verify.mjs --root ."  (optional, no dependencies)
 #   "verify:bdd":        "node tools/bdd-traceability/verify.mjs --root ."
 #   "verify:properties": "node tools/business-verification/verify.mjs --root ."  (optional Goal 3)
 # and `typescript` in devDependencies (the verifiers resolve it from the project).
@@ -29,6 +30,11 @@ jobs:
             npm run --silent project:check
           else
             echo "No docs/domain-map.md; projection not adopted."
+          fi
+      - name: Specification consistency (skipped when verify-spec is not installed)
+        run: |
+          if [ -f tools/verify-spec/verify.mjs ]; then
+            npm run --silent verify:spec -- --phase implementation
           fi
       - name: BDD scenario-to-test traceability
         run: npm run --silent verify:bdd
