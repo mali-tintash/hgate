@@ -939,7 +939,7 @@
         path === "docs/hgate-project.json" ||
         path === "docs/domain-map.md" ||
         path === "docs/context-map.md" ||
-        /^\.github\/skills\/[^/]+\/(?:SKILL|domain-model|status|[^/]+-acl)\.md$/i.test(path)
+        /^\.github\/skills\/[^/]+\/(?:SKILL|domain-model|status|bdd-scenarios|[^/]+-acl)\.md$/i.test(path)
       ) {
         map.set(path, file);
       }
@@ -1000,10 +1000,16 @@
     const zoomOutButton = document.getElementById("zoomOutBtn");
     const zoomInButton = document.getElementById("zoomInBtn");
     const fitDiagramButton = document.getElementById("fitDiagramBtn");
+    const viewScenariosButton = document.getElementById("viewScenariosBtn");
+    const scenarioSource = document.getElementById("sourceInput");
+    const scenarioRender = document.getElementById("renderBtn");
     const zoomLevel = document.getElementById("zoomLevel");
     if (!scenarioTab || !projectTab || !folderInput) return;
     let diagramZoom = 100;
     let topology = null;
+    let projectFiles = new Map();
+    let loadedProject = null;
+    let selectedBcId = null;
 
     const updateZoom = (nextZoom) => {
       diagramZoom = clampZoom(nextZoom);
@@ -1016,6 +1022,24 @@
       fitDiagramButton.disabled = !svg || diagramZoom === 100;
     };
 
+    const scenarioPathFor = (bcId) => {
+      const bc = loadedProject && loadedProject.boundedContexts.find((item) => item.id === bcId);
+      if (!bc) return null;
+      const candidates = [
+        ...Object.values(bc.sources || {}).filter((path) => /bdd-scenarios\.md$/i.test(path)),
+        `.github/skills/${bc.id}/bdd-scenarios.md`,
+      ];
+      return candidates.map(normalizePath).find((path) => projectFiles.has(path)) || null;
+    };
+
+    const selectBc = (bcId) => {
+      selectedBcId = bcId;
+      if (loadedProject) renderDetails(loadedProject, bcId, details);
+      const path = scenarioPathFor(bcId);
+      viewScenariosButton.disabled = !path;
+      viewScenariosButton.title = path ? path : "No bdd-scenarios.md found for this bounded context";
+    };
+
     const activate = (tab) => {
       const projectActive = tab === "project";
       scenarioPanel.hidden = projectActive;
@@ -1026,6 +1050,13 @@
     scenarioTab.addEventListener("click", () => activate("scenario"));
     projectTab.addEventListener("click", () => activate("project"));
     selectButton.addEventListener("click", () => folderInput.click());
+    viewScenariosButton.addEventListener("click", async () => {
+      const path = scenarioPathFor(selectedBcId);
+      if (!path) return;
+      scenarioSource.value = await projectFiles.get(path).text();
+      scenarioRender.click();
+      activate("scenario");
+    });
     zoomOutButton.addEventListener("click", () => updateZoom(diagramZoom - ZOOM_STEP));
     zoomInButton.addEventListener("click", () => updateZoom(diagramZoom + ZOOM_STEP));
     fitDiagramButton.addEventListener("click", () => updateZoom(100));
@@ -1037,7 +1068,9 @@
         const loaded = await loadProject(fileMap);
         renderSummary(loaded.project, summary);
         renderDiagnostics(loaded.diagnostics, diagnostics);
-        const select = (bcId) => renderDetails(loaded.project, bcId, details);
+        projectFiles = fileMap;
+        loadedProject = loaded.project;
+        const select = selectBc;
         topology = renderTopology(loaded.project, graph, select);
         updateZoom(100);
         select(loaded.project.boundedContexts[0] && loaded.project.boundedContexts[0].id);
