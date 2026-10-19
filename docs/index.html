@@ -485,10 +485,10 @@
           <pre>mkdir -p /path/to/your-project/.github/skills
 cp -R skills/* /path/to/your-project/.github/skills/
 mkdir -p /path/to/your-project/tools
-cp -R tools/bdd-traceability tools/verify-spec tools/shared \
-  /path/to/your-project/tools/
+cp -R tools/. /path/to/your-project/tools/
+<span class="cmt"># copies every tool plus project-schema.json and other shared artifacts</span>
 <span class="cmt"># preserve each skill's SKILL.md, assets/, references/, decisions.md</span>
-<span class="cmt"># optional Goal 3: also copy tools/business-verification and install fast-check</span></pre>
+<span class="cmt"># optional Goal 3: install fast-check for tools/business-verification</span></pre>
         </div>
       </div>
       <div class="step">
