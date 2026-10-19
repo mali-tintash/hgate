@@ -38,20 +38,13 @@ Copy the hGATE skill directories into the repository's skill location:
 
 Preserve each skill's `SKILL.md`, `assets/`, `references/`, and `decisions.md`.
 
-Install the deterministic BDD traceability verifier:
+Install the whole `tools/` directory (BDD traceability verifier,
+`verify-spec`, shared helpers, `project-schema.json`, and other artifacts hGATE
+needs) so gates run deterministically instead of as LLM checklists:
 
 ```bash
 mkdir -p /path/to/your-project/tools
-cp -R tools/bdd-traceability tools/shared \
-  /path/to/your-project/tools/
-```
-
-Also install the specification verifier (`verify-spec`, no dependencies) so
-refinement and readiness gates run deterministically instead of as LLM
-checklists:
-
-```bash
-cp -R tools/verify-spec /path/to/your-project/tools/
+cp -R tools/. /path/to/your-project/tools/
 ```
 
 ```json
