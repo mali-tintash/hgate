@@ -217,3 +217,173 @@ test("abbreviateEdgeLabel bounds graph text while preserving short labels", () =
     "A long relationship decis…",
   );
 });
+
+function fakeFile(content) {
+  return { text: async () => content };
+}
+
+function fakeDirectory(tree, name = "root") {
+  const missing = (kind) => {
+    const error = new Error(`${kind} not found`);
+    error.name = "NotFoundError";
+    return error;
+  };
+  return {
+    kind: "directory",
+    name,
+    async getDirectoryHandle(child) {
+      const value = tree[child];
+      if (!value || typeof value === "string") throw missing("directory");
+      return fakeDirectory(value, child);
+    },
+    async getFileHandle(child) {
+      const value = tree[child];
+      if (typeof value !== "string") throw missing("file");
+      return { kind: "file", name: child, getFile: async () => fakeFile(value) };
+    },
+    async *entries() {
+      for (const [child, value] of Object.entries(tree)) {
+        yield [
+          child,
+          typeof value === "string"
+            ? { kind: "file", name: child, getFile: async () => fakeFile(value) }
+            : fakeDirectory(value, child),
+        ];
+      }
+    },
+  };
+}
+
+test("indexFiles accepts skills under .github, .claude and .agents roots", () => {
+  const files = [
+    "my-app/docs/domain-map.md",
+    "my-app/.claude/skills/ordering/bdd-scenarios.md",
+    "my-app/.agents/skills/billing/status.md",
+    "my-app/.github/skills/catalog/catalog-acl.md",
+    "my-app/.claude/skills/ordering/notes/extra.md",
+    "my-app/node_modules/pkg/docs/domain-map.md",
+    "my-app/src/index.ts",
+  ].map((webkitRelativePath) => ({ webkitRelativePath, name: webkitRelativePath.split("/").pop() }));
+  assert.deepEqual(Array.from(viewer.indexFiles(files).keys()).sort(), [
+    ".agents/skills/billing/status.md",
+    ".claude/skills/ordering/bdd-scenarios.md",
+    ".github/skills/catalog/catalog-acl.md",
+    "docs/domain-map.md",
+  ]);
+});
+
+test("skillsRootOf prefers the root that holds bounded-context files", () => {
+  const map = new Map([
+    [".github/skills/bc-review/SKILL.md", fakeFile("")],
+    [".claude/skills/ordering/bdd-scenarios.md", fakeFile("")],
+  ]);
+  assert.equal(viewer.skillsRootOf(map), ".claude/skills");
+  assert.equal(viewer.skillsRootOf(new Map()), ".github/skills");
+});
+
+test("buildLegacyProject reads BC artifacts from a .claude/skills root", async () => {
+  const map = new Map([
+    [
+      "docs/domain-map.md",
+      fakeFile(`## Bounded Context Inventory
+
+| ID | Bounded context | Domain/Subdomain | Classification | Boundary role |
+|---|---|---|---|---|
+| ordering | Ordering | Commerce | Core | Primary |
+`),
+    ],
+    [".claude/skills/ordering/status.md", fakeFile("---\nlifecycle: IMPLEMENTED\n---\n")],
+  ]);
+  const { project } = await viewer.buildLegacyProject(map);
+  assert.equal(project.boundedContexts[0].lifecycle, "IMPLEMENTED");
+  assert.equal(project.boundedContexts[0].sources.status, ".claude/skills/ordering/status.md");
+});
+
+test("listScenarioSources groups BCs by domain, disables missing files and lists unmapped scenarios", () => {
+  const project = {
+    domains: [{ id: "commerce", name: "Commerce" }],
+    boundedContexts: [
+      { id: "ordering", name: "Ordering", domainId: "commerce", sources: {} },
+      { id: "catalog", name: "Catalog", domainId: "commerce", sources: {} },
+    ],
+  };
+  const map = new Map([
+    [".github/skills/ordering/bdd-scenarios.md", fakeFile("")],
+    [".github/skills/payments/bdd-scenarios.md", fakeFile("")],
+    [".github/skills/bc-review/SKILL.md", fakeFile("")],
+  ]);
+  assert.deepEqual(viewer.listScenarioSources(project, map), [
+    {
+      label: "Commerce",
+      items: [
+        { id: "ordering", name: "Ordering", path: ".github/skills/ordering/bdd-scenarios.md" },
+        { id: "catalog", name: "Catalog", path: null },
+      ],
+    },
+    {
+      label: "Not in domain map",
+      items: [{ id: "payments", name: "payments", path: ".github/skills/payments/bdd-scenarios.md" }],
+    },
+  ]);
+});
+
+test("listScenarioSources works without a domain map", () => {
+  const map = new Map([[".claude/skills/ordering/bdd-scenarios.md", fakeFile("")]]);
+  assert.deepEqual(viewer.listScenarioSources(null, map), [
+    {
+      label: "Bounded contexts",
+      items: [{ id: "ordering", name: "ordering", path: ".claude/skills/ordering/bdd-scenarios.md" }],
+    },
+  ]);
+});
+
+test("readProjectDirectory reads only docs and skills, never other folders", async () => {
+  let nodeModulesOpened = false;
+  const root = fakeDirectory({
+    docs: { "domain-map.md": "# map", "notes.md": "ignored" },
+    ".github": {
+      skills: {
+        ordering: { "bdd-scenarios.md": "scenarios", "SKILL.md": "skill", "draft.txt": "ignored" },
+        "bc-review": { "SKILL.md": "hgate skill" },
+      },
+    },
+    src: { "index.ts": "ignored" },
+  });
+  const getDirectoryHandle = root.getDirectoryHandle;
+  root.getDirectoryHandle = async (name) => {
+    if (name === "node_modules" || name === "src") nodeModulesOpened = true;
+    return getDirectoryHandle(name);
+  };
+  const map = await viewer.readProjectDirectory(root);
+  assert.equal(nodeModulesOpened, false);
+  assert.deepEqual(Array.from(map.keys()).sort(), [
+    ".github/skills/bc-review/SKILL.md",
+    ".github/skills/ordering/SKILL.md",
+    ".github/skills/ordering/bdd-scenarios.md",
+    "docs/domain-map.md",
+  ]);
+  assert.equal(await map.get(".github/skills/ordering/bdd-scenarios.md").text(), "scenarios");
+});
+
+test("computeCanvasSize fills the visible area and grows to fit the layout and moved nodes", () => {
+  const layout = { width: 820, height: 340 };
+  const base = { layout, positions: new Map([["a", { x: 40, y: 65 }]]), nodeWidth: 180, nodeHeight: 80 };
+  assert.deepEqual(
+    viewer.computeCanvasSize({ ...base, visibleWidth: 1000, visibleHeight: 700, zoom: 1 }),
+    { width: 1000, height: 700 },
+  );
+  assert.deepEqual(
+    viewer.computeCanvasSize({ ...base, visibleWidth: 1000, visibleHeight: 700, zoom: 2 }),
+    { width: 820, height: 350 },
+  );
+  assert.deepEqual(
+    viewer.computeCanvasSize({
+      ...base,
+      positions: new Map([["a", { x: 900, y: 600 }]]),
+      visibleWidth: 1000,
+      visibleHeight: 700,
+      zoom: 2,
+    }),
+    { width: 1120, height: 720 },
+  );
+});

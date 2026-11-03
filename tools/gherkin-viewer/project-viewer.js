@@ -19,6 +19,12 @@
   const NODE_WIDTH = 180;
   const COLUMN_STEP = 390;
   const MAX_EDGE_LABEL_LENGTH = 26;
+  // Agent-specific skill folders, in lookup order: GitHub Copilot, Claude Code, Codex/agents.
+  const SKILLS_ROOTS = [".github/skills", ".claude/skills", ".agents/skills", ".codex/skills"];
+  const PROJECT_DOCS = ["hgate-project.json", "domain-map.md", "context-map.md"];
+  const SKILL_FILE_PATTERN = /^(?:SKILL|domain-model|status|bdd-scenarios|[^/]+-acl)\.md$/i;
+  // Files that mark a skill folder as a bounded context rather than an hGATE workflow skill.
+  const BC_MARKER_PATTERN = /^(?:domain-model|status|bdd-scenarios)\.md$/i;
   const LIFECYCLES = new Set([
     "DISCOVERED",
     "REFINING",
@@ -339,14 +345,118 @@
     return String(path || "").replaceAll("\\", "/").replace(/^\/+/, "");
   }
 
+  // webkitRelativePath always starts with the selected folder's name; drop it.
   function relativeProjectPath(path) {
     const normalized = normalizePath(path);
-    const markers = ["docs/", ".github/skills/"];
-    for (const marker of markers) {
-      const index = normalized.indexOf(marker);
-      if (index >= 0) return normalized.slice(index);
+    const slash = normalized.indexOf("/");
+    return slash >= 0 ? normalized.slice(slash + 1) : normalized;
+  }
+
+  function skillPathParts(path) {
+    for (const root of SKILLS_ROOTS) {
+      const prefix = `${root}/`;
+      if (!path.startsWith(prefix)) continue;
+      const rest = path.slice(prefix.length).split("/");
+      if (rest.length === 2 && rest[0] && SKILL_FILE_PATTERN.test(rest[1])) {
+        return { root, skillId: rest[0], file: rest[1] };
+      }
     }
-    return normalized.split("/").slice(1).join("/");
+    return null;
+  }
+
+  function isProjectFile(path) {
+    return PROJECT_DOCS.some((name) => path === `docs/${name}`) || skillPathParts(path) !== null;
+  }
+
+  function skillsRootOf(fileMap) {
+    const parts = Array.from(fileMap.keys()).map(skillPathParts).filter(Boolean);
+    const withBc = SKILLS_ROOTS.find((root) =>
+      parts.some((part) => part.root === root && BC_MARKER_PATTERN.test(part.file)),
+    );
+    if (withBc) return withBc;
+    const any = SKILLS_ROOTS.find((root) => parts.some((part) => part.root === root));
+    return any || SKILLS_ROOTS[0];
+  }
+
+  function findScenarioPath(bc, fileMap) {
+    if (!bc) return null;
+    const candidates = [
+      ...Object.values(bc.sources || {}).filter((path) => /bdd-scenarios\.md$/i.test(String(path))),
+      ...SKILLS_ROOTS.map((root) => `${root}/${bc.id}/bdd-scenarios.md`),
+    ];
+    return candidates.map(normalizePath).find((path) => fileMap.has(path)) || null;
+  }
+
+  function listScenarioSources(project, fileMap) {
+    const contexts = (project && project.boundedContexts) || [];
+    const domains = (project && project.domains) || [];
+    const groups = new Map();
+    for (const bc of contexts) {
+      const key = bc.domainId || "unassigned";
+      if (!groups.has(key)) {
+        const domain = domains.find((item) => item.id === key);
+        groups.set(key, { label: domain ? domain.name : bc.domainId || "Unassigned", items: [] });
+      }
+      groups.get(key).items.push({ id: bc.id, name: bc.name || bc.id, path: findScenarioPath(bc, fileMap) });
+    }
+    const known = new Set(contexts.map((bc) => bc.id));
+    const unmapped = new Map();
+    for (const path of fileMap.keys()) {
+      const part = skillPathParts(path);
+      if (!part || !/^bdd-scenarios\.md$/i.test(part.file) || known.has(part.skillId)) continue;
+      if (!unmapped.has(part.skillId)) unmapped.set(part.skillId, { id: part.skillId, name: part.skillId, path });
+    }
+    const result = Array.from(groups.values());
+    if (unmapped.size > 0) {
+      result.push({
+        label: contexts.length > 0 ? "Not in domain map" : "Bounded contexts",
+        items: Array.from(unmapped.values()).sort((a, b) => a.id.localeCompare(b.id)),
+      });
+    }
+    return result;
+  }
+
+  async function childDirectory(handle, segments) {
+    let current = handle;
+    for (const segment of segments) {
+      try {
+        current = await current.getDirectoryHandle(segment);
+      } catch (error) {
+        if (error && (error.name === "NotFoundError" || error.name === "TypeMismatchError")) return null;
+        throw error;
+      }
+    }
+    return current;
+  }
+
+  // Reads only docs/ and the known skills folders from a File System Access API
+  // directory handle, so large folders such as node_modules are never walked.
+  async function readProjectDirectory(rootHandle) {
+    const map = new Map();
+    const docs = await childDirectory(rootHandle, ["docs"]);
+    if (docs) {
+      for (const name of PROJECT_DOCS) {
+        try {
+          const fileHandle = await docs.getFileHandle(name);
+          map.set(`docs/${name}`, await fileHandle.getFile());
+        } catch (error) {
+          if (!error || (error.name !== "NotFoundError" && error.name !== "TypeMismatchError")) throw error;
+        }
+      }
+    }
+    for (const root of SKILLS_ROOTS) {
+      const skillsDir = await childDirectory(rootHandle, root.split("/"));
+      if (!skillsDir) continue;
+      for await (const [skillId, skillHandle] of skillsDir.entries()) {
+        if (skillHandle.kind !== "directory") continue;
+        for await (const [fileName, fileHandle] of skillHandle.entries()) {
+          if (fileHandle.kind === "file" && SKILL_FILE_PATTERN.test(fileName)) {
+            map.set(`${root}/${skillId}/${fileName}`, await fileHandle.getFile());
+          }
+        }
+      }
+    }
+    return map;
   }
 
   function validateProject(raw) {
@@ -536,8 +646,9 @@
       diagnostics.push({ severity: "warning", message: "docs/context-map.md was not found." });
     }
 
+    const skillsRoot = skillsRootOf(fileMap);
     for (const bc of domain.boundedContexts) {
-      const prefix = `.github/skills/${bc.id}/`;
+      const prefix = `${skillsRoot}/${bc.id}/`;
       const statusFile = fileMap.get(`${prefix}status.md`);
       const skillFile = fileMap.get(`${prefix}SKILL.md`);
       const modelFile = fileMap.get(`${prefix}domain-model.md`);
@@ -669,6 +780,23 @@
     };
   }
 
+  const CANVAS_MARGIN = 40;
+
+  // Logical (viewBox) canvas size: at least the visible area at this zoom, and
+  // large enough to hold the layout and every node where it currently sits.
+  function computeCanvasSize({ visibleWidth, visibleHeight, zoom, layout, positions, nodeWidth, nodeHeight }) {
+    let contentWidth = layout.width;
+    let contentHeight = layout.height;
+    for (const position of positions.values()) {
+      contentWidth = Math.max(contentWidth, position.x + nodeWidth + CANVAS_MARGIN);
+      contentHeight = Math.max(contentHeight, position.y + nodeHeight + CANVAS_MARGIN);
+    }
+    return {
+      width: Math.max(visibleWidth / zoom, contentWidth),
+      height: Math.max(visibleHeight / zoom, contentHeight),
+    };
+  }
+
   function svgElement(tag, attributes) {
     const element = document.createElementNS("http://www.w3.org/2000/svg", tag);
     for (const [name, value] of Object.entries(attributes || {})) {
@@ -681,8 +809,8 @@
     container.replaceChildren();
     const layout = layoutProject(project);
     const NODE_HEIGHT = 80;
-    const canvasHeight = Math.max(layout.height, 560);
-    const view = { width: 0, height: canvasHeight, zoom: 1 };
+    const view = { width: layout.width, height: layout.height, zoom: 1 };
+    if (container._topologyObserver) container._topologyObserver.disconnect();
     const svg = svgElement("svg", {
       role: "img",
       "aria-label": "Bounded context topology",
@@ -784,14 +912,30 @@
       }
     };
 
+    // The SVG is absolutely positioned, so it never drives the container's size;
+    // the container is sized by the grid row and the canvas fills (or overflows) it.
     const applyView = () => {
-      const available = container.clientWidth ? container.clientWidth - 26 : 0;
-      const pixelWidth = Math.max(available, 320);
-      view.width = pixelWidth / view.zoom;
-      view.height = canvasHeight / view.zoom;
+      const style = getComputedStyle(container);
+      const visibleWidth =
+        container.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      const visibleHeight =
+        container.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+      // A hidden tab reports 0; keep the last size until the ResizeObserver fires on show.
+      if (visibleWidth <= 0 || visibleHeight <= 0) return;
+      const size = computeCanvasSize({
+        visibleWidth,
+        visibleHeight,
+        zoom: view.zoom,
+        layout,
+        positions,
+        nodeWidth: NODE_WIDTH,
+        nodeHeight: NODE_HEIGHT,
+      });
+      view.width = size.width;
+      view.height = size.height;
       svg.setAttribute("viewBox", `0 0 ${view.width} ${view.height}`);
-      svg.style.width = `${pixelWidth}px`;
-      svg.style.height = `${canvasHeight}px`;
+      svg.style.width = `${view.width * view.zoom}px`;
+      svg.style.height = `${view.height * view.zoom}px`;
     };
     const setZoom = (percent) => {
       view.zoom = percent / 100;
@@ -869,6 +1013,11 @@
     updateEdges();
     container.append(svg);
     applyView();
+    if (typeof ResizeObserver === "function") {
+      // Re-fit when the tab is shown, the window resizes, or the details panel changes height.
+      container._topologyObserver = new ResizeObserver(() => applyView());
+      container._topologyObserver.observe(container);
+    }
     return { setZoom };
   }
 
@@ -935,14 +1084,7 @@
     const map = new Map();
     for (const file of Array.from(files || [])) {
       const path = relativeProjectPath(file.webkitRelativePath || file.name);
-      if (
-        path === "docs/hgate-project.json" ||
-        path === "docs/domain-map.md" ||
-        path === "docs/context-map.md" ||
-        /^\.github\/skills\/[^/]+\/(?:SKILL|domain-model|status|bdd-scenarios|[^/]+-acl)\.md$/i.test(path)
-      ) {
-        map.set(path, file);
-      }
+      if (isProjectFile(path)) map.set(path, file);
     }
     return map;
   }
@@ -1004,12 +1146,16 @@
     const scenarioSource = document.getElementById("sourceInput");
     const scenarioRender = document.getElementById("renderBtn");
     const zoomLevel = document.getElementById("zoomLevel");
+    const scenarioLoadButton = document.getElementById("scenarioLoadProjectBtn");
+    const scenarioStatus = document.getElementById("scenarioProjectStatus");
+    const scenarioSources = document.getElementById("scenarioSources");
     if (!scenarioTab || !projectTab || !folderInput) return;
     let diagramZoom = 100;
     let topology = null;
     let projectFiles = new Map();
     let loadedProject = null;
     let selectedBcId = null;
+    let activeScenarioId = null;
 
     const updateZoom = (nextZoom) => {
       diagramZoom = clampZoom(nextZoom);
@@ -1024,12 +1170,48 @@
 
     const scenarioPathFor = (bcId) => {
       const bc = loadedProject && loadedProject.boundedContexts.find((item) => item.id === bcId);
-      if (!bc) return null;
-      const candidates = [
-        ...Object.values(bc.sources || {}).filter((path) => /bdd-scenarios\.md$/i.test(path)),
-        `.github/skills/${bc.id}/bdd-scenarios.md`,
-      ];
-      return candidates.map(normalizePath).find((path) => projectFiles.has(path)) || null;
+      return findScenarioPath(bc, projectFiles);
+    };
+
+    const renderScenarioSources = () => {
+      if (!scenarioSources) return;
+      const groups = listScenarioSources(loadedProject, projectFiles);
+      scenarioSources.replaceChildren();
+      scenarioSources.hidden = groups.length === 0;
+      for (const group of groups) {
+        const groupElement = createElement("div", "scenario-source-group");
+        groupElement.append(createElement("span", "scenario-source-label", group.label));
+        const pills = createElement("div", "scenario-source-pills");
+        for (const item of group.items) {
+          const pill = createElement("button", "bc-pill", item.name);
+          pill.type = "button";
+          pill.dataset.bcId = item.id;
+          pill.disabled = !item.path;
+          pill.title = item.path || "No bdd-scenarios.md found for this bounded context";
+          pill.setAttribute("aria-pressed", String(item.id === activeScenarioId));
+          pill.addEventListener("click", () => showScenarios(item.id, item.path));
+          pills.append(pill);
+        }
+        groupElement.append(pills);
+        scenarioSources.append(groupElement);
+      }
+    };
+
+    const markActivePill = () => {
+      if (!scenarioSources) return;
+      for (const pill of scenarioSources.querySelectorAll(".bc-pill")) {
+        pill.setAttribute("aria-pressed", String(pill.dataset.bcId === activeScenarioId));
+      }
+    };
+
+    const showScenarios = async (bcId, path) => {
+      if (!path || !projectFiles.has(path)) return;
+      scenarioSource.value = await projectFiles.get(path).text();
+      scenarioRender.click();
+      activeScenarioId = bcId;
+      markActivePill();
+      if (loadedProject && loadedProject.boundedContexts.some((bc) => bc.id === bcId)) selectBc(bcId);
+      activate("scenario");
     };
 
     const selectBc = (bcId) => {
@@ -1047,40 +1229,81 @@
       scenarioTab.setAttribute("aria-selected", String(!projectActive));
       projectTab.setAttribute("aria-selected", String(projectActive));
     };
+
+    const showLoadError = (message) => {
+      renderDiagnostics([{ severity: "error", message }], diagnostics);
+      if (scenarioStatus) scenarioStatus.textContent = message;
+    };
+
+    const applyProjectFiles = async (fileMap, folderName) => {
+      diagnostics.hidden = true;
+      if (fileMap.size === 0) {
+        showLoadError(
+          `No hGATE files found in ${folderName || "the selected folder"}. ` +
+            `Select the project root that contains docs/ and ${SKILLS_ROOTS.join(", ")}.`,
+        );
+        return;
+      }
+      details.replaceChildren(createElement("p", "muted", "Loading project artifacts..."));
+      projectFiles = fileMap;
+      activeScenarioId = null;
+      const loaded = await loadProject(fileMap);
+      loadedProject = loaded.project;
+      renderSummary(loaded.project, summary);
+      renderDiagnostics(loaded.diagnostics, diagnostics);
+      topology = renderTopology(loaded.project, graph, selectBc);
+      updateZoom(100);
+      selectBc(loaded.project.boundedContexts[0] && loaded.project.boundedContexts[0].id);
+      renderScenarioSources();
+      if (scenarioStatus) {
+        const items = listScenarioSources(loadedProject, projectFiles).flatMap((group) => group.items);
+        const withScenarios = items.filter((item) => item.path).length;
+        scenarioStatus.textContent =
+          `${folderName ? `${folderName}: ` : ""}${withScenarios} of ${items.length} ` +
+          `bounded context${items.length === 1 ? "" : "s"} with scenarios (${skillsRootOf(fileMap)})`;
+      }
+    };
+
+    const loadSafely = async (load) => {
+      try {
+        await load();
+      } catch (error) {
+        if (error && error.name === "AbortError") return;
+        showLoadError(`Could not load project: ${error.message}`);
+      }
+    };
+
+    // Prefer the File System Access API: it reads only docs/ and the skills folders.
+    // Other browsers fall back to <input webkitdirectory>, which enumerates the whole folder.
+    const pickProject = () => {
+      if (typeof window.showDirectoryPicker === "function") {
+        loadSafely(async () => {
+          const handle = await window.showDirectoryPicker({ id: "hgate-project", mode: "read" });
+          await applyProjectFiles(await readProjectDirectory(handle), handle.name);
+        });
+      } else {
+        folderInput.click();
+      }
+    };
+
     scenarioTab.addEventListener("click", () => activate("scenario"));
     projectTab.addEventListener("click", () => activate("project"));
-    selectButton.addEventListener("click", () => folderInput.click());
-    viewScenariosButton.addEventListener("click", async () => {
-      const path = scenarioPathFor(selectedBcId);
-      if (!path) return;
-      scenarioSource.value = await projectFiles.get(path).text();
-      scenarioRender.click();
-      activate("scenario");
-    });
+    selectButton.addEventListener("click", pickProject);
+    if (scenarioLoadButton) scenarioLoadButton.addEventListener("click", pickProject);
+    viewScenariosButton.addEventListener("click", () =>
+      showScenarios(selectedBcId, scenarioPathFor(selectedBcId)),
+    );
     zoomOutButton.addEventListener("click", () => updateZoom(diagramZoom - ZOOM_STEP));
     zoomInButton.addEventListener("click", () => updateZoom(diagramZoom + ZOOM_STEP));
     fitDiagramButton.addEventListener("click", () => updateZoom(100));
-    folderInput.addEventListener("change", async () => {
-      diagnostics.hidden = true;
-      details.replaceChildren(createElement("p", "muted", "Loading project artifacts..."));
-      try {
-        const fileMap = indexFiles(folderInput.files);
-        const loaded = await loadProject(fileMap);
-        renderSummary(loaded.project, summary);
-        renderDiagnostics(loaded.diagnostics, diagnostics);
-        projectFiles = fileMap;
-        loadedProject = loaded.project;
-        const select = selectBc;
-        topology = renderTopology(loaded.project, graph, select);
-        updateZoom(100);
-        select(loaded.project.boundedContexts[0] && loaded.project.boundedContexts[0].id);
-      } catch (error) {
-        renderDiagnostics(
-          [{ severity: "error", message: `Could not load project: ${error.message}` }],
-          diagnostics,
-        );
-      }
-    });
+    folderInput.addEventListener("change", () =>
+      loadSafely(async () => {
+        const [first] = Array.from(folderInput.files || []);
+        const folderName = first && first.webkitRelativePath ? first.webkitRelativePath.split("/")[0] : "";
+        await applyProjectFiles(indexFiles(folderInput.files), folderName);
+        folderInput.value = "";
+      }),
+    );
     activate("scenario");
   }
 
@@ -1105,8 +1328,13 @@
     normalizeProject,
     buildLegacyProject,
     indexFiles,
+    skillsRootOf,
+    findScenarioPath,
+    listScenarioSources,
+    readProjectDirectory,
     loadProject,
     layoutProject,
+    computeCanvasSize,
     clampZoom,
     abbreviateEdgeLabel,
   };

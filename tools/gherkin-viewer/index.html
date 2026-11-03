@@ -247,10 +247,16 @@
       }
 
       .project-graph {
+        position: relative;
+        min-height: 560px;
         overflow: auto;
       }
 
+      /* Out of flow so the canvas fills the panel without driving its size. */
       .project-graph svg {
+        position: absolute;
+        top: 12px;
+        left: 12px;
         display: block;
         max-width: none;
       }
@@ -393,6 +399,57 @@
         font-size: 10px;
       }
 
+      .scenario-sources {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 12px;
+        padding: 10px 12px;
+        border: 1px solid #bae6fd;
+        border-radius: 12px;
+        background: #f8fdff;
+      }
+
+      .scenario-source-group {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 8px;
+      }
+
+      .scenario-source-label {
+        min-width: 140px;
+        color: #334155;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .scenario-source-pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .bc-pill {
+        padding: 4px 12px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .bc-pill[aria-pressed="true"] {
+        border-color: #0284c7;
+        background: #0284c7;
+        color: #ffffff;
+      }
+
+      .bc-pill:disabled {
+        cursor: not-allowed;
+        border-style: dashed;
+        border-color: #cbd5e1;
+        background: transparent;
+        color: #94a3b8;
+      }
+
       @media (max-width: 850px) {
         .project-layout {
           grid-template-columns: 1fr;
@@ -412,12 +469,21 @@
     </div>
 
     <section id="scenarioPanel" role="tabpanel" aria-labelledby="scenarioTab">
-      <p class="muted">Paste a Markdown BDD scenario file.</p>
+      <p class="muted">
+        Load an hGATE project to browse each bounded context's scenarios, or paste a Markdown
+        BDD scenario file below. All processing stays in this browser.
+      </p>
+
+      <div class="row project-toolbar">
+        <button id="scenarioLoadProjectBtn" type="button">Load project</button>
+        <span id="scenarioProjectStatus" class="muted" aria-live="polite">No project loaded</span>
+      </div>
+      <div id="scenarioSources" class="scenario-sources" aria-label="Bounded contexts" hidden></div>
 
       <div class="row">
         <input id="filterInput" type="text" placeholder="Filter by tag/title/step..." />
         <button id="renderBtn">Render</button>
-        <button id="loadFileBtn">Load file</button>
+        <button id="loadFileBtn" title="Open a single scenario file">Open file</button>
         <input id="fileInput" type="file" accept=".md,.txt,.feature" style="display: none" />
       </div>
 
@@ -432,10 +498,11 @@
 
     <section id="projectPanel" role="tabpanel" aria-labelledby="projectTab" hidden>
       <p class="muted">
-        Select an hGATE-managed project folder. All processing stays in this browser.
+        Load the root folder of an hGATE-managed project. Only <code>docs/</code> and the skills
+        folder are read, and all processing stays in this browser.
       </p>
       <div class="row project-toolbar">
-        <button id="selectProjectBtn" type="button">Select project folder</button>
+        <button id="selectProjectBtn" type="button">Load project</button>
         <input
           id="projectFolderInput"
           type="file"
@@ -461,7 +528,7 @@
           <p class="muted">The bounded-context topology will appear here.</p>
         </div>
         <aside id="projectDetails" class="project-details">
-          <p class="muted">Select a project folder, then choose a bounded context.</p>
+          <p class="muted">Load a project, then choose a bounded context.</p>
         </aside>
       </div>
     </section>

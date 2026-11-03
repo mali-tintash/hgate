@@ -172,7 +172,20 @@ Open it directly in a browser (no server or build step required):
 open tools/gherkin-viewer/index.html
 ```
 
-Then click **Load file** and select a BC's `bdd-scenarios.md`. The viewer:
+Then click **Load project** and select your project's root folder. The viewer
+finds the skills folder (`.github/skills`, `.claude/skills`, `.agents/skills`
+or `.codex/skills`) and shows every bounded context as a pill, grouped by
+domain; click one to render its `bdd-scenarios.md`. A skill folder counts as a
+bounded context when it contains `bdd-scenarios.md`, `domain-model.md` or
+`status.md`, so hGATE's own workflow skills are ignored. Bounded contexts
+without scenarios appear disabled, and scenario files for folders missing from
+`docs/domain-map.md` are listed under "Not in domain map". The same project
+loads the Project tab.
+
+In Chromium-based browsers only `docs/` and the skills folder are opened, so
+large folders such as `node_modules` are never read. Other browsers fall back to
+a standard folder upload, which lists the whole folder first. **Open file** still
+renders a single scenario file, and you can paste Markdown directly. The viewer:
 
 - extracts fenced ` ```gherkin ` blocks from the Markdown and renders each
   `Feature` as a collapsible section
