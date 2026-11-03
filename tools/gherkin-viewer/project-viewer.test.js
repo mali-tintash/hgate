@@ -364,3 +364,26 @@ test("readProjectDirectory reads only docs and skills, never other folders", asy
   ]);
   assert.equal(await map.get(".github/skills/ordering/bdd-scenarios.md").text(), "scenarios");
 });
+
+test("computeCanvasSize fills the visible area and grows to fit the layout and moved nodes", () => {
+  const layout = { width: 820, height: 340 };
+  const base = { layout, positions: new Map([["a", { x: 40, y: 65 }]]), nodeWidth: 180, nodeHeight: 80 };
+  assert.deepEqual(
+    viewer.computeCanvasSize({ ...base, visibleWidth: 1000, visibleHeight: 700, zoom: 1 }),
+    { width: 1000, height: 700 },
+  );
+  assert.deepEqual(
+    viewer.computeCanvasSize({ ...base, visibleWidth: 1000, visibleHeight: 700, zoom: 2 }),
+    { width: 820, height: 350 },
+  );
+  assert.deepEqual(
+    viewer.computeCanvasSize({
+      ...base,
+      positions: new Map([["a", { x: 900, y: 600 }]]),
+      visibleWidth: 1000,
+      visibleHeight: 700,
+      zoom: 2,
+    }),
+    { width: 1120, height: 720 },
+  );
+});

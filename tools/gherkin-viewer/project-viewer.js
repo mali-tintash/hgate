@@ -780,6 +780,23 @@
     };
   }
 
+  const CANVAS_MARGIN = 40;
+
+  // Logical (viewBox) canvas size: at least the visible area at this zoom, and
+  // large enough to hold the layout and every node where it currently sits.
+  function computeCanvasSize({ visibleWidth, visibleHeight, zoom, layout, positions, nodeWidth, nodeHeight }) {
+    let contentWidth = layout.width;
+    let contentHeight = layout.height;
+    for (const position of positions.values()) {
+      contentWidth = Math.max(contentWidth, position.x + nodeWidth + CANVAS_MARGIN);
+      contentHeight = Math.max(contentHeight, position.y + nodeHeight + CANVAS_MARGIN);
+    }
+    return {
+      width: Math.max(visibleWidth / zoom, contentWidth),
+      height: Math.max(visibleHeight / zoom, contentHeight),
+    };
+  }
+
   function svgElement(tag, attributes) {
     const element = document.createElementNS("http://www.w3.org/2000/svg", tag);
     for (const [name, value] of Object.entries(attributes || {})) {
@@ -792,8 +809,8 @@
     container.replaceChildren();
     const layout = layoutProject(project);
     const NODE_HEIGHT = 80;
-    const canvasHeight = Math.max(layout.height, 560);
-    const view = { width: 0, height: canvasHeight, zoom: 1 };
+    const view = { width: layout.width, height: layout.height, zoom: 1 };
+    if (container._topologyObserver) container._topologyObserver.disconnect();
     const svg = svgElement("svg", {
       role: "img",
       "aria-label": "Bounded context topology",
@@ -895,14 +912,30 @@
       }
     };
 
+    // The SVG is absolutely positioned, so it never drives the container's size;
+    // the container is sized by the grid row and the canvas fills (or overflows) it.
     const applyView = () => {
-      const available = container.clientWidth ? container.clientWidth - 26 : 0;
-      const pixelWidth = Math.max(available, 320);
-      view.width = pixelWidth / view.zoom;
-      view.height = canvasHeight / view.zoom;
+      const style = getComputedStyle(container);
+      const visibleWidth =
+        container.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      const visibleHeight =
+        container.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+      // A hidden tab reports 0; keep the last size until the ResizeObserver fires on show.
+      if (visibleWidth <= 0 || visibleHeight <= 0) return;
+      const size = computeCanvasSize({
+        visibleWidth,
+        visibleHeight,
+        zoom: view.zoom,
+        layout,
+        positions,
+        nodeWidth: NODE_WIDTH,
+        nodeHeight: NODE_HEIGHT,
+      });
+      view.width = size.width;
+      view.height = size.height;
       svg.setAttribute("viewBox", `0 0 ${view.width} ${view.height}`);
-      svg.style.width = `${pixelWidth}px`;
-      svg.style.height = `${canvasHeight}px`;
+      svg.style.width = `${view.width * view.zoom}px`;
+      svg.style.height = `${view.height * view.zoom}px`;
     };
     const setZoom = (percent) => {
       view.zoom = percent / 100;
@@ -980,6 +1013,11 @@
     updateEdges();
     container.append(svg);
     applyView();
+    if (typeof ResizeObserver === "function") {
+      // Re-fit when the tab is shown, the window resizes, or the details panel changes height.
+      container._topologyObserver = new ResizeObserver(() => applyView());
+      container._topologyObserver.observe(container);
+    }
     return { setZoom };
   }
 
@@ -1296,6 +1334,7 @@
     readProjectDirectory,
     loadProject,
     layoutProject,
+    computeCanvasSize,
     clampZoom,
     abbreviateEdgeLabel,
   };

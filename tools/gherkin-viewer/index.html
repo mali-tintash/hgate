@@ -247,10 +247,16 @@
       }
 
       .project-graph {
+        position: relative;
+        min-height: 560px;
         overflow: auto;
       }
 
+      /* Out of flow so the canvas fills the panel without driving its size. */
       .project-graph svg {
+        position: absolute;
+        top: 12px;
+        left: 12px;
         display: block;
         max-width: none;
       }
