@@ -1,6 +1,6 @@
 {
   "$schema": "./hgate-project.schema.json",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "project": {
     "name": "Example commerce project",
     "description": "Illustrates the hGATE machine-readable project projection."
@@ -49,10 +49,217 @@
           "file": ".github/skills/catalog/ecommerce-catalog-acl.md"
         }
       ],
+      "nextSkill": "bc-enhancement",
+      "blockers": ["Awaiting eCommerce Core sandbox credentials for contract tests", "G3 channel fallback owner not named"],
+      "transitions": [
+        {
+          "date": "2026-11-01",
+          "from": "-",
+          "to": "DISCOVERED",
+          "evidence": "Confirmed domain exploration",
+          "actor": "domain-exploration session"
+        },
+        {
+          "date": "2026-11-05",
+          "from": "DISCOVERED",
+          "to": "REFINING",
+          "evidence": "Refinement started",
+          "actor": "bc-refinement session"
+        },
+        {
+          "date": "2026-11-10",
+          "from": "REFINING",
+          "to": "REFINED",
+          "evidence": "Spec approved",
+          "actor": "bc-refinement session"
+        },
+        {
+          "date": "2026-11-14",
+          "from": "REFINED",
+          "to": "IMPLEMENTING",
+          "evidence": "`verify-spec --phase implementation` OK",
+          "actor": "bc-implementation session"
+        },
+        {
+          "date": "2026-11-18",
+          "from": "IMPLEMENTING",
+          "to": "IMPLEMENTED",
+          "evidence": "BDD sign-off recorded",
+          "actor": "bc-implementation session"
+        },
+        {
+          "date": "2026-11-20",
+          "from": "IMPLEMENTED",
+          "to": "VERIFIED",
+          "evidence": "`bc-review full` report, no blocking findings",
+          "actor": "bc-review session"
+        }
+      ],
+      "gates": [
+        {
+          "transition": "- -> DISCOVERED",
+          "gate": "GATE-DISC-BOUNDARY",
+          "kind": "H",
+          "result": "PASS",
+          "evidence": "BC row in `docs/domain-map.md`; relationships in `docs/context-map.md`",
+          "signedBy": "A. Reviewer (Tech lead)",
+          "date": "2026-11-01"
+        },
+        {
+          "transition": "- -> DISCOVERED",
+          "gate": "GATE-PROJ-SYNC",
+          "kind": "D",
+          "result": "PASS",
+          "evidence": "`npm run project:check` in-sync",
+          "signedBy": null,
+          "date": "2026-11-01"
+        },
+        {
+          "transition": "REFINING -> REFINED",
+          "gate": "GATE-REF-SPEC",
+          "kind": "D",
+          "result": "FAIL",
+          "evidence": "`verify-spec` reported HGS004 (refinement)",
+          "signedBy": null,
+          "date": "2026-11-09"
+        },
+        {
+          "transition": "REFINING -> REFINED",
+          "gate": "GATE-REF-SPEC",
+          "kind": "D",
+          "result": "PASS",
+          "evidence": "`verify-spec` OK (refinement)",
+          "signedBy": null,
+          "date": "2026-11-10"
+        },
+        {
+          "transition": "REFINING -> REFINED",
+          "gate": "GATE-REF-APPROVAL",
+          "kind": "H",
+          "result": "PASS",
+          "evidence": "`SKILL.md`, `domain-model.md`, `bdd-scenarios.md`",
+          "signedBy": "A. Reviewer (Tech lead)",
+          "date": "2026-11-10"
+        },
+        {
+          "transition": "IMPLEMENTING -> IMPLEMENTED",
+          "gate": "GATE-IMPL-PROPS",
+          "kind": "H",
+          "result": "N/A",
+          "evidence": "Goal 3 declined, recorded in `decisions.md`",
+          "signedBy": null,
+          "date": "2026-11-18"
+        },
+        {
+          "transition": "IMPLEMENTED -> VERIFIED",
+          "gate": "GATE-VER-REPORT",
+          "kind": "H",
+          "result": "PASS",
+          "evidence": "docs/verification/bc-reviews/catalog/2026-11-20-full.md",
+          "signedBy": "A. Reviewer (Tech lead)",
+          "date": "2026-11-20"
+        },
+        {
+          "transition": "IMPLEMENTED -> VERIFIED",
+          "gate": "GATE-PROJ-SYNC",
+          "kind": "D",
+          "result": "PASS",
+          "evidence": "`npm run project:check` in-sync",
+          "signedBy": null,
+          "date": "2026-11-20"
+        }
+      ],
+      "openItems": [
+        {
+          "id": "G3",
+          "item": "Channel fallback when the tenant channel is missing",
+          "owner": "Tech lead",
+          "disposition": "Deferred"
+        },
+        {
+          "id": "G11",
+          "item": "Product taxonomy",
+          "owner": "Product owner",
+          "disposition": "Resolved for Catalog (four top-level categories); starter assortment is Ordering's"
+        },
+        {
+          "id": "G12",
+          "item": "Cache size and eviction",
+          "owner": "Product owner",
+          "disposition": "Resolved (no eviction, 500-entry cache)"
+        },
+        {
+          "id": "G13",
+          "item": "Search provider and cost controls",
+          "owner": "Product owner",
+          "disposition": "Resolved by ADR-0001 plus caps in `decisions.md`"
+        },
+        {
+          "id": "OI-1",
+          "item": "Cache invalidation on channel token rotation",
+          "owner": "Catalog team",
+          "disposition": "Open"
+        }
+      ],
+      "gateStatus": {
+        "transition": "IMPLEMENTED -> VERIFIED",
+        "required": [
+          {
+            "gate": "GATE-VER-REPORT",
+            "kind": "H",
+            "result": "PASS",
+            "date": "2026-11-20",
+            "satisfied": true
+          },
+          {
+            "gate": "GATE-PROJ-SYNC",
+            "kind": "D",
+            "result": "PASS",
+            "date": "2026-11-20",
+            "satisfied": true
+          }
+        ],
+        "optional": [],
+        "satisfied": 2,
+        "total": 2,
+        "valid": true
+      },
+      "stats": {
+        "rules": 3,
+        "features": 2,
+        "scenarios": 3,
+        "decisions": 2,
+        "properties": 1,
+        "acls": 1,
+        "ports": 1,
+        "openItems": 3,
+        "openGaps": 4
+      },
+      "signoffs": [
+        {
+          "kind": "review",
+          "file": "docs/verification/bc-reviews/catalog/2026-11-12-spec-only.md",
+          "date": "2026-11-12",
+          "outcome": "FAIL"
+        },
+        {
+          "kind": "review",
+          "file": "docs/verification/bc-reviews/catalog/2026-11-20-full.md",
+          "date": "2026-11-20",
+          "outcome": "PASS"
+        },
+        {
+          "kind": "bdd",
+          "file": "docs/verification/bdd-signoffs/catalog/2026-11-18-initial-implementation.md",
+          "date": "2026-11-18",
+          "status": "SIGNED_OFF"
+        }
+      ],
       "sources": {
         "skill": ".github/skills/catalog/SKILL.md",
         "domainModel": ".github/skills/catalog/domain-model.md",
-        "status": ".github/skills/catalog/status.md"
+        "status": ".github/skills/catalog/status.md",
+        "bddScenarios": ".github/skills/catalog/bdd-scenarios.md"
       }
     },
     {
@@ -82,6 +289,83 @@
         }
       ],
       "acls": [],
+      "nextSkill": "bc-review",
+      "blockers": [],
+      "transitions": [
+        {
+          "date": "2026-10-02",
+          "from": "-",
+          "to": "DISCOVERED",
+          "evidence": "Confirmed domain exploration",
+          "actor": "domain-exploration session"
+        },
+        {
+          "date": "2026-10-20",
+          "from": "IMPLEMENTING",
+          "to": "IMPLEMENTED",
+          "evidence": "Tests pass",
+          "actor": "bc-implementation session"
+        }
+      ],
+      "gates": [],
+      "openItems": [
+        {
+          "id": null,
+          "item": "OMS retry policy for timeouts",
+          "owner": "OMS team",
+          "disposition": "Open"
+        }
+      ],
+      "gateStatus": {
+        "transition": "IMPLEMENTING -> IMPLEMENTED",
+        "required": [
+          {
+            "gate": "GATE-IMPL-BDD",
+            "kind": "D",
+            "result": null,
+            "date": null,
+            "satisfied": false
+          },
+          {
+            "gate": "GATE-IMPL-SIGNOFF",
+            "kind": "H",
+            "result": null,
+            "date": null,
+            "satisfied": false
+          },
+          {
+            "gate": "GATE-PROJ-SYNC",
+            "kind": "D",
+            "result": null,
+            "date": null,
+            "satisfied": false
+          }
+        ],
+        "optional": [
+          {
+            "gate": "GATE-IMPL-PROPS",
+            "kind": "H",
+            "result": null,
+            "date": null,
+            "satisfied": true
+          }
+        ],
+        "satisfied": 0,
+        "total": 3,
+        "valid": false
+      },
+      "stats": {
+        "rules": 0,
+        "features": 0,
+        "scenarios": 0,
+        "decisions": 0,
+        "properties": 0,
+        "acls": 0,
+        "ports": 1,
+        "openItems": 1,
+        "openGaps": 0
+      },
+      "signoffs": [],
       "sources": {
         "skill": ".github/skills/orders/SKILL.md",
         "domainModel": ".github/skills/orders/domain-model.md",
@@ -110,6 +394,155 @@
       "entryPoint": "Customer browses the catalog",
       "outcome": "An order is accepted",
       "validationArtifact": "docs/features/place-order/validation.md"
+    }
+  ],
+  "gaps": [
+    {
+      "id": "G3",
+      "gap": "Channel fallback when the tenant channel is missing",
+      "affected": "Catalog",
+      "state": "DEFERRED",
+      "sources": [
+        {
+          "file": "docs/domain-map.md",
+          "line": 30,
+          "bc": null,
+          "owner": "Tech lead",
+          "disposition": "Deferred"
+        },
+        {
+          "file": ".github/skills/catalog/status.md",
+          "line": 53,
+          "bc": "catalog",
+          "owner": "Tech lead",
+          "disposition": "Deferred"
+        }
+      ]
+    },
+    {
+      "id": "G11",
+      "gap": "Product taxonomy and starter assortment",
+      "affected": "Both",
+      "state": "MIXED",
+      "sources": [
+        {
+          "file": "docs/domain-map.md",
+          "line": 31,
+          "bc": null,
+          "owner": "Product owner",
+          "disposition": "Deferred to bc-refinement"
+        },
+        {
+          "file": ".github/skills/catalog/status.md",
+          "line": 54,
+          "bc": "catalog",
+          "owner": "Product owner",
+          "disposition": "Resolved for Catalog (four top-level categories); starter assortment is Ordering's"
+        }
+      ]
+    },
+    {
+      "id": "G12",
+      "gap": "Catalog cache size and eviction limits",
+      "affected": "Catalog",
+      "state": "MIXED",
+      "sources": [
+        {
+          "file": "docs/domain-map.md",
+          "line": 32,
+          "bc": null,
+          "owner": "Product owner",
+          "disposition": "Deferred to bc-refinement"
+        },
+        {
+          "file": ".github/skills/catalog/status.md",
+          "line": 55,
+          "bc": "catalog",
+          "owner": "Product owner",
+          "disposition": "Resolved (no eviction, 500-entry cache)"
+        }
+      ]
+    },
+    {
+      "id": "G13",
+      "gap": "Search provider and cost controls",
+      "affected": "Catalog",
+      "state": "MIXED",
+      "sources": [
+        {
+          "file": "docs/domain-map.md",
+          "line": 33,
+          "bc": null,
+          "owner": "Product owner",
+          "disposition": "Deferred to architecture-decision-exploration"
+        },
+        {
+          "file": ".github/skills/catalog/status.md",
+          "line": 56,
+          "bc": "catalog",
+          "owner": "Product owner",
+          "disposition": "Resolved by ADR-0001 plus caps in `decisions.md`"
+        }
+      ]
+    },
+    {
+      "id": "G14",
+      "gap": "Price snapshot at selection time",
+      "affected": "catalog-to-ordering-product-selection",
+      "state": "OPEN",
+      "sources": [
+        {
+          "file": "docs/context-map.md",
+          "line": 19,
+          "bc": null,
+          "owner": "Product owner",
+          "disposition": "Open"
+        }
+      ]
+    },
+    {
+      "id": "G15",
+      "gap": "Sync vs async product lookup",
+      "affected": "Both",
+      "state": "PARTIAL",
+      "sources": [
+        {
+          "file": "docs/context-map.md",
+          "line": 20,
+          "bc": null,
+          "owner": "Product owner",
+          "disposition": "Resolved for Catalog (synchronous); Ordering to confirm"
+        }
+      ]
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "HGW001",
+      "severity": "warning",
+      "message": "gap G11 dispositions disagree: DEFERRED at docs/domain-map.md:31, PARTIAL at .github/skills/catalog/status.md:54",
+      "file": "docs/domain-map.md",
+      "line": 31,
+      "bcId": null,
+      "gapId": "G11"
+    },
+    {
+      "code": "HGW001",
+      "severity": "warning",
+      "message": "gap G12 dispositions disagree: DEFERRED at docs/domain-map.md:32, RESOLVED at .github/skills/catalog/status.md:55",
+      "file": "docs/domain-map.md",
+      "line": 32,
+      "bcId": null,
+      "gapId": "G12"
+    },
+    {
+      "code": "HGW001",
+      "severity": "warning",
+      "message": "gap G13 dispositions disagree: DEFERRED at docs/domain-map.md:33, RESOLVED at .github/skills/catalog/status.md:56",
+      "file": "docs/domain-map.md",
+      "line": 33,
+      "bcId": null,
+      "gapId": "G13"
     }
   ]
 }

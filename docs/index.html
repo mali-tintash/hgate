@@ -157,6 +157,12 @@
   .feat-card p{ margin-top:9px; color:var(--muted); font-size:14.5px; line-height:1.55; }
   @media (max-width:840px){ .feat-grid{ grid-template-columns:1fr; } }
 
+  /* status board */
+  .status{ background:var(--surface); }
+  .status .feat-card{ background:var(--bg); }
+  .status .feat-grid{ grid-template-columns:repeat(2,1fr); }
+  @media (max-width:840px){ .status .feat-grid{ grid-template-columns:1fr; } }
+
   /* skills table */
   .skills{ background:var(--surface); }
   table{ width:100%; border-collapse:collapse; background:var(--bg); border-radius:10px; overflow:hidden; border:1px solid var(--border); }
@@ -218,6 +224,7 @@
     <div class="navlinks">
       <a href="#principles">Principles</a>
       <a href="#workflow">Workflow</a>
+      <a href="#status">Status</a>
       <a href="#features">Features</a>
       <a href="#skills">Skills</a>
       <a href="#adoption">Adoption</a>
@@ -319,9 +326,58 @@
         to produce a first-draft spec — then <code class="mono">bc-review full</code> surfaces where the
         spec and the code have already drifted apart.</div>
 
+      <p class="flow-note">Every lifecycle step, not just the reviews, passes named gates — a human sign-off,
+        a deterministic tool result, or both — recorded as evidence in the BC's own
+        <code class="mono">status.md</code>. See <a href="#status"><b>where every BC stands</b></a>.</p>
+
       <p class="flow-note">Already know your domain boundaries? <code class="mono">architecture-decision-exploration</code>
         handles a cross-system technical decision on its own, without repeating domain mapping.</p>
     </div>
+  </div>
+</section>
+
+<section class="status" id="status">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Lifecycle &amp; status</span>
+      <h2>See where every bounded context stands.</h2>
+      <p>A tech lead or PM can answer "is this BC really done, and what changed since it was signed off?"
+        in five minutes — without asking the agent, and without trusting its word.</p>
+    </div>
+    <div class="feat-grid">
+      <div class="feat-card">
+        <span class="tag">GATES</span>
+        <h3>Lifecycle gates with named sign-offs</h3>
+        <p>A BC enters a state only through that transition's gates: a named human approval, a deterministic
+          tool result, or a recorded fact. Each result lands in the BC's gate evidence with who signed it and
+          when, and <code class="mono">verify:spec</code> fails when a BC claims a state its gates don't support.</p>
+      </div>
+      <div class="feat-card">
+        <span class="tag">BOARD</span>
+        <h3>A status board, one card per BC</h3>
+        <p>Lifecycle swimlanes from Discovered to Verified. Each card shows its next skill, blockers, and how many
+          required gates are met — with the unmet ones listed, in red. Tooltips, legends and a built-in reading
+          guide explain every badge.</p>
+      </div>
+      <div class="feat-card">
+        <span class="tag">GAPS &amp; DRIFT</span>
+        <h3>Gaps and drift you can't miss</h3>
+        <p>Open questions shared across the domain map, context map and BCs roll up into one gap ledger that
+          turns red when something needs action, amber when it's pending, and folds away when all is resolved.
+          If two documents disagree, a warning banner sits on every tab and can't be dismissed.</p>
+      </div>
+      <div class="feat-card">
+        <span class="tag">HISTORY</span>
+        <h3>What changed since the last sign-off</h3>
+        <p>Read from git history: a timeline of every transition with its commit, gates and signers, and what
+          changed in the spec since the last transition, since the previous commit, and in uncommitted work —
+          down to individual scenarios, rules and decisions.</p>
+      </div>
+    </div>
+    <div class="iterate-note" style="margin-top:28px; margin-bottom:0;">All of it is deterministic — generated
+      by plain scripts (<code class="mono">project:sync</code>, <code class="mono">project:status</code>) and
+      read in a local, dependency-free viewer. No LLM tokens, and the same repository always gives the same
+      board. <a href="https://github.com/mali-tintash/hGATE/blob/main/docs/viewer-guide.md" target="_blank"><b>Read the viewer guide &rarr;</b></a></div>
   </div>
 </section>
 
@@ -395,8 +451,8 @@
       <div class="feat-card">
         <span class="tag">PROJECTION</span>
         <h3>Always-current project map</h3>
-        <p>The project overview used by the viewer is generated from your specs, so it never goes stale
-          or gets edited by hand. CI tells you if it falls out of date.</p>
+        <p>The project overview behind the viewer and the <a href="#status"><b>status board</b></a> is generated
+          from your specs, so it never goes stale or gets edited by hand. CI tells you if it falls out of date.</p>
       </div>
     </div>
   </div>
@@ -417,7 +473,7 @@
           <tr><td class="skillname">domain-exploration</td><td class="desc">Problem, language, or BC boundaries are unclear</td><td class="desc">Confirmed domain map and context map</td></tr>
           <tr><td class="skillname">architecture-decision-exploration</td><td class="desc">A cross-system technical decision is unresolved</td><td class="desc">An ADR (Architecture Decision Record) or design report</td></tr>
           <tr><td class="skillname">bc-refinement</td><td class="desc">One BC needs an approved specification</td><td class="desc">Domain model, BDD scenarios, decisions, ACLs (anti-corruption layers)</td></tr>
-          <tr><td class="skillname">bc-review</td><td class="desc">One BC needs a read-only audit</td><td class="desc">Evidence-based findings</td></tr>
+          <tr><td class="skillname">bc-review</td><td class="desc">One BC needs a read-only audit</td><td class="desc">Evidence-based findings, saved as a review report that backs the BC's lifecycle gate</td></tr>
           <tr><td class="skillname">bc-implementation</td><td class="desc">A refined BC has no material implementation</td><td class="desc">Tested implementation, traceability report, sign-off; optional property verification</td></tr>
           <tr><td class="skillname">bc-enhancement</td><td class="desc">A BC needs a new capability slice, a changed rule, or a bug fixed</td><td class="desc">Synchronized spec + code, ghost behavior removed; optional property verification</td></tr>
           <tr><td class="skillname">cross-bc-validation</td><td class="desc">A completed journey crosses several implemented BCs</td><td class="desc">Feature-local contract + validation report</td></tr>
@@ -486,9 +542,10 @@
 cp -R skills/* /path/to/your-project/.github/skills/
 mkdir -p /path/to/your-project/tools
 cp -R tools/. /path/to/your-project/tools/
-<span class="cmt"># copies every tool plus project-schema.json and other shared artifacts</span>
+<span class="cmt"># copies every verifier, generator and the viewer, plus tools/shared</span>
 <span class="cmt"># preserve each skill's SKILL.md, assets/, references/, decisions.md</span>
-<span class="cmt"># optional Goal 3: install fast-check for tools/business-verification</span></pre>
+<span class="cmt"># optional Goal 3: install fast-check for tools/business-verification</span>
+<span class="cmt"># add .hgate/ to .gitignore (the derived status report lives there)</span></pre>
         </div>
       </div>
       <div class="step">

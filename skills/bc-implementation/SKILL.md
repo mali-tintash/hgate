@@ -102,8 +102,17 @@ record:
 REFINED | SPEC_REVIEWED -> IMPLEMENTING
 ```
 
-Immediately synchronize that lifecycle into `docs/hgate-project.json` and
-validate it; the transition remains owned by `status.md`.
+Use the concrete `FROM` state. In `status.md`, write the gate rows first, then
+the Transition History row, then `lifecycle:` (write order per
+`../hgate-guide/references/lifecycle-gates.md`, Validity Rule 8):
+
+| Gate | Kind | Evidence | Signed by |
+|---|---|---|---|
+| `GATE-IMPL-READY` | D | `npm run verify:spec -- --bc <bc-name> --phase implementation` exit 0 (Phase 1) | - |
+| `GATE-PROJ-SYNC` | D | `npm run project:check` in-sync | - |
+
+Immediately run `npm run project:sync` and `npm run project:check`; the
+transition remains owned by `status.md`.
 
 Declare:
 
@@ -366,6 +375,15 @@ After all completion criteria pass, update the BC-local status:
 IMPLEMENTING -> IMPLEMENTED
 ```
 
+Write these gate rows first, then the Transition History row, then `lifecycle:`:
+
+| Gate | Kind | Evidence | Signed by |
+|---|---|---|---|
+| `GATE-IMPL-BDD` | D | `npm run verify:bdd` exit 0 | - |
+| `GATE-IMPL-SIGNOFF` | H | `docs/verification/bdd-signoffs/<module-slug>/<file>.md` (`SIGNED_OFF`) | `<Name> (Tech lead)` |
+| `GATE-IMPL-PROPS` | H | Optional: property sign-off artifact, or Goal 3 decline in `decisions.md` | `<Name> (Tech lead)` |
+| `GATE-PROJ-SYNC` | D | `npm run project:check` in-sync | - |
+
 Because lifecycle is projected, synchronize `docs/hgate-project.json` after the
 authoritative `status.md` transition. Do not edit other projected fields unless
 their authoritative Markdown changed through the approved workflow. Preserve
@@ -451,6 +469,8 @@ Implementation is complete only when:
 - When Goal 3 was declined, the scoped decision and rationale are recorded in
   the BC's `decisions.md` and no skipped artifact exists
 - The traceability report contains no `Missing` approved behavior
+- `status.md` Gate Evidence has `PASS` rows for every required gate of each
+  transition, with `GATE-IMPL-SIGNOFF` linking the sign-off record
 - `docs/hgate-project.json` reflects the final `status.md` lifecycle and passes
   schema validation
 

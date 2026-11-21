@@ -11,6 +11,7 @@ import {
   EXIT_DISCOVERY,
   EXIT_INVALID,
   EXIT_VALID,
+  formatGithubAnnotations,
   formatTextReport,
   verifySpec,
 } from "../verify.mjs";
@@ -258,7 +259,7 @@ test("verify-spec text report is failures-only with code and file:line", async (
     `VSP005 ${CART}/bdd-scenarios.md:8 uses anti-term "basket" from the SKILL.md glossary; use the ubiquitous term\n` +
       "verify-spec FAILED (refinement): 1 issue(s)\n",
   );
-  assert.equal(formatTextReport(await verifySpec({ root: goodFixture })), "verify-spec OK (refinement): 1 BC(s)\n");
+  assert.equal(formatTextReport(await verifySpec({ root: goodFixture })), "verify-spec OK (refinement): 1 BC(s) (spec 1, gates 1)\n");
 });
 
 test("verify-spec --bc limits checks but still enforces repo-wide ID uniqueness", async () => {
@@ -291,4 +292,437 @@ test("verify-spec CLI exits 1 on defects, 0 when clean, 2 on bad usage", async (
     execFileAsync(process.execPath, [cli, "--root", goodFixture, "--skills-path", "missing"]),
     (error) => error.code === EXIT_DISCOVERY && /VSP900/.test(error.stderr),
   );
+});
+
+// ---------------------------------------------------------------------------
+// Gate validation (lifecycle-gates.md Validity Rules). The good fixture carries
+// a copy of the gate catalog and a fully gated REFINING -> REFINED transition.
+
+const STATUS = `${CART}/status.md`;
+const REPO_CATALOG = fileURLToPath(
+  new URL("../../../skills/hgate-guide/references/lifecycle-gates.md", import.meta.url),
+);
+
+function statusFile(lifecycle, history, gates) {
+  return [
+    "---",
+    "bounded_context: cart",
+    `lifecycle: ${lifecycle}`,
+    "---",
+    "",
+    "# Cart Lifecycle Status",
+    "",
+    "## Transition History",
+    "",
+    "| Date | From | To | Evidence | Actor/session |",
+    "|---|---|---|---|---|",
+    ...history.map(([date, from, to]) => `| ${date} | ${from} | ${to} | recorded | test |`),
+    "",
+    "## Gate Evidence",
+    "",
+    "| Transition | Gate | Kind | Result | Evidence | Signed by | Date |",
+    "|---|---|---|---|---|---|---|",
+    ...gates.map((row) => `| ${row.join(" | ")} |`),
+    "",
+  ].join("\n");
+}
+
+const IMPLEMENTED_HISTORY = [
+  ["2026-10-14", "REFINING", "REFINED"],
+  ["2026-10-20", "REFINED", "IMPLEMENTING"],
+  ["2026-11-01", "IMPLEMENTING", "IMPLEMENTED"],
+];
+const IMPLEMENTED_GATES = [
+  ["IMPLEMENTING -> IMPLEMENTED", "GATE-IMPL-BDD", "D", "PASS", "`verify:bdd` exit 0", "-", "2026-11-01"],
+  ["IMPLEMENTING -> IMPLEMENTED", "GATE-IMPL-SIGNOFF", "H", "PASS", "`docs/verification/bdd-signoffs/cart/2026-11-01.md`", "A. Lead (Tech lead)", "2026-11-01"],
+  ["IMPLEMENTING -> IMPLEMENTED", "GATE-PROJ-SYNC", "D", "PASS", "`npm run project:check` in-sync", "-", "2026-11-01"],
+];
+
+const codes = (report, list = "diagnostics") => report[list].map((d) => `${d.code} ${d.file}:${d.line}`);
+
+const GATE_DEFECTS = [
+  {
+    name: "missing required gate (GATE-REF-APPROVAL)",
+    code: "HGS001",
+    at: `${STATUS}:26`,
+    message: /GATE-REF-APPROVAL .*REFINING -> REFINED/,
+    mutate: (f) => f.edit(STATUS, "| REFINING -> REFINED | GATE-REF-APPROVAL |", "| REFINING -> REFINED | GATE-NOT-A-ROW |"),
+  },
+  {
+    name: "missing GATE-PROJ-SYNC required by the * -> * pattern",
+    code: "HGS001",
+    at: `${STATUS}:26`,
+    message: /GATE-PROJ-SYNC has no Gate Evidence row for current transition/,
+    mutate: (f) =>
+      f.edit(STATUS, "| REFINING -> REFINED | GATE-PROJ-SYNC | D | PASS | `npm run project:check` in-sync | - | 2026-10-14 |\n", ""),
+  },
+  {
+    name: "required gate recorded as FAIL",
+    code: "HGS002",
+    at: `${STATUS}:35`,
+    message: /GATE-REF-SPEC .* is FAIL/,
+    mutate: (f) => f.edit(STATUS, "| GATE-REF-SPEC | D | PASS |", "| GATE-REF-SPEC | D | FAIL |"),
+  },
+  {
+    name: "required gate recorded as N/A",
+    code: "HGS002",
+    at: `${STATUS}:35`,
+    mutate: (f) => f.edit(STATUS, "| GATE-REF-SPEC | D | PASS |", "| GATE-REF-SPEC | D | N/A |"),
+  },
+  {
+    name: "gate row dated before the current transition does not count",
+    code: "HGS001",
+    at: `${STATUS}:26`,
+    message: /GATE-REF-SPEC has only a row dated before the current transition .* dated 2026-10-13, before 2026-10-14/,
+    mutate: (f) =>
+      f.edit(STATUS, "| `verify-spec` OK (refinement) | - | 2026-10-14 |", "| `verify-spec` OK (refinement) | - | 2026-10-13 |"),
+  },
+  {
+    name: "WAIVED without a Tech lead signer",
+    code: "HGS003",
+    at: `${STATUS}:35`,
+    mutate: (f) =>
+      f.edit(
+        STATUS,
+        "| GATE-REF-SPEC | D | PASS | `verify-spec` OK (refinement) | - |",
+        "| GATE-REF-SPEC | D | WAIVED | Tool outage; rerun scheduled | P. Manager (Technical PM) |",
+      ),
+  },
+  {
+    name: "malformed row: kind differs from the catalog",
+    code: "HGS004",
+    at: `${STATUS}:35`,
+    message: /kind H does not match catalog kind D/,
+    mutate: (f) => f.edit(STATUS, "| GATE-REF-SPEC | D | PASS |", "| GATE-REF-SPEC | H | PASS |"),
+  },
+  {
+    name: "malformed row: gate not in the catalog",
+    code: "HGS004",
+    at: `${STATUS}:36`,
+    message: /not in the gate catalog/,
+    mutate: (f) => f.edit(STATUS, "| REFINING -> REFINED | GATE-REF-APPROVAL |", "| REFINING -> REFINED | GATE-NOT-A-ROW |"),
+  },
+  {
+    name: "malformed row: gate does not apply to the transition",
+    code: "HGS004",
+    at: `${STATUS}:34`,
+    message: /does not apply to transition DISCOVERED -> REFINING/,
+    mutate: (f) => f.edit(STATUS, "| DISCOVERED -> REFINING | GATE-PROJ-SYNC |", "| DISCOVERED -> REFINING | GATE-REF-SPEC |"),
+  },
+  {
+    name: "malformed row: human gate PASS without a signer",
+    code: "HGS004",
+    at: `${STATUS}:36`,
+    message: /must be "<Name> \(<Signer role>\)"/,
+    mutate: (f) =>
+      f.edit(STATUS, "| A. Reviewer (Technical PM) | 2026-10-14 |", "| - | 2026-10-14 |"),
+  },
+  {
+    name: "malformed row: empty evidence and bad date",
+    code: "HGS004",
+    at: `${STATUS}:33`,
+    message: /date "14\/10\/2026" must be YYYY-MM-DD/,
+    mutate: (f) =>
+      f.edit(STATUS, "| `npm run project:check` in-sync | - | 2026-10-01 |", "|  | - | 14/10/2026 |"),
+  },
+  {
+    name: "malformed row: signer role not allowed by the catalog",
+    code: "HGS004",
+    at: `${STATUS}:36`,
+    message: /signer role "product owner" is not allowed/,
+    mutate: (f) =>
+      f.edit(STATUS, "| A. Reviewer (Technical PM) | 2026-10-14 |", "| A. Owner (Product owner) | 2026-10-14 |"),
+  },
+  {
+    name: "lifecycle with no matching Transition History row",
+    code: "HGS005",
+    at: `${STATUS}:4`,
+    mutate: (f) => f.edit(STATUS, "lifecycle: REFINED", "lifecycle: SPEC_REVIEWED"),
+  },
+  {
+    name: "optional GATE-IMPL-PROPS recorded as FAIL",
+    code: "HGS002",
+    message: /optional gate GATE-IMPL-PROPS/,
+    mutate: (f) =>
+      f.write(
+        STATUS,
+        statusFile("IMPLEMENTED", IMPLEMENTED_HISTORY, [
+          ...IMPLEMENTED_GATES,
+          ["IMPLEMENTING -> IMPLEMENTED", "GATE-IMPL-PROPS", "H", "FAIL", "Properties failed", "A. Lead (Tech lead)", "2026-11-01"],
+        ]),
+      ),
+  },
+];
+
+for (const defect of GATE_DEFECTS) {
+  test(`verify-spec gate check flags ${defect.code}: ${defect.name}`, async () => {
+    const root = await brokenCopy(defect.mutate);
+    for (const phase of ["refinement", "implementation"]) {
+      const report = await verifySpec({ root, phase });
+      const hits = report.diagnostics.filter((d) => d.code === defect.code);
+      assert.ok(hits.length >= 1, `${phase}: expected ${defect.code}, got ${JSON.stringify(report.diagnostics)}`);
+      if (defect.at) {
+        assert.ok(
+          hits.some((d) => `${d.file}:${d.line}` === defect.at),
+          `expected ${defect.code} at ${defect.at}, got ${hits.map((d) => `${d.file}:${d.line}`)}`,
+        );
+      }
+      if (defect.message) {
+        assert.ok(hits.some((d) => defect.message.test(d.message)), JSON.stringify(hits));
+      }
+      assert.equal(report.exitCode, EXIT_INVALID);
+    }
+  });
+}
+
+test("gate catalog fixture copies match skills/hgate-guide/references/lifecycle-gates.md byte-for-byte", async () => {
+  const canonical = await readFile(REPO_CATALOG, "utf8");
+  for (const copy of [
+    "fixtures/good/.github/skills/hgate-guide/references/lifecycle-gates.md",
+    "../../project-projection/tests/fixtures/example/.github/skills/hgate-guide/references/lifecycle-gates.md",
+  ]) {
+    assert.equal(await readFile(fileURLToPath(new URL(copy, import.meta.url)), "utf8"), canonical, copy);
+  }
+});
+
+test("verify-spec gate check passes the good fixture with no warnings, also against the repo catalog", async () => {
+  for (const gates of [undefined, REPO_CATALOG]) {
+    const report = await verifySpec({ root: goodFixture, gates });
+    assert.deepEqual(report.diagnostics, []);
+    assert.deepEqual(report.warnings, []);
+    assert.deepEqual(report.notes, []);
+  }
+});
+
+test("verify-spec gate check accepts a later PASS row superseding a FAIL row", async () => {
+  const root = await brokenCopy((f) =>
+    f.edit(
+      STATUS,
+      "| REFINING -> REFINED | GATE-REF-SPEC | D | PASS |",
+      "| REFINING -> REFINED | GATE-REF-SPEC | D | FAIL | `verify-spec` reported VSP005 | - | 2026-10-14 |\n| REFINING -> REFINED | GATE-REF-SPEC | D | PASS |",
+    ),
+  );
+  assert.deepEqual((await verifySpec({ root })).diagnostics, []);
+});
+
+test("verify-spec gate check accepts WAIVED signed by a Tech lead with a reason", async () => {
+  const root = await brokenCopy((f) =>
+    f.edit(
+      STATUS,
+      "| GATE-REF-SPEC | D | PASS | `verify-spec` OK (refinement) | - |",
+      "| GATE-REF-SPEC | D | WAIVED | Tool outage; rerun scheduled | A. Lead (Tech lead) |",
+    ),
+  );
+  const report = await verifySpec({ root });
+  assert.deepEqual(report.diagnostics, []);
+  assert.equal(report.exitCode, EXIT_VALID);
+});
+
+test("verify-spec gate check treats GATE-IMPL-PROPS as optional (absent or N/A)", async () => {
+  const absent = await brokenCopy((f) => f.write(STATUS, statusFile("IMPLEMENTED", IMPLEMENTED_HISTORY, IMPLEMENTED_GATES)));
+  assert.deepEqual((await verifySpec({ root: absent })).diagnostics, []);
+  const notApplicable = await brokenCopy((f) =>
+    f.write(
+      STATUS,
+      statusFile("IMPLEMENTED", IMPLEMENTED_HISTORY, [
+        ...IMPLEMENTED_GATES,
+        ["IMPLEMENTING -> IMPLEMENTED", "GATE-IMPL-PROPS", "H", "N/A", "Goal 3 declined in `decisions.md`", "-", "2026-11-01"],
+      ]),
+    ),
+  );
+  assert.deepEqual((await verifySpec({ root: notApplicable })).diagnostics, []);
+  const missingSignoff = await brokenCopy((f) =>
+    f.write(STATUS, statusFile("IMPLEMENTED", IMPLEMENTED_HISTORY, IMPLEMENTED_GATES.slice(0, 1).concat(IMPLEMENTED_GATES.slice(2)))),
+  );
+  assert.ok(codes(await verifySpec({ root: missingSignoff })).includes(`HGS001 ${STATUS}:14`));
+});
+
+test("verify-spec gate check recognises catalog gates whose evidence names YYYY-MM-DD paths (GATE-VER-REPORT)", async () => {
+  const history = [...IMPLEMENTED_HISTORY, ["2026-11-05", "IMPLEMENTED", "VERIFIED"]];
+  const gates = [
+    ...IMPLEMENTED_GATES,
+    ["IMPLEMENTED -> VERIFIED", "GATE-VER-REPORT", "H", "PASS", "`docs/verification/bc-reviews/cart/2026-11-05-full.md`", "A. Lead (Tech lead)", "2026-11-05"],
+    ["IMPLEMENTED -> VERIFIED", "GATE-PROJ-SYNC", "D", "PASS", "`npm run project:check` in-sync", "-", "2026-11-05"],
+  ];
+  const root = await brokenCopy((f) => f.write(STATUS, statusFile("VERIFIED", history, gates)));
+  assert.deepEqual((await verifySpec({ root })).diagnostics, []);
+  const missing = await brokenCopy((f) => f.write(STATUS, statusFile("VERIFIED", history, gates.filter((g) => g[1] !== "GATE-VER-REPORT"))));
+  assert.ok((await verifySpec({ root: missing })).diagnostics.some((d) => d.code === "HGS001" && /GATE-VER-REPORT/.test(d.message)));
+});
+
+test("verify-spec gate check: leaving BLOCKED needs only GATE-PROJ-SYNC (* -> * pattern)", async () => {
+  const history = [
+    ["2026-10-14", "REFINING", "REFINED"],
+    ["2026-10-15", "REFINED", "BLOCKED"],
+    ["2026-10-20", "BLOCKED", "REFINED"],
+  ];
+  const blocked = [
+    ["REFINED -> BLOCKED", "GATE-BLOCK", "R", "PASS", "Waiting on payment contract; owner A. Lead; return REFINED", "-", "2026-10-15"],
+    ["REFINED -> BLOCKED", "GATE-PROJ-SYNC", "D", "PASS", "in-sync", "-", "2026-10-15"],
+  ];
+  const ok = await brokenCopy((f) =>
+    f.write(STATUS, statusFile("REFINED", history, [...blocked, ["BLOCKED -> REFINED", "GATE-PROJ-SYNC", "D", "PASS", "in-sync", "-", "2026-10-20"]])),
+  );
+  assert.deepEqual((await verifySpec({ root: ok })).diagnostics, []);
+  const missing = await brokenCopy((f) => f.write(STATUS, statusFile("REFINED", history, blocked)));
+  const report = await verifySpec({ root: missing });
+  assert.deepEqual(codes(report), [`HGS001 ${STATUS}:14`]);
+  assert.match(report.diagnostics[0].message, /GATE-PROJ-SYNC .*BLOCKED -> REFINED/);
+});
+
+test("verify-spec gate check reads a newest-first Transition History in chronological order", async () => {
+  // Newest first: the current transition into REFINED is BLOCKED -> REFINED (first
+  // row), not the older REFINING -> REFINED row at the bottom of the table.
+  const history = [
+    ["2026-10-20", "BLOCKED", "REFINED"],
+    ["2026-10-15", "REFINED", "BLOCKED"],
+    ["2026-10-14", "REFINING", "REFINED"],
+  ];
+  const blocked = [
+    ["REFINED -> BLOCKED", "GATE-BLOCK", "R", "PASS", "Waiting on payment contract; owner A. Lead; return REFINED", "-", "2026-10-15"],
+    ["REFINED -> BLOCKED", "GATE-PROJ-SYNC", "D", "PASS", "in-sync", "-", "2026-10-15"],
+  ];
+  const ok = await brokenCopy((f) =>
+    f.write(STATUS, statusFile("REFINED", history, [...blocked, ["BLOCKED -> REFINED", "GATE-PROJ-SYNC", "D", "PASS", "in-sync", "-", "2026-10-20"]])),
+  );
+  assert.deepEqual((await verifySpec({ root: ok })).diagnostics, []);
+  const missing = await brokenCopy((f) => f.write(STATUS, statusFile("REFINED", history, blocked)));
+  const report = await verifySpec({ root: missing });
+  assert.deepEqual(codes(report), [`HGS001 ${STATUS}:12`]);
+  assert.match(report.diagnostics[0].message, /GATE-PROJ-SYNC .*BLOCKED -> REFINED/);
+});
+
+test("verify-spec gate-checks a DISCOVERED BC that has only status.md", async () => {
+  const companion = ".github/skills/companion/status.md";
+  const discovered = (result) =>
+    statusFile(
+      "DISCOVERED",
+      [["2026-11-21", "-", "DISCOVERED"]],
+      [
+        ["- -> DISCOVERED", "GATE-DISC-BOUNDARY", "H", result, "BC row in `docs/domain-map.md`", "A. Reviewer (Tech lead)", "2026-11-21"],
+        ["- -> DISCOVERED", "GATE-PROJ-SYNC", "D", "PASS", "in-sync", "-", "2026-11-21"],
+      ],
+    ).replace("bounded_context: cart", "bounded_context: companion");
+  const failing = await brokenCopy((f) => f.write(companion, discovered("FAIL")));
+  const report = await verifySpec({ root: failing });
+  assert.deepEqual(codes(report), [`HGS002 ${companion}:18`]);
+  assert.match(report.diagnostics[0].message, /GATE-DISC-BOUNDARY/);
+  assert.equal(report.exitCode, EXIT_INVALID);
+  assert.deepEqual(report.checked, ["cart", "companion"]);
+  assert.deepEqual(report.specChecked, ["cart"]);
+  assert.deepEqual(report.gateChecked, ["cart", "companion"]);
+  await assert.rejects(execFileAsync(process.execPath, [cli, "--root", failing]), (error) => error.code === EXIT_INVALID);
+  assert.deepEqual((await verifySpec({ root: failing, bcs: ["companion"] })).gateChecked, ["companion"]);
+
+  const passing = await brokenCopy((f) => f.write(companion, discovered("PASS")));
+  const ok = await verifySpec({ root: passing });
+  assert.deepEqual(ok.diagnostics, []);
+  assert.equal(formatTextReport(ok), "verify-spec OK (refinement): 2 BC(s) (spec 1, gates 2)\n");
+
+  const legacy = await brokenCopy((f) => f.write(companion, "---\nlifecycle: DISCOVERED\n---\n\n# Companion\n"));
+  assert.deepEqual(codes(await verifySpec({ root: legacy }), "warnings"), [`HGS006 ${companion}:1`]);
+});
+
+test("verify-spec gate check warns once per legacy status.md without failing", async () => {
+  const root = await brokenCopy((f) =>
+    f.write(STATUS, "---\nbounded_context: cart\nlifecycle: REFINED\n---\n\n# Cart Lifecycle Status\n"),
+  );
+  const report = await verifySpec({ root, phase: "implementation" });
+  assert.deepEqual(report.diagnostics, []);
+  assert.equal(report.exitCode, EXIT_VALID);
+  assert.deepEqual(codes(report, "warnings"), [`HGS006 ${STATUS}:1`]);
+  const text = formatTextReport(report);
+  const lines = text.trimEnd().split("\n");
+  assert.equal(lines[0], "verify-spec OK (implementation): 1 BC(s) (spec 1, gates 1)");
+  assert.equal(lines[1], "WARNINGS (1)");
+  assert.match(lines[2], /^  HGS006 \.github\/skills\/cart\/status\.md:1 .*Gate Evidence/);
+  assert.equal(lines.length, 3);
+  assert.match(formatGithubAnnotations(report), /^::warning file=\.github\/skills\/cart\/status\.md,line=1,title=HGS006::status\.md has no /);
+  const cli = await execFileAsync(process.execPath, [fileURLToPath(new URL("../verify.mjs", import.meta.url)), "--root", root], {
+    env: { ...process.env, GITHUB_ACTIONS: "true" },
+  });
+  const out = cli.stdout.trimEnd().split("\n");
+  assert.match(out[0], /^::warning file=/);
+  assert.equal(out.at(-2), "WARNINGS (1)");
+});
+
+test("verify-spec skips gate checks with one INFO line when no catalog exists", async () => {
+  const root = await brokenCopy((f) => f.remove(".github/skills/hgate-guide/references/lifecycle-gates.md"));
+  await writeFile(path.join(root, STATUS), "---\nlifecycle: REFINED\n---\n\n## Gate Evidence\n\nnot a table\n");
+  const report = await verifySpec({ root });
+  assert.deepEqual(report.diagnostics, []);
+  assert.deepEqual(report.warnings, []);
+  assert.equal(report.notes.length, 1);
+  assert.equal(
+    formatTextReport(report),
+    `INFO ${report.notes[0]}\nverify-spec OK (refinement): 1 BC(s) (spec 1, gates 0)\n`,
+  );
+  assert.ok(codes(await verifySpec({ root, gates: REPO_CATALOG })).includes(`HGS004 ${STATUS}:5`));
+  await assert.rejects(verifySpec({ root, gates: "missing/lifecycle-gates.md" }), /gate catalog not found/);
+});
+
+test("verify-spec gate check respects --bc and reports a broken catalog", async () => {
+  const root = await brokenCopy(async (f) => {
+    await f.write(
+      ".github/skills/orders/bdd-scenarios.md",
+      "```gherkin\n  @scenario:ORDERS-PLACE-001\n  Scenario: Unrelated\n    Given x\n```\n",
+    );
+    await f.write(".github/skills/orders/status.md", "---\nlifecycle: REFINED\n---\n\n## Gate Evidence\n\nnot a table\n");
+  });
+  assert.deepEqual((await verifySpec({ root, bcs: ["cart"] })).diagnostics, []);
+  assert.ok(codes(await verifySpec({ root, bcs: ["orders"] })).includes("HGS004 .github/skills/orders/status.md:5"));
+  const broken = await brokenCopy((f) =>
+    f.edit(".github/skills/hgate-guide/references/lifecycle-gates.md", "| GATE-BLOCK | * -> BLOCKED |", "| GATE-BLOCK | * BLOCKED |"),
+  );
+  assert.ok((await verifySpec({ root: broken })).diagnostics.some((d) => d.code === "HGS007"));
+});
+
+// ------------------------------------------------------------ gap drift (HGW)
+
+test("verify-spec warns HGW001 on gap disposition drift without changing the exit code", async () => {
+  const root = await brokenCopy(async (f) => {
+    await f.write(
+      "docs/domain-map.md",
+      [
+        "# Domain Map",
+        "",
+        "## Bounded Context Inventory",
+        "",
+        "| BC ID | Bounded Context | Local Status |",
+        "|---|---|---|",
+        `| cart | Cart | ${STATUS} |`,
+        "",
+        "## Open Boundary Gaps",
+        "",
+        "| ID | Gap | Affected BCs | Owner | Disposition |",
+        "|---|---|---|---|---|",
+        "| G1 | Payment retries | cart | A. Lead | Deferred to v2 |",
+        "",
+      ].join("\n"),
+    );
+    await f.edit(
+      STATUS,
+      "| OI-1 | Confirm payment retry policy | A. Reviewer | Deferred |",
+      "| OI-1 | Confirm payment retry policy | A. Reviewer | Deferred |\n| G1 | Payment retries | A. Lead | Resolved in decisions.md |\n| G9 | Not in any map | A. Lead | Open |",
+    );
+  });
+  const report = await verifySpec({ root });
+  assert.deepEqual(report.diagnostics, []);
+  assert.equal(report.exitCode, EXIT_VALID);
+  const hgw = codes(report, "warnings").filter((c) => c.startsWith("HGW"));
+  // Warnings are ordered by file:line like every other verify-spec warning.
+  assert.deepEqual(hgw, [`HGW002 ${STATUS}:45`, "HGW001 docs/domain-map.md:13"]);
+  const lines = formatTextReport(report).trimEnd().split("\n");
+  assert.equal(lines[1], `WARNINGS (${report.warnings.length})`);
+  assert.ok(lines.some((l) => /^  HGW001 docs\/domain-map\.md:13 gap G1 dispositions disagree: DEFERRED .* RESOLVED /.test(l)));
+});
+
+test("verify-spec gap warnings match the projection generator on its drift fixture", async () => {
+  const { buildProjection } = await import("../../project-projection/generate.mjs");
+  const example = fileURLToPath(new URL("../../project-projection/tests/fixtures/example", import.meta.url));
+  const expected = (await buildProjection(example)).diagnostics.map((d) => `${d.code} ${d.file}:${d.line} ${d.message}`);
+  const report = await verifySpec({ root: example });
+  const actual = report.warnings.filter((w) => w.code.startsWith("HGW")).map((w) => `${w.code} ${w.file}:${w.line} ${w.message}`);
+  assert.ok(expected.length > 0);
+  assert.deepEqual(actual, expected);
 });

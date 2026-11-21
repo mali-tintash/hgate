@@ -15,10 +15,11 @@ Perform a repeatable, evidence-based review of one Bounded Context (BC):
    missing, or intentionally deferred in implementation and tests.
 
 This is a read-only review of specifications and source code. Do not modify
-specification, source, migration, or test files. The only authoritative write is
-the target BC's local `status.md` after the final report is complete. When that
-lifecycle value changes, also run `npm run project:sync` to refresh the derived
-`docs/hgate-project.json`.
+specification, source, migration, or test files. The only authoritative writes,
+made after the final report is complete, are the persisted report under
+`docs/verification/bc-reviews/<bc-name>/` and the target BC's local `status.md`
+(gate evidence and lifecycle). Then run `npm run project:sync` to refresh the
+derived `docs/hgate-project.json`.
 
 ## Inputs
 
@@ -45,7 +46,8 @@ If the BC or mode is unclear, ask one focused question using the question tool.
 9. Never expose credentials, tokens, PII, gift-card secrets, or raw sensitive log contents in the
    report.
 10. Do not edit specification, source, migration, or test files during either
-    review phase. Lifecycle metadata may be updated only after reporting.
+    review phase. The report file and lifecycle metadata may be written only
+    after reporting.
 
 ## Phase 0 — Scope and Context
 
@@ -107,6 +109,57 @@ Report the concern, but continue the review unless the user explicitly requests 
 
 **Before doing any work in this phase, read `references/phase-2-code-verification.md` in full and follow it exactly. It contains the complete body of this phase; do not proceed from memory or skip it.**
 
+## Persisted Report and Gate Evidence
+
+After the final `spec-only` or `full` report, persist it and record its gate.
+`code-verification` mode verifies a supplied findings list only: it records no
+gate and does not change lifecycle.
+
+### Report file
+
+```text
+docs/verification/bc-reviews/<bc-name>/YYYY-MM-DD-<spec-only|full>.md
+```
+
+Start the file with the frontmatter in `references/report-template.md`, followed
+by the final report. The file is immutable: a later review creates a new file
+and never edits an earlier one. If a file for the same date and mode exists,
+append `-2`, `-3`, ... before `.md`.
+
+`blocking_findings` counts unresolved Critical or High findings; in `full` mode
+missing or stale current `SIGNED_OFF` BDD-to-TDD evidence also counts as one.
+`outcome` is `PASS` only when `blocking_findings` is `0` and, in `full` mode,
+every material requirement is covered; otherwise `FAIL`.
+
+### Human approval
+
+The review gates are `H` gates signed by a Tech lead. Present the report and its
+outcome, ask the Tech lead to approve it, and record their name only as
+supplied; never invent a signer. Without that approval, record no gate row and
+do not transition.
+
+### Gate rows (`status.md`)
+
+| Mode | Transition | Gate |
+|---|---|---|
+| `spec-only` | `REFINED -> SPEC_REVIEWED` | `GATE-SREV-REPORT` |
+| `full` | `IMPLEMENTED -> VERIFIED` | `GATE-VER-REPORT` |
+
+Each review gate row has Kind `H`, Result equal to `outcome`, Evidence linking
+the report path with `blocking_findings: <n>`, Signed by `<Name> (Tech lead)`,
+and the report date. Follow the write order in
+`../hgate-guide/references/lifecycle-gates.md` (Validity Rule 8):
+
+1. Write the report file.
+2. Append the review gate row.
+3. `PASS`: append a `GATE-PROJ-SYNC` row (`D`, `npm run project:check`
+   in-sync), then the Transition History row, then change `lifecycle:` and
+   Current State.
+4. `FAIL`: keep the `FAIL` row and do not transition. Record the blocking
+   findings in Blockers and Open Items and recommend `bc-refinement`
+   (`spec-only`) or `bc-enhancement` (`full`).
+5. Run `npm run project:sync` and then `npm run project:check`.
+
 ## Quality Checklist
 
 Before returning the final report, verify:
@@ -129,5 +182,9 @@ Before returning the final report, verify:
 - [ ] Undocumented safeguards were reported
 - [ ] Cross-BC concerns were deferred, not redesigned
 - [ ] No specification, source, migration, or test files were modified
+- [ ] The final report was persisted as a new immutable file under
+      `docs/verification/bc-reviews/<bc-name>/` with complete frontmatter
+- [ ] The review gate row (`PASS` or `FAIL`) names a Tech lead signer and links
+      the report; a `FAIL` review did not transition
 - [ ] Any authoritative lifecycle update was limited to the target BC's
       `status.md`; the derived project projection was synchronized and validated

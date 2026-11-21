@@ -170,13 +170,15 @@ Finish with:
 
 ### Lifecycle status update
 
-After the full final report, use `IMPLEMENTED -> VERIFIED` only when all
-material requirements are covered, no unresolved Critical or High finding
-remains, and the target BC has current `SIGNED_OFF` BDD-to-TDD evidence;
-otherwise use `IMPLEMENTED -> BLOCKED`.
+After the full final report, persist it and record `GATE-VER-REPORT` as
+defined in `SKILL.md` (Persisted Report and Gate Evidence). Use
+`IMPLEMENTED -> VERIFIED` only when all material requirements are covered, no
+unresolved Critical or High finding remains, and the target BC has current
+`SIGNED_OFF` BDD-to-TDD evidence; otherwise record a `FAIL` gate row and do not
+transition.
 
-Update only `.github/skills/<bc-name>/status.md` as authoritative content.
-Record report evidence, blockers, recommended next skill, and transition
-history. Then run `npm run project:sync` followed by `npm run project:check`.
+Write only the report file and `.github/skills/<bc-name>/status.md` as
+authoritative content. Record gate evidence, blockers, recommended next skill,
+and any transition history. Then run `npm run project:sync` followed by `npm run project:check`.
 Do not edit `docs/hgate-project.json` by hand; the generator preserves stable
 IDs, ordering, and schema validity.

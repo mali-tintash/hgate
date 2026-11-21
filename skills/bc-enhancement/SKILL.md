@@ -129,15 +129,20 @@ Proceed to Phase 1. First update local lifecycle status:
 IMPLEMENTED | VERIFIED -> CHANGING
 ```
 
-Immediately run `npm run project:sync`; the transition remains owned by
-`status.md`.
+Use the concrete `FROM` state. In `status.md`, append a `GATE-PROJ-SYNC` row
+(`D`, `npm run project:check` in-sync) to Gate Evidence, then the Transition
+History row, then change `lifecycle:` (write order per
+`../hgate-guide/references/lifecycle-gates.md`, Validity Rule 8). Immediately
+run `npm run project:sync` and `npm run project:check`; the transition remains
+owned by `status.md`.
 
 If the BC is not in an eligible state, stop and resolve the status/code
 mismatch before implementation.
 
 ### Implementation-detail path (fast path)
 
-Do not transition `status.md`. Do not touch `bdd-scenarios.md`, scenario IDs,
+Do not transition `status.md` or record gate rows; the fast path never changes
+lifecycle. Do not touch `bdd-scenarios.md`, scenario IDs,
 `domain-model.md`, or any `*-acl.md` file — any such edit means the change was
 misclassified and must move to the Behavioral path instead.
 
@@ -281,6 +286,15 @@ selected Goal 3 sign-off pass, update:
 ```text
 CHANGING -> IMPLEMENTED
 ```
+
+Write these gate rows first, then the Transition History row, then `lifecycle:`:
+
+| Gate | Kind | Evidence | Signed by |
+|---|---|---|---|
+| `GATE-IMPL-BDD` | D | `npm run verify:bdd` exit 0 | - |
+| `GATE-IMPL-SIGNOFF` | H | `docs/verification/bdd-signoffs/<module-slug>/<file>.md` (`SIGNED_OFF`) | `<Name> (Tech lead)` |
+| `GATE-IMPL-PROPS` | H | Optional: property sign-off artifact, or Goal 3 decline in `decisions.md` | `<Name> (Tech lead)` |
+| `GATE-PROJ-SYNC` | D | `npm run project:check` in-sync | - |
 
 After authoritative specifications and `status.md` are final, run
 `npm run project:sync` and then `npm run project:check` if projected

@@ -19,7 +19,8 @@ Recommended script: `"verify:spec": "node tools/verify-spec/verify.mjs --root ."
 
 Options: `--skills-path` (default `.github/skills`), `--src-path` (default `src`,
 searched for `*.event.ts`), `--require-source` (events must exist on disk, not
-just in the SKILL.md module tree; use after the build), `--format text|json`.
+just in the SKILL.md module tree; use after the build), `--gates <path>` (gate
+catalog, see below), `--format text|json`.
 
 A BC is any `--skills-path` subdirectory with a `domain-model.md` or
 `bdd-scenarios.md`. Output is failures only, one line each, plus a summary:
@@ -55,10 +56,87 @@ stated, `VSP106` `status.md` missing or lifecycle not
 `REFINED`/`SPEC_REVIEWED`/`IMPLEMENTING`.
 
 Scenario-ID uniqueness (`VSP009`) always considers every BC, even with `--bc`.
+Exit codes depend only on errors: warnings (`HGS006`, `HGW001`, `HGW002`) are
+printed last as a `WARNINGS (n)` block.
+
+## Lifecycle gates (all phases)
+
+Every phase also validates each BC's `status.md` against the gate catalog,
+implementing the Validity Rules of
+[`skills/hgate-guide/references/lifecycle-gates.md`](../../skills/hgate-guide/references/lifecycle-gates.md).
+Gate checks run for every BC directory with a `status.md` (or with spec files),
+independently of the spec checks, so a `DISCOVERED` BC that has only
+`status.md` is still gate-checked. The current transition is the
+chronologically last Transition History row into `lifecycle:` (the table may be
+newest-first or oldest-first; it is normalised by
+`tools/shared/transitions.mjs`); every catalog gate whose
+pattern (`-`, `*`, concrete states) matches it is required except the optional
+`GATE-IMPL-PROPS`; the latest row for that transition dated on or after it
+must be `PASS`, or `WAIVED` signed by a `Tech lead` with a reason. Earlier
+transitions' rows are history and are only format-checked. The catalog parsing
+and rule evaluation live in `tools/shared/gate-rules.mjs`, which
+`project:sync` also uses to project each BC's `gateStatus`, so the status board
+and verify-spec always agree.
+
+The catalog is read from `--gates <path>` (relative to `--root`), else
+`<skills-path>/hgate-guide/references/lifecycle-gates.md` (adopting projects),
+else `skills/hgate-guide/references/lifecycle-gates.md` (this repository). With
+no catalog the gate checks are skipped and one `INFO` line says so.
+
+| Code | Severity | Check |
+|---|---|---|
+| HGS001 | error | Required gate has no Gate Evidence row for the current transition (the message says when a row exists but is dated before the transition) |
+| HGS002 | error | Required gate's latest row is `FAIL` or `N/A` (or optional `GATE-IMPL-PROPS` is not `PASS`/`N/A`) |
+| HGS003 | error | `WAIVED` without a `Tech lead` signer or without a reason |
+| HGS004 | error | Malformed Gate Evidence row (transition, unknown or inapplicable gate, kind differs from catalog, result, empty evidence, signer, date) or no table |
+| HGS005 | error | Current transition cannot be determined (invalid `lifecycle:` or no Transition History row into it) |
+| HGS006 | warning | `status.md` has no `## Gate Evidence` section (legacy, migrate) or is missing |
+| HGS007 | error | Gate catalog cannot be parsed |
+
+Template rows still holding placeholders (`[...]`, `<...>`, `YYYY-MM-DD`) are
+ignored, as in `project:sync`; in the catalog only a blank row or an unfilled
+Gate ID cell counts as a template row, because Required evidence legitimately
+names paths such as `YYYY-MM-DD-full.md`. Warnings never change the exit code; they are
+printed after the summary line as the last lines of output:
+
+```text
+verify-spec OK (refinement): 2 BC(s) (spec 1, gates 2)
+WARNINGS (1)
+  HGS006 .github/skills/cart/status.md:1 status.md has no "## Gate Evidence" section; migrate it ...
+```
+
+Under GitHub Actions (`GITHUB_ACTIONS=true`) the text format also emits a
+`::warning file=…,line=…,title=<code>::<message>` annotation per warning,
+before the report. The block and annotations come from `formatWarnings` in
+`tools/shared/gaps.mjs`, identical to `project:sync` / `project:check`. `--format json` adds
+`warnings` and `notes` arrays, and `specChecked` / `gateChecked` BC lists
+(the summary line counts both).
+
+## Gap drift warnings (HGW001, HGW002)
+
+verify-spec also joins the gap ledger exactly as `project:sync` does (shared
+logic in `tools/shared/gaps.mjs`): `docs/domain-map.md` "Open Boundary Gaps",
+`docs/context-map.md` "Open Relationship Gaps", and the "Open Items" table of
+each BC listed in the domain map's Bounded Context Inventory (its
+`Local Status` path, else `.github/skills/<id>/status.md`). Status rows join
+by an `ID` column or a leading `G<n>` in the item text.
+
+| Code | Severity | Check |
+|---|---|---|
+| HGW001 | warning | Gap dispositions disagree across sources (for example `Deferred` in a map, `Resolved` in a BC) |
+| HGW002 | warning | Gap listed in a BC `status.md` but in neither map |
+
+These are project-wide: they ignore `--bc`, are skipped when there is no
+`docs/domain-map.md`, appear in the same trailing `WARNINGS (n)` block (and as
+annotations under GitHub Actions), and never change the exit code. A parity
+test checks they match the generator's `diagnostics[]` on its fixture.
 
 ## Tests and golden fixtures
 
-`tests/fixtures/good` is a known-good BC that must stay clean in both phases.
+`tests/fixtures/good` is a known-good BC that must stay clean in both phases,
+including its gate evidence; it carries a copy of the gate catalog at
+`.github/skills/hgate-guide/references/lifecycle-gates.md` (as an adopting
+project would). Keep that copy in step with the repository catalog.
 `tests/verify.test.mjs` copies it, applies one deliberate defect per case (no
 class, missing event file, missing ACL doc, duplicate scenario ID, ...), and
 asserts the stable code and `file:line`. Run `npm test`.

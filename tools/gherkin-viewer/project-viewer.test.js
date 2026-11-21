@@ -387,3 +387,666 @@ test("computeCanvasSize fills the visible area and grows to fit the layout and m
     { width: 1120, height: 720 },
   );
 });
+
+// --- Board (schema v2) -------------------------------------------------------
+
+const exampleV2 = require("../../docs/hgate-project.example.json");
+
+function v1Project() {
+  return {
+    schemaVersion: 1,
+    project: { name: "V1" },
+    domains: [{ id: "commerce", name: "Commerce", classification: "CORE", purpose: "Sell" }],
+    boundedContexts: [
+      {
+        id: "ordering",
+        name: "Ordering",
+        domainId: "commerce",
+        classification: "CORE",
+        role: "PRIMARY",
+        lifecycle: "REFINED",
+        owns: [],
+        doesNotOwn: [],
+        capabilities: [],
+        ports: [],
+        acls: [],
+        sources: {},
+      },
+    ],
+    relationships: [],
+    journeys: [],
+  };
+}
+
+test("validateProject accepts schemaVersion 1 and 2 and rejects others", () => {
+  assert.deepEqual(viewer.validateProject(v1Project()), []);
+  assert.deepEqual(viewer.validateProject(exampleV2), []);
+  const diagnostics = viewer.validateProject({ ...v1Project(), schemaVersion: 3 });
+  assert.match(diagnostics[0].message, /expected 1 or 2/);
+});
+
+test("normalizeProject gives v1 projects empty defaults for v2 fields", () => {
+  const project = viewer.normalizeProject(v1Project(), "canonical");
+  assert.equal(project.schemaVersion, 1);
+  assert.deepEqual(project.gaps, []);
+  assert.deepEqual(project.diagnostics, []);
+  const [bc] = project.boundedContexts;
+  assert.equal(bc.nextSkill, null);
+  for (const field of ["blockers", "transitions", "gates", "openItems", "signoffs"]) {
+    assert.deepEqual(bc[field], [], field);
+  }
+  assert.deepEqual(bc.stats, {});
+});
+
+test("buildBoardModel places v1 BCs in main columns and hides empty optional states", () => {
+  const board = viewer.buildBoardModel(viewer.normalizeProject(v1Project(), "canonical"));
+  assert.deepEqual(
+    board.columns.map((column) => column.state),
+    viewer.MAIN_LIFECYCLES,
+  );
+  assert.deepEqual(board.hiddenStates, ["CHANGING", "BLOCKED", "DEPRECATED"]);
+  const refined = board.columns.find((column) => column.state === "REFINED");
+  assert.equal(refined.cards[0].id, "ordering");
+  assert.equal(refined.cards[0].gateSummary.total, 0);
+  assert.equal(refined.cards[0].stats.openGaps, null);
+  assert.deepEqual(board.gaps, []);
+  assert.equal(board.warnings.count, 0);
+  assert.equal(board.warnings.expanded, false);
+});
+
+test("buildBoardModel shows an optional column only when a BC occupies it", () => {
+  const raw = v1Project();
+  raw.boundedContexts[0].lifecycle = "BLOCKED";
+  const board = viewer.buildBoardModel(viewer.normalizeProject(raw, "canonical"));
+  const blocked = board.columns.find((column) => column.state === "BLOCKED");
+  assert.equal(blocked.optional, true);
+  assert.equal(blocked.cards.length, 1);
+  assert.deepEqual(board.hiddenStates, ["CHANGING", "DEPRECATED"]);
+});
+
+test("buildBoardModel builds v2 cards with date, next skill, blockers, stats and sign-offs", () => {
+  const board = viewer.buildBoardModel(viewer.normalizeProject(exampleV2, "canonical"));
+  const verified = board.columns.find((column) => column.state === "VERIFIED");
+  const catalog = verified.cards.find((card) => card.id === "catalog");
+  assert.equal(catalog.lifecycleDate, "2026-11-20");
+  assert.equal(catalog.nextSkill, "bc-enhancement");
+  assert.equal(catalog.blocked, true);
+  assert.equal(catalog.blockers.length, 2);
+  assert.deepEqual(catalog.stats, { rules: 3, scenarios: 3, decisions: 2, openGaps: 4 });
+  assert.equal(catalog.signoffCount, 3);
+  assert.equal(catalog.gateSummary.label, "2/2 gates");
+  assert.equal(catalog.gateSummary.transition, "IMPLEMENTED -> VERIFIED");
+});
+
+test("summarizeGates keeps the latest row per gate and highlights failures", () => {
+  const bc = {
+    lifecycle: "REFINED",
+    gates: [
+      { transition: "REFINING -> REFINED", gate: "GATE-REF-SPEC", result: "FAIL", date: "2026-11-09" },
+      { transition: "REFINING -> REFINED", gate: "GATE-REF-SPEC", result: "PASS", date: "2026-11-10" },
+      { transition: "REFINING → REFINED", gate: "GATE-REF-APPROVAL", result: "FAIL", date: "2026-11-10" },
+      { transition: "REFINING -> REFINED", gate: "GATE-PROJ-SYNC", result: "N/A", date: "2026-11-10" },
+      { transition: "- -> DISCOVERED", gate: "GATE-DISC-BOUNDARY", result: "PASS", date: "2026-11-01" },
+    ],
+  };
+  const summary = viewer.summarizeGates(bc);
+  assert.equal(summary.source, "gates");
+  assert.equal(summary.total, 3);
+  assert.equal(summary.satisfied, 1, "N/A on a gate is unmet in the fallback");
+  assert.equal(summary.label, "1/3 gates");
+  assert.equal(summary.hasFail, true);
+  assert.equal(summary.invalid, true);
+  assert.deepEqual(summary.failedGates, ["GATE-REF-APPROVAL"]);
+  assert.deepEqual(summary.unmetGates, ["GATE-REF-APPROVAL (FAIL)", "GATE-PROJ-SYNC (N/A)"]);
+});
+
+test("summarizeGates fallback ignores rows dated before the current transition and the optional GATE-IMPL-PROPS", () => {
+  const summary = viewer.summarizeGates({
+    lifecycle: "IMPLEMENTED",
+    transitions: [
+      { date: "2026-10-01", from: "IMPLEMENTING", to: "IMPLEMENTED" },
+      { date: "2026-10-05", from: "IMPLEMENTED", to: "CHANGING" },
+      { date: "2026-11-01", from: "CHANGING", to: "IMPLEMENTED" },
+    ],
+    gates: [
+      { transition: "CHANGING -> IMPLEMENTED", gate: "GATE-IMPL-BDD", result: "PASS", date: "2026-10-30" },
+      { transition: "IMPLEMENTING -> IMPLEMENTED", gate: "GATE-IMPL-SIGNOFF", result: "PASS", date: "2026-10-01" },
+      { transition: "CHANGING -> IMPLEMENTED", gate: "GATE-IMPL-SIGNOFF", result: "PASS", date: "2026-11-01" },
+      { transition: "CHANGING -> IMPLEMENTED", gate: "GATE-IMPL-PROPS", result: "N/A", date: "2026-11-01" },
+    ],
+  });
+  assert.equal(summary.label, "1/1 gates");
+  assert.equal(summary.valid, true);
+  assert.equal(summary.invalid, false);
+});
+
+test("summarizeGates uses projection gateStatus: missing required gates and N/A are unmet", () => {
+  const summary = viewer.summarizeGates({
+    lifecycle: "REFINED",
+    gates: [
+      { transition: "REFINING -> REFINED", gate: "GATE-REF-SPEC", result: "PASS", date: "2026-11-10" },
+      { transition: "REFINING -> REFINED", gate: "GATE-PROJ-SYNC", result: "N/A", date: "2026-11-10" },
+    ],
+    gateStatus: {
+      transition: "REFINING -> REFINED",
+      required: [
+        { gate: "GATE-REF-SPEC", kind: "D", result: "PASS", date: "2026-11-10", satisfied: true },
+        { gate: "GATE-REF-APPROVAL", kind: "H", result: null, date: null, satisfied: false },
+        { gate: "GATE-PROJ-SYNC", kind: "D", result: "N/A", date: "2026-11-10", satisfied: false },
+      ],
+      optional: [],
+      satisfied: 1,
+      total: 3,
+      valid: false,
+    },
+  });
+  assert.equal(summary.source, "gateStatus");
+  assert.equal(summary.label, "1/3 gates");
+  assert.equal(summary.invalid, true);
+  assert.equal(summary.transition, "REFINING -> REFINED");
+  assert.deepEqual(summary.unmetGates, ["GATE-REF-APPROVAL (no row)", "GATE-PROJ-SYNC (N/A)"]);
+});
+
+test("buildBoardModel reads gateStatus from the example projection", () => {
+  const board = viewer.buildBoardModel(viewer.normalizeProject(exampleV2, "canonical"));
+  const catalog = board.cards.find((card) => card.id === "catalog");
+  assert.equal(catalog.gateSummary.source, "gateStatus");
+  assert.equal(catalog.gateSummary.valid, true);
+  const ordering = board.cards.find((card) => card.id === "ordering");
+  assert.equal(ordering.gateSummary.label, "0/3 gates");
+  assert.equal(ordering.gateSummary.invalid, true);
+  assert.deepEqual(ordering.gateSummary.unmetGates, [
+    "GATE-IMPL-BDD (no row)",
+    "GATE-IMPL-SIGNOFF (no row)",
+    "GATE-PROJ-SYNC (no row)",
+  ]);
+});
+
+test("buildBoardModel badges MIXED gaps and drift warnings on gap rows and BC cards", () => {
+  const board = viewer.buildBoardModel(viewer.normalizeProject(exampleV2, "canonical"));
+  const g11 = board.gaps.find((gap) => gap.id === "G11");
+  assert.equal(g11.mixed, true);
+  assert.equal(g11.warningCount, 1);
+  assert.equal(g11.sources[1].location, ".github/skills/catalog/status.md:54");
+  const g3 = board.gaps.find((gap) => gap.id === "G3");
+  assert.equal(g3.mixed, false);
+  assert.equal(g3.warningCount, 0);
+  const catalog = board.cards.find((card) => card.id === "catalog");
+  assert.equal(catalog.warningCount, 3);
+});
+
+test("buildBoardModel shows PARTIAL gaps with a Partial badge, not as drift, and counts them as open", () => {
+  const board = viewer.buildBoardModel(viewer.normalizeProject(exampleV2, "canonical"));
+  const g15 = board.gaps.find((gap) => gap.id === "G15");
+  assert.equal(g15.state, "PARTIAL");
+  assert.equal(g15.partial, true);
+  assert.equal(g15.mixed, false);
+  assert.equal(g15.stateLabel, "Partial");
+  assert.equal(g15.warningCount, 0);
+  assert.equal(board.gaps.find((gap) => gap.id === "G11").stateLabel, "MIXED");
+
+  // Without projected stats, BC cards derive open gaps and include PARTIAL.
+  const raw = JSON.parse(JSON.stringify(exampleV2));
+  for (const bc of raw.boundedContexts) delete bc.stats.openGaps;
+  raw.gaps = [
+    { id: "G1", gap: "a", affected: null, state: "PARTIAL", sources: [{ file: "s.md", line: 1, bc: "catalog", owner: "", disposition: "Resolved for Catalog; Ordering to confirm" }] },
+    { id: "G2", gap: "b", affected: null, state: "RESOLVED", sources: [{ file: "s.md", line: 2, bc: "catalog", owner: "", disposition: "Resolved" }] },
+  ];
+  const derived = viewer.buildBoardModel(viewer.normalizeProject(raw, "canonical"));
+  assert.equal(derived.cards.find((card) => card.id === "catalog").stats.openGaps, 1);
+  assert.equal(viewer.isOpenGap({ state: "PARTIAL" }), true);
+  assert.equal(viewer.isOpenGap({ state: "RESOLVED" }), false);
+});
+
+test("latestTransition and orderTransitions accept newest-first transitions", () => {
+  const oldestFirst = [
+    { date: "2026-10-14", from: "-", to: "DISCOVERED" },
+    { date: "2026-10-14", from: "DISCOVERED", to: "REFINING" },
+    { date: "2026-10-14", from: "REFINING", to: "REFINED" },
+  ];
+  const newestFirst = oldestFirst.slice().reverse();
+  assert.equal(viewer.latestTransition({ transitions: newestFirst }).to, "REFINED");
+  assert.equal(viewer.latestTransition({ transitions: oldestFirst }).to, "REFINED");
+  assert.deepEqual(viewer.orderTransitions(newestFirst), oldestFirst);
+  assert.equal(viewer.latestTransition({ transitions: [] }), null);
+  const dated = [
+    { date: "2026-11-20", from: "IMPLEMENTED", to: "VERIFIED" },
+    { date: "2026-11-01", from: "-", to: "DISCOVERED" },
+  ];
+  assert.equal(viewer.latestTransition({ transitions: dated }).to, "VERIFIED");
+});
+
+test("buildBoardModel badges BC cards by diagnostic bcId and sets the banner count", () => {
+  const raw = v1Project();
+  raw.schemaVersion = 2;
+  raw.diagnostics = [
+    { code: "HGW001", severity: "warning", message: "drift", file: "x.md", line: 1, bcId: "ordering", gapId: null },
+    { code: "HGW002", severity: "warning", message: "missing", file: "y.md", line: 2, bcId: null, gapId: "G9" },
+  ];
+  const board = viewer.buildBoardModel(viewer.normalizeProject(raw, "canonical"));
+  assert.equal(board.cards[0].warningCount, 1);
+  assert.equal(board.warnings.count, 2);
+  assert.equal(board.warnings.expanded, true);
+  assert.equal(board.warnings.message, "2 warnings in the project projection");
+  assert.equal(viewer.warningBannerText(1), "1 warning in the project projection");
+  assert.equal(viewer.warningBannerText(0), "");
+});
+
+test("buildBoardModel works for legacy Markdown projects", async () => {
+  const files = new Map([
+    [
+      "docs/domain-map.md",
+      fakeFile(`## Bounded Context Inventory
+
+| ID | Bounded context | Domain/Subdomain | Classification | Boundary role | Owns | Does not own | Local status |
+|---|---|---|---|---|---|---|---|
+| ordering | Ordering | Commerce | Core | Primary | Orders | Payments | status.md |
+`),
+    ],
+  ]);
+  const { project } = await viewer.buildLegacyProject(files);
+  const board = viewer.buildBoardModel(project);
+  assert.equal(board.columns.find((column) => column.state === "DISCOVERED").cards[0].id, "ordering");
+  assert.equal(board.warnings.count, 0);
+});
+
+test("loadProject keeps an optional status report and stays silent when it is missing", async () => {
+  const withoutReport = new Map([["docs/hgate-project.json", fakeFile(JSON.stringify(exampleV2))]]);
+  const missing = await viewer.loadProject(withoutReport);
+  assert.equal(missing.statusReport, null);
+  assert.equal(missing.diagnostics.length, 0);
+
+  const withReport = new Map(withoutReport);
+  withReport.set(".hgate/status.json", fakeFile(JSON.stringify({ schemaVersion: 1, bcs: [] })));
+  const loaded = await viewer.loadProject(withReport);
+  assert.deepEqual(loaded.statusReport, { schemaVersion: 1, bcs: [] });
+  assert.equal(loaded.project.schemaVersion, 2);
+});
+
+test("readProjectDirectory and indexFiles pick up .hgate/status.json", async () => {
+  const root = fakeDirectory({
+    docs: { "domain-map.md": "# map" },
+    ".hgate": { "status.json": "{}", "cache.json": "ignored" },
+  });
+  const map = await viewer.readProjectDirectory(root);
+  assert.deepEqual(Array.from(map.keys()).sort(), [".hgate/status.json", "docs/domain-map.md"]);
+  assert.equal(viewer.isProjectFile(".hgate/status.json"), true);
+  assert.equal(viewer.isProjectFile(".hgate/cache.json"), false);
+});
+
+// --- Per-BC timeline and change view (T7b) -----------------------------------
+
+function emptyDiff() {
+  const diff = {};
+  for (const id of ["features", "scenarios", "skill", "model", "ports", "decisions", "acls", "aclSections", "properties", "gates", "openItems"]) {
+    diff[id] = { added: [], removed: [], modified: [] };
+  }
+  diff.rules = { added: [], removed: [], modified: [], moved: [] };
+  diff.summary = { added: 0, removed: 0, modified: 0, moved: 0, changed: false };
+  return diff;
+}
+
+const COMMIT_A = { sha: "a".repeat(40), shortSha: "aaaaaaa", date: "2026-11-10T10:00:00+00:00", subject: "docs(catalog): refine spec" };
+const COMMIT_B = { sha: "b".repeat(40), shortSha: "bbbbbbb", date: "2026-11-20T10:00:00+00:00", subject: "feat(catalog): verify" };
+
+function catalogReport() {
+  const scenarioDiff = emptyDiff();
+  scenarioDiff.scenarios.added = [{ key: "@scenario:CAT-BROWSE-001", label: "Browse products" }];
+  scenarioDiff.rules.modified = [{ key: "h2", label: "#2: Prices are shown in cents", labelBefore: "#2: Prices are shown", previousKey: "h1", numberBefore: 2, numberAfter: 2 }];
+  scenarioDiff.rules.moved = [{ key: "h3", label: "#3: Channel is required", numberBefore: 4, numberAfter: 3 }];
+  scenarioDiff.lifecycle = { from: "REFINING", to: "REFINED" };
+  const uncommittedDiff = emptyDiff();
+  uncommittedDiff.decisions.added = [{ key: "Use cached channel token", label: "Use cached channel token" }];
+  const steps = [
+    ["-", "DISCOVERED", "2026-11-01", COMMIT_A, true, emptyDiff()],
+    ["DISCOVERED", "REFINING", "2026-11-05", COMMIT_A, true, emptyDiff()],
+    ["REFINING", "REFINED", "2026-11-10", COMMIT_A, true, scenarioDiff],
+    ["REFINED", "IMPLEMENTING", "2026-11-14", COMMIT_B, false, emptyDiff()],
+    ["IMPLEMENTING", "IMPLEMENTED", "2026-11-18", "uncommitted", true, emptyDiff()],
+    ["IMPLEMENTED", "VERIFIED", "2026-11-20", "uncommitted", true, uncommittedDiff],
+  ].map(([from, to, date, commit, sharedCommit, changes], index) => ({
+    from, to, date, actor: "session", evidence: "e", line: 20 + index, commit, sharedCommit, changes,
+  }));
+  return {
+    schemaVersion: 1,
+    git: { available: true, head: COMMIT_B.sha, headSubject: COMMIT_B.subject, shallow: false, branch: "main" },
+    boundedContexts: [
+      {
+        id: "catalog",
+        dir: ".github/skills/catalog",
+        lifecycle: "VERIFIED",
+        steps,
+        sinceLastTransition: { baseCommit: "uncommitted", changes: emptyDiff() },
+        sincePreviousCommit: { baseCommit: COMMIT_A, changes: scenarioDiff },
+        uncommitted: { changes: uncommittedDiff, files: ["decisions.md", "status.md"] },
+      },
+    ],
+    coverage: { status: "ok", exitCode: 0, summary: { scenarios: 4, coveredScenarios: 3, errors: 0 }, diagnosticCodes: [], scenarioCount: 4 },
+  };
+}
+
+function exampleProject() {
+  return viewer.normalizeProject(exampleV2, "canonical");
+}
+
+test("summarizeChanges counts per category, keeps null as unknown and empty as no changes", () => {
+  assert.deepEqual(
+    { known: viewer.summarizeChanges(null).known, text: viewer.summarizeChanges(null).text },
+    { known: false, text: "Unknown" },
+  );
+  const empty = viewer.summarizeChanges(emptyDiff());
+  assert.equal(empty.known, true);
+  assert.equal(empty.empty, true);
+  assert.equal(empty.text, "No changes");
+  assert.deepEqual(empty.categories, []);
+
+  const summary = viewer.summarizeChanges(catalogReport().boundedContexts[0].sincePreviousCommit.changes);
+  assert.equal(summary.empty, false);
+  assert.deepEqual(summary.totals, { added: 1, removed: 0, modified: 1, moved: 1 });
+  assert.deepEqual(summary.lifecycle, { from: "REFINING", to: "REFINED" });
+  assert.equal(summary.text, "lifecycle REFINING → REFINED · 1 added · 1 modified · 1 moved");
+  assert.deepEqual(summary.categories.map((category) => category.id), ["scenarios", "rules"]);
+  const scenarios = summary.categories[0];
+  assert.equal(scenarios.added[0].text, "@scenario:CAT-BROWSE-001 — Browse products");
+  const rules = summary.categories[1];
+  assert.equal(rules.modified[0].text, "#2: Prices are shown → #2: Prices are shown in cents");
+  assert.equal(rules.moved[0].text, "#3: Channel is required (#4 → #3)");
+});
+
+test("matchGatesToSteps assigns gates by transition and date and keeps pending gates unmatched", () => {
+  const steps = [
+    { from: "REFINING", to: "REFINED", date: "2026-11-10" },
+    { from: "REFINED", to: "CHANGING", date: "2026-11-12" },
+    { from: "CHANGING", to: "REFINED", date: "2026-11-15" },
+    { from: "CHANGING", to: "REFINED", date: "2026-11-25" },
+  ];
+  const gates = [
+    { transition: "REFINING -> REFINED", gate: "GATE-REF-SPEC", result: "FAIL", date: "2026-11-09" },
+    { transition: "REFINING → REFINED", gate: "GATE-REF-SPEC", result: "PASS", date: "2026-11-10" },
+    { transition: "CHANGING -> REFINED", gate: "GATE-REF-APPROVAL", result: "PASS", date: "2026-11-15" },
+    { transition: "CHANGING -> REFINED", gate: "GATE-REF-APPROVAL", result: "PASS", date: "2026-11-26" },
+    { transition: "REFINED -> SPEC_REVIEWED", gate: "GATE-SPEC-REVIEW", result: "PASS", date: "2026-11-27" },
+  ];
+  const { assigned, unmatched } = viewer.matchGatesToSteps(steps, gates);
+  assert.deepEqual(assigned[0].map((gate) => gate.result), ["FAIL", "PASS"]);
+  assert.deepEqual(assigned[1], []);
+  assert.deepEqual(assigned[2].map((gate) => gate.date), ["2026-11-15"]);
+  assert.deepEqual(assigned[3].map((gate) => gate.date), ["2026-11-26"]);
+  assert.deepEqual(unmatched.map((gate) => gate.gate), ["GATE-SPEC-REVIEW"]);
+});
+
+test("buildTimelineModel without a status report uses the projection and hints at project:status", () => {
+  const model = viewer.buildTimelineModel(exampleProject(), null, "catalog");
+  assert.equal(model.hasReport, false);
+  assert.equal(model.hint, "Run `npm run project:status` to see what changed");
+  assert.deepEqual(model.notices, []);
+  assert.deepEqual(model.baselines, []);
+  assert.equal(model.coverage, null);
+  assert.equal(model.steps.length, 6);
+  for (const step of model.steps) {
+    assert.equal(step.commit, null);
+    assert.equal(step.changes, null);
+  }
+  const refined = model.steps[2];
+  assert.equal(refined.transition, "REFINING -> REFINED");
+  assert.deepEqual(refined.gates.map((gate) => `${gate.gate}:${gate.result}`), [
+    "GATE-REF-SPEC:FAIL",
+    "GATE-REF-SPEC:PASS",
+    "GATE-REF-APPROVAL:PASS",
+  ]);
+  assert.equal(refined.gates[2].signedBy, "A. Reviewer (Tech lead)");
+  assert.deepEqual(model.steps[0].gates.map((gate) => gate.gate), ["GATE-DISC-BOUNDARY", "GATE-PROJ-SYNC"]);
+  assert.deepEqual(model.unmatchedGates, []);
+  assert.equal(viewer.buildTimelineModel(exampleProject(), null, "missing"), null);
+});
+
+test("buildTimelineModel orders newest-first projection transitions chronologically", () => {
+  const project = exampleProject();
+  const bc = project.boundedContexts.find((item) => item.id === "catalog");
+  bc.transitions = bc.transitions.slice().reverse();
+  const model = viewer.buildTimelineModel(project, null, "catalog");
+  assert.deepEqual(model.steps.map((step) => step.transition), [
+    "- -> DISCOVERED",
+    "DISCOVERED -> REFINING",
+    "REFINING -> REFINED",
+    "REFINED -> IMPLEMENTING",
+    "IMPLEMENTING -> IMPLEMENTED",
+    "IMPLEMENTED -> VERIFIED",
+  ]);
+  assert.deepEqual(model.steps[0].gates.map((gate) => gate.gate), ["GATE-DISC-BOUNDARY", "GATE-PROJ-SYNC"]);
+});
+
+test("buildTimelineModel with a report attaches commits, baselines, coverage and shared-commit diffs", () => {
+  const model = viewer.buildTimelineModel(exampleProject(), catalogReport(), "catalog");
+  assert.equal(model.hasReport, true);
+  assert.equal(model.hint, null);
+  assert.deepEqual(model.notices, []);
+  assert.equal(model.coverage, "BDD coverage (project): ok — 3/4 scenarios covered, 0 errors");
+
+  assert.deepEqual(model.baselines.map((baseline) => baseline.title), ["Since last transition", "Since previous commit", "Uncommitted"]);
+  const [sinceTransition, sincePrevious, uncommitted] = model.baselines;
+  assert.equal(sinceTransition.summary.text, "No changes");
+  assert.equal(sinceTransition.base, "last transition not committed yet");
+  assert.equal(sincePrevious.base, "base aaaaaaa docs(catalog): refine spec");
+  assert.equal(sincePrevious.summary.totals.added, 1);
+  assert.deepEqual(uncommitted.files, ["decisions.md", "status.md"]);
+  assert.equal(uncommitted.summary.categories[0].id, "decisions");
+
+  const [discovered, refining, refined, implementing, implemented, verified] = model.steps;
+  // Shared commit A: the group diff lives on the last step (REFINING -> REFINED).
+  assert.equal(discovered.commit.text, "aaaaaaa docs(catalog): refine spec");
+  assert.match(discovered.sharedNote, /same commit as the next step/);
+  assert.equal(discovered.changes, null);
+  assert.equal(refining.changes, null);
+  assert.equal(refined.sharedNote, null);
+  assert.equal(refined.sharedGroupSize, 3);
+  assert.equal(refined.changes.totals.added, 1);
+  // Single commit: its own diff, no note.
+  assert.equal(implementing.commit.kind, "commit");
+  assert.equal(implementing.sharedCommit, false);
+  assert.equal(implementing.changes.text, "No changes");
+  // Uncommitted rows form their own shared group.
+  assert.equal(implemented.commit.kind, "uncommitted");
+  assert.equal(implemented.commit.text, "uncommitted");
+  assert.match(implemented.sharedNote, /same commit/);
+  assert.equal(verified.sharedGroupSize, 2);
+  assert.equal(verified.changes.categories[0].id, "decisions");
+  assert.deepEqual(verified.gates.map((gate) => gate.gate), ["GATE-VER-REPORT", "GATE-PROJ-SYNC"]);
+});
+
+test("buildTimelineModel treats null changes as unknown and shows git notices", () => {
+  const report = catalogReport();
+  report.git = { available: false, head: null, headSubject: null, shallow: false, branch: null };
+  const [bc] = report.boundedContexts;
+  for (const step of bc.steps) {
+    step.commit = null;
+    step.changes = null;
+    step.sharedCommit = false;
+  }
+  bc.sincePreviousCommit = { baseCommit: null, changes: null };
+  bc.uncommitted = { changes: null, files: [] };
+  const model = viewer.buildTimelineModel(exampleProject(), report, "catalog");
+  assert.deepEqual(model.notices, ["Git is not available: commits and per-step changes are unknown."]);
+  assert.equal(model.steps[0].commit.text, "unknown");
+  assert.equal(model.steps[0].changes.known, false);
+  assert.equal(model.steps[0].changes.text, "Unknown");
+  assert.equal(model.steps[0].sharedNote, null);
+  assert.equal(model.baselines[1].summary.text, "Unknown");
+  assert.equal(model.baselines[1].base, "HEAD has no parent: compared with nothing");
+
+  report.git = { available: true, head: COMMIT_B.sha, headSubject: "x", shallow: true, branch: "main" };
+  assert.match(viewer.buildTimelineModel(exampleProject(), report, "catalog").notices[0], /^Shallow clone/);
+});
+
+test("buildTimelineModel flags BCs missing from or out of step with the report", () => {
+  const missing = viewer.buildTimelineModel(exampleProject(), catalogReport(), "ordering");
+  assert.equal(missing.hint, null);
+  assert.match(missing.notices[0], /not in the status report/);
+  assert.deepEqual(missing.baselines, []);
+  assert.equal(missing.steps.length, 2);
+  assert.equal(missing.steps[0].commit, null);
+
+  const stale = catalogReport();
+  stale.boundedContexts[0].steps.pop();
+  const model = viewer.buildTimelineModel(exampleProject(), stale, "catalog");
+  assert.match(model.notices[0], /does not match the projection/);
+  assert.equal(model.steps[5].commit, null);
+  assert.equal(model.steps[5].changes, null);
+});
+
+test("formatCoverage summarizes the optional verify:bdd result", () => {
+  assert.equal(viewer.formatCoverage(null), null);
+  assert.equal(
+    viewer.formatCoverage({ status: "unavailable", summary: null, error: "tools/bdd-traceability/verify.mjs not found" }),
+    "BDD coverage (project): unavailable — tools/bdd-traceability/verify.mjs not found",
+  );
+});
+
+// T12: glossary, legends and the embedded viewer guide.
+test("embedded viewer guide is byte-identical to docs/viewer-guide.md", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const source = fs.readFileSync(path.join(__dirname, "..", "..", "docs", "viewer-guide.md"), "utf8");
+  const { GUIDE_MARKDOWN } = require("./viewer-guide.js");
+  assert.ok(
+    GUIDE_MARKDOWN === source,
+    "tools/gherkin-viewer/viewer-guide.js is out of sync with docs/viewer-guide.md. " +
+      "Resync with: node tools/gherkin-viewer/sync-guide.mjs",
+  );
+  assert.equal(viewer.guideMarkdown(), source);
+});
+
+test("GLOSSARY covers every Kind, Result, gap state, lifecycle and change kind the board uses", () => {
+  for (const kind of ["H", "D", "R"]) assert.ok(viewer.glossaryText("kind", kind), `kind ${kind}`);
+  for (const result of ["PASS", "FAIL", "WAIVED", "N/A"]) assert.ok(viewer.glossaryText("result", result), `result ${result}`);
+  for (const state of ["RESOLVED", "PARTIAL", "MIXED", "DEFERRED", "OPEN"]) {
+    assert.ok(viewer.glossaryText("gapState", state), `gap state ${state}`);
+  }
+  for (const state of viewer.MAIN_LIFECYCLES.concat(viewer.OPTIONAL_LIFECYCLES)) {
+    assert.ok(viewer.glossaryText("lifecycle", state), `lifecycle ${state}`);
+  }
+  for (const kind of ["added", "removed", "modified", "moved"]) assert.ok(viewer.glossaryText("changeKind", kind));
+  for (const key of ["uncommitted", "unknown", "sharedCommit"]) assert.ok(viewer.glossaryText("commit", key));
+  for (const key of ["drift", "partial", "gates"]) assert.ok(viewer.glossaryText("badge", key));
+  assert.equal(viewer.glossaryText("kind", "H"), "Human approval — a named person signs it off");
+  assert.equal(viewer.glossaryText("kind", "toString"), "");
+});
+
+test("GLOSSARY gap states match the shared gap ledger states", async () => {
+  const { GAP_STATES } = await import("../shared/gaps.mjs");
+  assert.deepEqual(Object.keys(viewer.GLOSSARY.gapState).sort(), [...GAP_STATES].sort());
+});
+
+test("legendText renders the gate and gap legends from GLOSSARY", () => {
+  const gates = viewer.legendText("gates");
+  assert.match(gates, /^Kind: H Human approval · D Deterministic check · R Record only \| Result: PASS/);
+  assert.match(gates, /N\/A Does not apply/);
+  const gaps = viewer.legendText("gaps");
+  for (const state of Object.keys(viewer.GLOSSARY.gapState)) assert.match(gaps, new RegExp(state));
+  assert.match(gaps, /Badges: Amber: drift warnings · Blue: partly resolved/);
+});
+
+test("renderMarkdown escapes HTML in text, code, headings and tables", () => {
+  const html = viewer.renderMarkdown(
+    "# T <img src=x onerror=alert(1)>\n\nHi <script>alert(1)</script> **b<i>** `<b>&`\n\n| A | B |\n|---|---|\n| <u>x</u> | \"q\" |\n\n- <a href=\"javascript:x\">l</a>\n",
+  );
+  assert.doesNotMatch(html, /<script|<img|<u>|<a |<i>|<b>/);
+  assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.match(html, /<strong>b&lt;i&gt;<\/strong>/);
+  assert.match(html, /<code>&lt;b&gt;&amp;<\/code>/);
+  assert.match(html, /<td>&lt;u&gt;x&lt;\/u&gt;<\/td><td>&quot;q&quot;<\/td>/);
+});
+
+test("renderMarkdown renders headings, nested lists, tables and paragraphs", () => {
+  const html = viewer.renderMarkdown("# Title\n\n## Part\n\nText\nmore.\n\n1. One\n   - Sub\n2. Two\n\n| K | V |\n|---|---|\n| `H` | Human |\n", {
+    headingOffset: 1,
+    firstHeadingId: "helpPanelTitle",
+  });
+  assert.match(html, /<h2 id="helpPanelTitle">Title<\/h2>/);
+  assert.match(html, /<h3>Part<\/h3>/);
+  assert.match(html, /<p>Text more\.<\/p>/);
+  assert.match(html, /<ol><li>One<ul><li>Sub<\/li><\/ul><\/li><li>Two<\/li><\/ol>/);
+  assert.match(html, /<th scope="col">K<\/th>/);
+  assert.match(html, /<td><code>H<\/code><\/td><td>Human<\/td>/);
+});
+
+// T13: adaptive gap attention panel.
+test("gapPanelModel is attention with sorted unresolved gaps when any gap is MIXED or OPEN", () => {
+  const model = viewer.gapPanelModel([
+    { id: "G11", state: "OPEN" },
+    { id: "G2", state: "OPEN" },
+    { id: "G4", state: "DEFERRED" },
+    { id: "G3", state: "PARTIAL" },
+    { id: "G10", state: "MIXED" },
+    { id: "G1", state: "RESOLVED" },
+    { id: "G5", state: "RESOLVED" },
+  ]);
+  assert.equal(model.level, "attention");
+  assert.equal(model.title, "Gaps need attention");
+  assert.deepEqual(model.counts, { open: 2, partial: 1, mixed: 1, deferred: 1, resolved: 2 });
+  assert.deepEqual(model.unresolved.map((gap) => gap.id), ["G10", "G2", "G11", "G3", "G4"]);
+  assert.deepEqual(model.resolved.map((gap) => gap.id), ["G1", "G5"]);
+  assert.equal(model.chipText, "2 open · 1 partial · 1 drift · 1 deferred · 2 resolved");
+});
+
+test("gapPanelModel is attention for a single OPEN gap and omits zero chips", () => {
+  const model = viewer.gapPanelModel([{ id: "G1", state: "OPEN" }]);
+  assert.equal(model.level, "attention");
+  assert.equal(model.chipText, "1 open");
+  assert.deepEqual(model.chips.map((chip) => chip.state), ["OPEN"]);
+});
+
+test("gapPanelModel is pending when only PARTIAL or DEFERRED gaps are unresolved", () => {
+  const model = viewer.gapPanelModel([
+    { id: "G3", state: "DEFERRED" },
+    { id: "G2", state: "PARTIAL" },
+    { id: "G1", state: "RESOLVED" },
+  ]);
+  assert.equal(model.level, "pending");
+  assert.equal(model.title, "Gaps pending");
+  assert.deepEqual(model.unresolved.map((gap) => gap.id), ["G2", "G3"]);
+  assert.equal(model.chipText, "1 partial · 1 deferred · 1 resolved");
+});
+
+test("gapPanelModel is clear when every gap is RESOLVED", () => {
+  const model = viewer.gapPanelModel([
+    { id: "G12", state: "RESOLVED" },
+    { id: "G2", state: "RESOLVED" },
+  ]);
+  assert.equal(model.level, "clear");
+  assert.equal(model.title, "All 2 gaps resolved");
+  assert.deepEqual(model.unresolved, []);
+  assert.deepEqual(model.resolved.map((gap) => gap.id), ["G2", "G12"]);
+  assert.equal(model.chipText, "2 resolved");
+  assert.equal(viewer.gapPanelModel([{ id: "G1", state: "RESOLVED" }]).title, "All 1 gap resolved");
+});
+
+test("gapPanelModel is empty when there are no gaps", () => {
+  for (const input of [[], undefined, null]) {
+    const model = viewer.gapPanelModel(input);
+    assert.equal(model.level, "empty");
+    assert.equal(model.title, "No gaps recorded");
+    assert.equal(model.chipText, "");
+    assert.deepEqual(model.unresolved, []);
+    assert.deepEqual(model.resolved, []);
+  }
+});
+
+test("gapPanelModel works on buildBoardModel gaps and GLOSSARY explains every panel level and chip", () => {
+  const board = viewer.buildBoardModel(
+    viewer.normalizeProject({
+      schemaVersion: 2,
+      project: { name: "Demo" },
+      domains: [],
+      boundedContexts: [],
+      relationships: [],
+      journeys: [],
+      gaps: [{ id: "G1", gap: "x", state: "PARTIAL", sources: [] }],
+    }),
+  );
+  assert.equal(viewer.gapPanelModel(board.gaps).level, "pending");
+  for (const level of ["attention", "pending", "clear", "empty"]) {
+    assert.ok(viewer.glossaryText("gapPanel", level), `gapPanel ${level}`);
+  }
+  assert.ok(viewer.compareGapIds("G2", "G11") < 0);
+});

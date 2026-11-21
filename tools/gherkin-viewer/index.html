@@ -7,6 +7,16 @@
     <style>
       :root {
         color-scheme: light dark;
+        /* T13 gap attention panel; same hues as the red/amber badges. */
+        --gap-attention-bg: #fef2f2;
+        --gap-attention-border: #dc2626;
+        --gap-attention-text: #991b1b;
+        --gap-pending-bg: #fffbeb;
+        --gap-pending-border: #f59e0b;
+        --gap-pending-text: #92400e;
+        --gap-neutral-bg: #f8fafc;
+        --gap-neutral-border: #cbd5e1;
+        --gap-neutral-text: #334155;
       }
 
       body {
@@ -450,21 +460,656 @@
         color: #94a3b8;
       }
 
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+
+      /* Persistent, non-dismissible projection warning banner (plan §3.1). */
+      .warning-banner {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 14px;
+        padding: 10px 14px;
+        border: 1px solid #f59e0b;
+        border-left-width: 6px;
+        border-radius: 10px;
+        background: #fef3c7;
+        color: #78350f;
+        font-weight: 600;
+      }
+
+      .warning-banner button {
+        border-color: #f59e0b;
+        background: #fffbeb;
+        color: #78350f;
+        font-weight: 700;
+      }
+
+      .warning-badge {
+        display: inline-block;
+        padding: 1px 8px;
+        border: 1px solid #f59e0b;
+        border-radius: 999px;
+        background: #fef3c7;
+        color: #92400e;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .board-lanes {
+        display: flex;
+        gap: 10px;
+        overflow-x: auto;
+        padding-bottom: 8px;
+      }
+
+      .board-column {
+        flex: 0 0 220px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-height: 160px;
+        padding: 10px;
+        border: 1px solid #bae6fd;
+        border-radius: 12px;
+        background: #f8fdff;
+      }
+
+      .board-column.optional {
+        border-style: dashed;
+        background: #f1f5f9;
+      }
+
+      .board-column-title {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin: 0;
+        color: #0c4a6e;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+
+      .board-column-count {
+        padding: 0 8px;
+        border-radius: 999px;
+        background: #dbeafe;
+        color: #1d4ed8;
+        font-size: 12px;
+      }
+
+      .board-empty {
+        margin: 0;
+        font-size: 12px;
+      }
+
+      .board-card {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        width: 100%;
+        padding: 8px 10px;
+        border: 1px solid #93c5fd;
+        border-radius: 10px;
+        background: #ffffff;
+        color: #0f172a;
+        font-size: 12px;
+        text-align: left;
+      }
+
+      .board-card[aria-pressed="true"] {
+        border-color: #0284c7;
+        box-shadow: 0 0 0 2px #0284c7;
+      }
+
+      .board-card.has-warnings {
+        border-left: 5px solid #f59e0b;
+      }
+
+      .board-card-header,
+      .board-card-facts,
+      .board-card-stats,
+      .board-card-footer {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 4px 8px;
+      }
+
+      .board-card-title {
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .board-card-meta {
+        color: #0369a1;
+        font-weight: 700;
+      }
+
+      .board-card-facts,
+      .board-card-stats {
+        color: #475569;
+      }
+
+      .board-card-blockers {
+        padding: 3px 6px;
+        border-radius: 6px;
+        background: #fee2e2;
+        color: #991b1b;
+        font-weight: 600;
+      }
+
+      .stat-attention {
+        color: #92400e;
+        font-weight: 700;
+      }
+
+      .gate-summary {
+        color: #166534;
+        font-weight: 700;
+      }
+
+      .gate-summary.has-fail,
+      .gate-fail {
+        color: #b91c1c;
+        font-weight: 700;
+      }
+
+      .board-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 16px;
+        margin-top: 12px;
+      }
+
+      .board-section {
+        border: 1px solid #bae6fd;
+        border-radius: 12px;
+        background: #f8fdff;
+        padding: 12px;
+      }
+
+      .board-section > h2,
+      .board-section > summary {
+        margin: 0 0 8px;
+        color: #0c4a6e;
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .board-section > summary {
+        cursor: pointer;
+      }
+
+      .board-table-wrap {
+        overflow-x: auto;
+      }
+
+      .board-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+
+      .board-table th,
+      .board-table td {
+        border: 1px solid #bae6fd;
+        padding: 4px 8px;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      .board-table th {
+        background: #e0f2fe;
+      }
+
+      .board-table tr.gap-mixed td,
+      .board-table tr.gate-row-fail td {
+        background: #fef3c7;
+      }
+
+      .board-table tr.gate-row-fail td {
+        background: #fee2e2;
+      }
+
+      .gap-sources {
+        margin: 0;
+        padding-left: 16px;
+      }
+
+      .gap-state,
+      .result-badge {
+        display: inline-block;
+        padding: 1px 8px;
+        border-radius: 999px;
+        background: #e2e8f0;
+        color: #334155;
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .gap-state-resolved,
+      .result-pass {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      .gap-state-partial {
+        border: 1px solid #60a5fa;
+        background: #dbeafe;
+        color: #1e40af;
+      }
+
+      .board-table tr.gap-partial td {
+        background: #eff6ff;
+      }
+
+      .gap-state-mixed {
+        border: 1px solid #f59e0b;
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      .gap-state-open,
+      .result-fail {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+
+      .result-waived {
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      .timeline-coverage {
+        font-size: 13px;
+      }
+
+      .timeline-hint,
+      .timeline-notice {
+        margin: 4px 0 8px;
+        font-size: 13px;
+      }
+
+      .timeline-notice {
+        padding: 4px 8px;
+        border-left: 3px solid #f59e0b;
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      .change-summaries {
+        display: grid;
+        gap: 6px;
+        margin-bottom: 12px;
+      }
+
+      .change-summary {
+        border: 1px solid #bae6fd;
+        border-radius: 8px;
+        background: #ffffff;
+        padding: 4px 8px;
+        font-size: 13px;
+      }
+
+      .change-summary-head {
+        margin: 0;
+      }
+
+      details.change-summary > summary {
+        cursor: pointer;
+      }
+
+      .change-base {
+        color: #475569;
+      }
+
+      .change-summary-body h5,
+      .change-category h5 {
+        margin: 8px 0 2px;
+        color: #0c4a6e;
+        font-size: 12px;
+      }
+
+      .change-list,
+      .change-files,
+      .timeline-gates {
+        margin: 0;
+        padding-left: 16px;
+      }
+
+      .change-kind {
+        display: inline-block;
+        min-width: 60px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .change-kind-added {
+        color: #166534;
+      }
+
+      .change-kind-removed {
+        color: #b91c1c;
+      }
+
+      .change-kind-modified {
+        color: #92400e;
+      }
+
+      .change-kind-moved {
+        color: #475569;
+      }
+
+      .timeline {
+        margin: 0;
+        padding-left: 20px;
+        border-left: 2px solid #bae6fd;
+        list-style: none;
+      }
+
+      .timeline-step {
+        position: relative;
+        margin: 0 0 12px;
+        font-size: 13px;
+      }
+
+      .timeline-step::before {
+        content: "";
+        position: absolute;
+        left: -26px;
+        top: 5px;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #0284c7;
+      }
+
+      .timeline-commit {
+        color: #334155;
+      }
+
+      .timeline-commit.commit-uncommitted,
+      .timeline-commit.commit-unknown {
+        color: #92400e;
+        font-style: italic;
+      }
+
+      .timeline-evidence {
+        color: #334155;
+      }
+
+      .timeline-gates li.gate-row-fail {
+        background: #fee2e2;
+      }
+
+      .timeline-shared {
+        margin: 2px 0;
+        font-style: italic;
+      }
+
       @media (max-width: 850px) {
         .project-layout {
           grid-template-columns: 1fr;
         }
       }
+
+      /* T12: header help button, guide drawer, tooltips and legends. */
+      .viewer-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .viewer-header h1 {
+        margin-bottom: 12px;
+      }
+
+      .help-button {
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        border-radius: 999px;
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .help-button[aria-expanded="true"] {
+        background: #0284c7;
+        color: #ffffff;
+      }
+
+      .help-panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 20;
+        width: min(560px, 100vw);
+        overflow-y: auto;
+        padding: 16px 22px 28px;
+        border-left: 1px solid #bae6fd;
+        background: #ffffff;
+        box-shadow: -8px 0 24px rgba(15, 23, 42, 0.18);
+        color: #0f172a;
+      }
+
+      .help-panel-head {
+        position: sticky;
+        top: -16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin: -16px -22px 8px;
+        padding: 12px 22px;
+        border-bottom: 1px solid #e0f2fe;
+        background: #ffffff;
+        font-size: 13px;
+      }
+
+      .help-panel-body table {
+        border-collapse: collapse;
+        margin: 8px 0 14px;
+        font-size: 13px;
+      }
+
+      .help-panel-body th,
+      .help-panel-body td {
+        padding: 4px 8px;
+        border: 1px solid #e2e8f0;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      .help-panel-body h2 {
+        margin-top: 4px;
+      }
+
+      .help-panel-body h3 {
+        margin: 18px 0 6px;
+        color: #0c4a6e;
+      }
+
+      .has-tooltip,
+      abbr.kind-abbr {
+        cursor: help;
+      }
+
+      abbr.kind-abbr {
+        text-decoration: underline dotted;
+        font-weight: 700;
+      }
+
+      /* T13: adaptive gap attention panel, distinct from .board-section. */
+      .gap-panel {
+        border: 1px solid var(--gap-neutral-border);
+        border-left-width: 4px;
+        border-radius: 12px;
+        background: var(--gap-neutral-bg);
+        color: #0f172a;
+        padding: 12px;
+      }
+
+      .gap-panel-attention {
+        border-color: var(--gap-attention-border);
+        background: var(--gap-attention-bg);
+      }
+
+      .gap-panel-pending {
+        border-color: var(--gap-pending-border);
+        background: var(--gap-pending-bg);
+      }
+
+      .gap-panel-clear,
+      .gap-panel-empty {
+        border-left-width: 1px;
+        padding: 8px 12px;
+      }
+
+      .gap-panel-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 8px;
+        color: var(--gap-neutral-text);
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .gap-panel-attention .gap-panel-header {
+        color: var(--gap-attention-text);
+      }
+
+      .gap-panel-pending .gap-panel-header {
+        color: var(--gap-pending-text);
+      }
+
+      .gap-panel-collapsed > summary {
+        cursor: pointer;
+      }
+
+      .gap-panel-collapsed > summary .gap-panel-header {
+        display: inline-flex;
+        margin: 0;
+        font-size: 15px;
+      }
+
+      .gap-panel-icon {
+        font-size: 1.1em;
+      }
+
+      .gap-panel-chips {
+        font-size: 12px;
+        font-weight: 600;
+        color: #334155;
+      }
+
+      .gap-panel-chip {
+        display: inline-block;
+        padding: 1px 8px;
+        border: 1px solid var(--gap-neutral-border);
+        border-radius: 999px;
+        background: #ffffff;
+        cursor: help;
+        white-space: nowrap;
+      }
+
+      .gap-panel-chip-open {
+        border-color: #fca5a5;
+        color: #991b1b;
+      }
+
+      .gap-panel-chip-mixed {
+        border-color: #f59e0b;
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      .gap-panel-chip-partial {
+        border-color: #60a5fa;
+        color: #1e40af;
+      }
+
+      .gap-panel-chip-resolved {
+        color: #166534;
+      }
+
+      .gap-panel-chip-sep {
+        color: #94a3b8;
+      }
+
+      .gap-panel .board-table td {
+        background: #ffffff;
+      }
+
+      .gap-panel-toggle {
+        margin-top: 8px;
+      }
+
+      .legend {
+        margin: 6px 0 0;
+        color: #475569;
+        font-size: 12px;
+      }
+
+      .legend-item {
+        cursor: help;
+        white-space: nowrap;
+      }
+
+      .legend-separator {
+        color: #94a3b8;
+      }
     </style>
   </head>
   <body>
-    <h1>hGATE viewer</h1>
+    <header class="viewer-header">
+      <h1>hGATE viewer</h1>
+      <button
+        id="helpBtn"
+        class="help-button"
+        type="button"
+        aria-expanded="false"
+        aria-controls="helpPanel"
+        aria-label="Viewer guide"
+        title="Viewer guide: what each section, colour and badge means"
+      >
+        ?
+      </button>
+    </header>
+    <aside id="helpPanel" class="help-panel" role="dialog" aria-labelledby="helpPanelTitle" tabindex="-1" hidden>
+      <div class="help-panel-head">
+        <span class="muted">Guide · source: <code>docs/viewer-guide.md</code></span>
+        <button id="helpCloseBtn" type="button" aria-label="Close viewer guide">Close</button>
+      </div>
+      <div id="helpPanelBody" class="help-panel-body"></div>
+    </aside>
+    <div id="warningBanner" class="warning-banner" role="status" aria-live="polite" hidden>
+      <span id="warningBannerText"></span>
+      <button id="warningBannerShow" type="button">Show</button>
+    </div>
     <div class="tabs" role="tablist" aria-label="Viewer sections">
       <button id="scenarioTab" class="tab" role="tab" aria-selected="true">
         Scenarios
       </button>
       <button id="projectTab" class="tab" role="tab" aria-selected="false">
         Project
+      </button>
+      <button id="boardTab" class="tab" role="tab" aria-selected="false" aria-controls="boardPanel">
+        Board
       </button>
     </div>
 
@@ -530,6 +1175,33 @@
         <aside id="projectDetails" class="project-details">
           <p class="muted">Load a project, then choose a bounded context.</p>
         </aside>
+      </div>
+    </section>
+
+    <section id="boardPanel" role="tabpanel" aria-labelledby="boardTab" hidden>
+      <p class="muted">
+        Lifecycle board from <code>docs/hgate-project.json</code>: where each bounded context
+        stands, the gates for its current transition, gap dispositions and projection warnings.
+      </p>
+      <div class="row project-toolbar">
+        <button id="boardLoadProjectBtn" type="button">Load project</button>
+        <span id="boardProjectStatus" class="muted" aria-live="polite">No project loaded</span>
+      </div>
+      <div id="boardLanes" class="board-lanes" aria-label="Lifecycle swimlanes">
+        <p class="muted">Load a project to see bounded contexts by lifecycle state.</p>
+      </div>
+      <div class="board-layout">
+        <aside id="boardDetails" class="board-section" aria-label="Bounded context lifecycle details">
+          <p class="muted">Select a bounded context card to see its lifecycle evidence.</p>
+        </aside>
+        <section id="gapLedger" class="gap-panel gap-panel-empty" aria-labelledby="gapLedgerTitle">
+          <h2 id="gapLedgerTitle" class="gap-panel-header">Gap ledger</h2>
+          <p class="muted">No project loaded.</p>
+        </section>
+        <details id="boardDiagnostics" class="board-section">
+          <summary>Diagnostics (<span id="boardDiagnosticsCount">0</span>)</summary>
+          <div id="boardDiagnosticsList" class="diagnostics"></div>
+        </details>
       </div>
     </section>
 
@@ -814,6 +1486,7 @@ Feature: Portal User Authentication (AdminAuthMiddleware)
       sourceInput.value = sample;
       render();
     </script>
+    <script src="./viewer-guide.js"></script>
     <script src="./project-viewer.js"></script>
   </body>
 </html>

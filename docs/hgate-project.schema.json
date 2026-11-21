@@ -17,7 +17,7 @@
       "type": "string"
     },
     "schemaVersion": {
-      "const": 1
+      "const": 2
     },
     "project": {
       "type": "object",
@@ -43,6 +43,14 @@
     "journeys": {
       "type": "array",
       "items": { "$ref": "#/$defs/journey" }
+    },
+    "gaps": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/gap" }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/diagnostic" }
     }
   },
   "$defs": {
@@ -101,6 +109,124 @@
         "file": { "type": "string" }
       }
     },
+    "lifecycleState": {
+      "enum": [
+        "DISCOVERED",
+        "REFINING",
+        "REFINED",
+        "SPEC_REVIEWED",
+        "IMPLEMENTING",
+        "IMPLEMENTED",
+        "VERIFIED",
+        "CHANGING",
+        "BLOCKED",
+        "DEPRECATED"
+      ]
+    },
+    "transition": {
+      "type": "object",
+      "required": ["date", "from", "to", "evidence", "actor"],
+      "additionalProperties": false,
+      "properties": {
+        "date": { "type": "string" },
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "evidence": { "type": "string" },
+        "actor": { "type": "string" }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "required": ["transition", "gate", "kind", "result", "evidence", "signedBy", "date"],
+      "additionalProperties": false,
+      "properties": {
+        "transition": {
+          "type": "string",
+          "pattern": "^(-|DISCOVERED|REFINING|REFINED|SPEC_REVIEWED|IMPLEMENTING|IMPLEMENTED|VERIFIED|CHANGING|BLOCKED|DEPRECATED) -> (DISCOVERED|REFINING|REFINED|SPEC_REVIEWED|IMPLEMENTING|IMPLEMENTED|VERIFIED|CHANGING|BLOCKED|DEPRECATED)$"
+        },
+        "gate": { "type": "string", "pattern": "^GATE-[A-Z0-9]+(?:-[A-Z0-9]+)*$" },
+        "kind": { "enum": ["H", "D", "R"] },
+        "result": { "enum": ["PASS", "FAIL", "WAIVED", "N/A"] },
+        "evidence": { "type": "string", "minLength": 1 },
+        "signedBy": { "type": ["string", "null"] },
+        "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+      }
+    },
+    "gateCheck": {
+      "type": "object",
+      "required": ["gate", "kind", "result", "date", "satisfied"],
+      "additionalProperties": false,
+      "properties": {
+        "gate": { "type": "string", "pattern": "^GATE-[A-Z0-9]+(?:-[A-Z0-9]+)*$" },
+        "kind": { "enum": ["H", "D", "R"] },
+        "result": { "enum": ["PASS", "FAIL", "WAIVED", "N/A", null] },
+        "date": { "type": ["string", "null"] },
+        "satisfied": { "type": "boolean" }
+      }
+    },
+    "gateStatus": {
+      "description": "Validity Rules of lifecycle-gates.md evaluated for the current transition (tools/shared/gate-rules.mjs); null when the project has no gate catalog.",
+      "type": ["object", "null"],
+      "required": ["transition", "required", "optional", "satisfied", "total", "valid"],
+      "additionalProperties": false,
+      "properties": {
+        "transition": { "type": ["string", "null"] },
+        "required": { "type": "array", "items": { "$ref": "#/$defs/gateCheck" } },
+        "optional": { "type": "array", "items": { "$ref": "#/$defs/gateCheck" } },
+        "satisfied": { "type": "number" },
+        "total": { "type": "number" },
+        "valid": { "type": "boolean" }
+      }
+    },
+    "openItem": {
+      "type": "object",
+      "required": ["id", "item", "owner", "disposition"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": ["string", "null"] },
+        "item": { "type": "string" },
+        "owner": { "type": "string" },
+        "disposition": { "type": "string" }
+      }
+    },
+    "stats": {
+      "type": "object",
+      "required": [
+        "rules",
+        "features",
+        "scenarios",
+        "decisions",
+        "properties",
+        "acls",
+        "ports",
+        "openItems",
+        "openGaps"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "rules": { "type": "number" },
+        "features": { "type": "number" },
+        "scenarios": { "type": "number" },
+        "decisions": { "type": "number" },
+        "properties": { "type": "number" },
+        "acls": { "type": "number" },
+        "ports": { "type": "number" },
+        "openItems": { "type": "number" },
+        "openGaps": { "type": "number" }
+      }
+    },
+    "signoff": {
+      "type": "object",
+      "required": ["kind", "file", "date"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["bdd", "business", "review"] },
+        "file": { "type": "string", "minLength": 1 },
+        "date": { "type": ["string", "null"] },
+        "status": { "type": "string" },
+        "outcome": { "type": "string" }
+      }
+    },
     "boundedContext": {
       "type": "object",
       "required": [
@@ -115,6 +241,13 @@
         "capabilities",
         "ports",
         "acls",
+        "nextSkill",
+        "blockers",
+        "transitions",
+        "gates",
+        "openItems",
+        "stats",
+        "signoffs",
         "sources"
       ],
       "additionalProperties": false,
@@ -128,20 +261,7 @@
         "role": {
           "enum": ["PRIMARY", "SHARED", "SUPPORTING", "UNCONFIRMED"]
         },
-        "lifecycle": {
-          "enum": [
-            "DISCOVERED",
-            "REFINING",
-            "REFINED",
-            "SPEC_REVIEWED",
-            "IMPLEMENTING",
-            "IMPLEMENTED",
-            "VERIFIED",
-            "CHANGING",
-            "BLOCKED",
-            "DEPRECATED"
-          ]
-        },
+        "lifecycle": { "$ref": "#/$defs/lifecycleState" },
         "purpose": { "type": "string" },
         "owns": { "type": "array", "items": { "type": "string" } },
         "doesNotOwn": { "type": "array", "items": { "type": "string" } },
@@ -156,6 +276,26 @@
         "acls": {
           "type": "array",
           "items": { "$ref": "#/$defs/acl" }
+        },
+        "nextSkill": { "type": ["string", "null"] },
+        "blockers": { "type": "array", "items": { "type": "string" } },
+        "transitions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/transition" }
+        },
+        "gates": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/gate" }
+        },
+        "gateStatus": { "$ref": "#/$defs/gateStatus" },
+        "openItems": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/openItem" }
+        },
+        "stats": { "$ref": "#/$defs/stats" },
+        "signoffs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/signoff" }
         },
         "sources": {
           "type": "object",
@@ -193,6 +333,47 @@
         "entryPoint": { "type": "string" },
         "outcome": { "type": "string" },
         "validationArtifact": { "type": "string" }
+      }
+    },
+    "gapSource": {
+      "type": "object",
+      "required": ["file", "line", "bc", "owner", "disposition"],
+      "additionalProperties": false,
+      "properties": {
+        "file": { "type": "string", "minLength": 1 },
+        "line": { "type": "number" },
+        "bc": { "type": ["string", "null"] },
+        "owner": { "type": "string" },
+        "disposition": { "type": "string" }
+      }
+    },
+    "gap": {
+      "type": "object",
+      "required": ["id", "gap", "affected", "state", "sources"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "gap": { "type": "string" },
+        "affected": { "type": ["string", "null"] },
+        "state": { "enum": ["RESOLVED", "PARTIAL", "DEFERRED", "OPEN", "MIXED"] },
+        "sources": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/gapSource" }
+        }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "required": ["code", "severity", "message", "file", "line", "bcId", "gapId"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "type": "string", "pattern": "^HGW\\d{3}$" },
+        "severity": { "const": "warning" },
+        "message": { "type": "string", "minLength": 1 },
+        "file": { "type": "string", "minLength": 1 },
+        "line": { "type": "number" },
+        "bcId": { "type": ["string", "null"] },
+        "gapId": { "type": ["string", "null"] }
       }
     }
   }

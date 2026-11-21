@@ -51,7 +51,11 @@ At session start, update this BC's `status.md` from `DISCOVERED`, `REFINED`, or
 `SPEC_REVIEWED` to `REFINING`. If the file does not exist, create it from
 `assets/status-template.md` and record why lifecycle tracking was initialized
 late. Immediately run `npm run project:sync` (the generator reads the lifecycle from
-`status.md`, which remains authoritative).
+`status.md`, which remains authoritative) and `npm run project:check`, then
+record the transition per `skills/hgate-guide/references/lifecycle-gates.md`:
+a `GATE-PROJ-SYNC` (`D`) Gate Evidence row for `<FROM> -> REFINING` first, then
+the Transition History row, then `lifecycle:` and Current State. Keep existing
+Open Items rows and their IDs.
 
 ---
 
@@ -216,6 +220,11 @@ Present the plan using `exit_plan_mode`. Do not modify any files until the user 
 **Before doing any work in this phase, read `references/phase-6-validation.md` in full and follow it exactly. It contains the complete body of this phase; do not proceed from memory or skip it.**
 
 ## Phase 7 — Session Close
+
+Before the summary, confirm the `status.md` gate rows, Transition History row,
+and `lifecycle:` value written in Phase 5g (`REFINED` or `BLOCKED`) are present
+and in that order; a refinement with `lifecycle: REFINED` and missing or failing
+gate rows is not complete.
 
 End every session with a structured summary:
 

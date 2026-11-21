@@ -54,6 +54,11 @@ Journey IDs are stable, repository-unique kebab-case identifiers.
 
 ## Open Relationship Gaps
 
+Gap IDs (`G<n>`) are shared with the exploration Gap Register, the domain
+map's Open Boundary Gaps and the `ID` column of each affected BC's `status.md`
+Open Items. Resolving a gap updates its disposition in every table that lists
+it; differing dispositions are reported as `HGW001`.
+
 | ID | Relationship | Gap | Owner | Disposition |
 |---|---|---|---|---|
 | [...] | [...] | [...] | Open / Deferred / Out of scope |

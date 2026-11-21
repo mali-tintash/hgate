@@ -56,12 +56,28 @@ BLOCKED -> <recorded return state>
 `SPEC_REVIEWED` is recommended but not mandatory before implementation unless
 project policy requires it.
 
+## Gates
+
+Each transition is guarded by the gates in `lifecycle-gates.md` (the gate
+catalog). Every valid transition above maps to at least one gate;
+`GATE-PROJ-SYNC` applies to all of them. Each BC records results in the
+`## Gate Evidence` table of its `status.md`. A `lifecycle:` value is valid only
+when the required gates of the transition into it are satisfied, as defined in
+`lifecycle-gates.md` (Validity Rules).
+
 ## Update Rules
 
 1. Only the specialist skill completing or blocking a stage updates `status.md`.
 2. Update the frontmatter, current-state section, blockers, recommended next
-   skill, and transition history together.
-3. Do not advance status before the skill's completion gates pass.
+   skill, gate evidence, and transition history together.
+3. Do not advance status before the skill's completion gates pass. Write the
+   `## Gate Evidence` rows for the transition first (one row per catalog gate
+   that applies, including `GATE-PROJ-SYNC`), then the Transition History row,
+   and only then change `lifecycle:` and the Current State section. Gate rows
+   are append-only; a failed attempt stays as a `FAIL` row.
+   Transition History rows may be kept newest-first or oldest-first; keep one
+   order within a file. Tools (`project:sync`, `verify:spec`, `project:status`,
+   the viewer) normalise either order to chronological order.
 4. `BLOCKED` must record the blocker, owner, and intended return state.
 5. A behavior change makes previous verification stale:
    `VERIFIED -> CHANGING -> IMPLEMENTED`; run `bc-review full` to return to
@@ -76,3 +92,14 @@ project policy requires it.
 8. A lifecycle transition is not complete for repository tooling until the
    projection is synchronized and valid. A projection-only edit never counts as
    a transition.
+9. Open Items rows carry an `ID` (a shared gap ID such as `G11`, or a BC-local
+   `OI-<n>`) so the projection can join gaps across `domain-map.md`,
+   `context-map.md` and `status.md` and warn on differing dispositions.
+
+## Status Report
+
+`tools/project-status` writes `.hgate/status.json`, a gitignored report derived
+from git history, the working tree and verifier output (what changed at each
+transition and since the last one). It is never committed and never an
+authority: it cannot contain the hash of the commit that records a transition,
+and it would drift on every code change. Edit `status.md`, not the report.

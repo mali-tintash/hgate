@@ -6,6 +6,9 @@
 # templates/hooks/claude-settings.stop-hook.json into .claude/settings.json.
 #
 # Exit 2 + stderr feeds the failure back to the agent and keeps it working.
+# verify-spec covers spec consistency, lifecycle gates (HGS*) and gap drift
+# warnings (HGW001/HGW002); warnings exit 0 and never block. project:status is
+# not run here (derived, gitignored .hgate/status.json).
 
 input=$(cat)
 

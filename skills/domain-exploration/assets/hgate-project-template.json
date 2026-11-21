@@ -1,6 +1,6 @@
 {
   "$schema": "./hgate-project.schema.json",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "project": {
     "name": "<project-name>",
     "description": "<confirmed-project-purpose>"

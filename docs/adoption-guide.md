@@ -50,12 +50,18 @@ cp -R tools/. /path/to/your-project/tools/
 ```json
 {
   "scripts": {
-    "verify:spec": "node tools/verify-spec/verify.mjs --root ."
+    "verify:spec": "node tools/verify-spec/verify.mjs --root .",
+    "project:sync": "node tools/project-projection/generate.mjs --root .",
+    "project:check": "node tools/project-projection/generate.mjs --root . --check",
+    "project:status": "node tools/project-status/generate.mjs --root ."
   }
 }
 ```
 
-See [`tools/verify-spec/README.md`](../tools/verify-spec/README.md).
+Add `.hgate/` to `.gitignore`; `project:status` writes its derived report
+there. See [`tools/verify-spec/README.md`](../tools/verify-spec/README.md),
+[`tools/project-projection/README.md`](../tools/project-projection/README.md)
+and [`tools/project-status/README.md`](../tools/project-status/README.md).
 
 The traceability verifier needs the project's own `typescript` package (already present in
 TS/Jest projects; otherwise `npm install --save-dev typescript`).
@@ -128,7 +134,8 @@ installed automatically.
 
 | Layer | Template | Install |
 |---|---|---|
-| CI gate (authoritative) | `templates/ci/hgate-verify.yml` | copy to `.github/workflows/hgate-verify.yml` |
+| CI gate, GitHub Actions (authoritative) | `templates/ci/hgate-verify.yml` | copy to `.github/workflows/hgate-verify.yml` |
+| CI gate, Bitbucket Pipelines (authoritative) | `templates/ci/bitbucket-pipelines.hgate.yml` | merge into `bitbucket-pipelines.yml` |
 | Pre-commit hook | `templates/hooks/pre-commit` | copy to `.git/hooks/pre-commit` (or call from `.husky/pre-commit`) and `chmod +x` |
 | Agent Stop hook (Claude Code format) | `templates/hooks/hgate-verify-stop.sh` + `templates/hooks/claude-settings.stop-hook.json` | copy the script to `.claude/hooks/`, `chmod +x`, merge the JSON into `.claude/settings.json` |
 
@@ -140,6 +147,15 @@ hook exits `2` with the verifier output so the agent keeps working until the
 traceability is valid, and it skips itself when `stop_hook_active` is set to
 avoid loops. Other agent runtimes can reuse the script behind their own
 end-of-turn hook.
+
+Both CI templates also run `project:check` when `docs/domain-map.md` exists,
+then an optional `project:status` step that uploads `.hgate/status.json` as a
+build artifact (`hgate-status`) and never fails the build. That step needs full
+history: `fetch-depth: 0` (GitHub) or `clone: depth: full` (Bitbucket). The
+pre-commit hook runs `project:check` when projected sources change and
+`verify:spec` (gates and gap drift) when skill files, maps, event files or
+tooling change. Warnings print last as `WARNINGS (n)` (GitHub also gets
+`::warning` annotations) and never fail a job.
 
 ## Choose an Adoption Level
 
@@ -200,6 +216,9 @@ docs/
     property-signoffs/
       <module-slug>/
         YYYY-MM-DD-<change-slug>.md
+    bc-reviews/
+      <bc-name>/
+        YYYY-MM-DD-<mode>.md    # spec-only or full
   features/
     <feature-name>/
       validation.md
@@ -214,6 +233,9 @@ docs/
     decisions.md
     status.md
     *-acl.md
+
+.hgate/
+  status.json                   # derived by project:status; gitignored
 ```
 
 ### Ownership
@@ -223,7 +245,11 @@ docs/
 - `docs/hgate-project.json`: deterministic schema-versioned projection for the
   project viewer and automation; derived from the authoritative Markdown
 - BC `decisions.md`: decisions owned by one BC
-- BC `status.md`: mutable lifecycle state for one BC
+- BC `status.md`: mutable lifecycle state, Gate Evidence, and Open Items for
+  one BC
+- `docs/verification/bc-reviews/<bc>/`: persisted `bc-review` reports, the
+  evidence for `SPEC_REVIEWED` and `VERIFIED`
+- `.hgate/status.json`: git-derived change report; never committed
 - BDD scenario IDs: stable links from approved scenarios to executable tests
 - Module sign-off records: immutable evidence that a human accepted passing
   Jest and repository-wide BDD traceability for a clean candidate revision
@@ -243,10 +269,13 @@ projection only when those changes affect projected fields.
 ### Project projection synchronization
 
 Use `docs/hgate-project.json` as the one canonical machine-readable projection.
-Schema version 1 contains `project`, `domains`, `boundedContexts`,
-`relationships`, and `journeys`. BCs include stable kebab-case identity,
-classification, boundary role, lifecycle, ownership, capabilities, structured
-ports, ACLs, and source paths. Relationships and journeys also use stable IDs.
+Schema version 2 contains `project`, `domains`, `boundedContexts`,
+`relationships`, `journeys`, `gaps`, and `diagnostics`. BCs include stable
+kebab-case identity, classification, boundary role, lifecycle, ownership,
+capabilities, structured ports, ACLs, source paths, and, from `status.md` and
+the verification folders, `transitions`, `gates`, `blockers`, `nextSkill`,
+`openItems`, `stats`, and `signoffs`. Relationships and journeys also use
+stable IDs.
 
 After an authoritative projected change:
 
@@ -431,6 +460,58 @@ IMPLEMENTED | VERIFIED
 
 Any stage may become `BLOCKED` with an owner and intended return state.
 
+### Gate evidence
+
+Each transition has gates in
+[`skills/hgate-guide/references/lifecycle-gates.md`](../skills/hgate-guide/references/lifecycle-gates.md):
+**H** (human approval with a named signer and role), **D** (deterministic tool
+result), or **R** (record only). The specialist skill writes one row per gate
+to the BC's `## Gate Evidence` table, then the Transition History row, then
+changes `lifecycle:`. `verify-spec` rejects a lifecycle value whose current
+transition lacks passing gates (`HGS001`–`HGS007`, see
+[`tools/verify-spec/README.md`](../tools/verify-spec/README.md)).
+
+Open Items carry an `ID`: a shared gap ID (`G<n>`, also listed in the domain or
+context map) or a local `OI-<n>`. When a gap is resolved, update its
+disposition in every table that lists it. A scoped resolution ("Resolved for
+<BC>; <other BC> to confirm", or resolved text that is still "pending" or
+"deferred for" something) is classified `PARTIAL` and still counts as an open
+gap; it is not drift. Genuine disagreement (for example Deferred in the map,
+Resolved in a BC) is reported as `HGW001`; a gap only in a BC `status.md` is
+`HGW002`. Transition History may be written newest-first or oldest-first; the
+tools normalise it to chronological order.
+
+### Reviewing project status
+
+1. Run `npm run project:sync` (projection) and `npm run project:status`
+   (optional git-derived report; add `--bdd` for coverage).
+2. Open `tools/gherkin-viewer/index.html` and pick the project root folder.
+3. Use the **Board** tab for lifecycle swimlanes, BC cards, the gap ledger and
+   diagnostics; the drift banner stays at the top of every tab while warnings
+   exist.
+4. Open a BC's details for its change summaries (since last transition, since
+   previous commit, uncommitted) and its step-by-step timeline with gates and
+   expandable diffs.
+
+The report needs full git history. A squash merge collapses its transitions
+into one step, and blame credits a row to the commit that last edited it.
+
+## Migrating an Existing hGATE Project to Gate Evidence
+
+1. Copy the updated `tools/` and skills (including `lifecycle-gates.md`).
+2. Add `## Gate Evidence` to each BC `status.md` (see
+   `skills/bc-refinement/assets/status-template.md`) and backfill rows for the
+   transition into the current lifecycle; until then `verify-spec` warns
+   `HGS006`.
+3. Add an `ID` column to each Open Items table (`G<n>` or `OI-<n>`).
+4. Replace the local `docs/hgate-project.schema.json` with the version 2
+   schema; a version 1 copy stops generation with `HGP003`.
+5. Align gap dispositions across `domain-map.md`, `context-map.md` and each
+   `status.md`.
+6. Run `npm run project:sync`, `npm run verify:spec`, and
+   `npm run project:status`; clear any `WARNINGS (n)` entries.
+7. Add `.hgate/` to `.gitignore` and adopt the updated CI template.
+
 ## When to Use Architecture Exploration
 
 Use `architecture-decision-exploration` after business boundaries are understood
@@ -453,7 +534,10 @@ boundaries remain unclear.
 - [ ] Every session reconciles manual code changes before new work
 - [ ] Domain and context maps exist
 - [ ] `docs/hgate-project.json` is synchronized, deterministic, timestamp-free,
-      and schema-valid
+      and valid against schema version 2
+- [ ] Every BC `status.md` has Gate Evidence for its current transition and
+      Open Items with IDs; `verify:spec` prints no warnings
+- [ ] CI uses full git history and `.hgate/` is gitignored
 - [ ] Every active BC has local specification, decisions, and status artifacts
 - [ ] Cross-cutting decisions use standalone ADRs
 - [ ] Initial implementation and enhancement use different skills

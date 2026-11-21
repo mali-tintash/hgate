@@ -204,14 +204,17 @@ Use the Phase 1 table from [report-template.md](./report-template.md), followed 
 - Deferred cross-BC items
 - Cohesion result
 
-For `spec-only`, update local lifecycle metadata after reporting:
+For `spec-only`, after reporting, persist the report and record
+`GATE-SREV-REPORT` as defined in `SKILL.md` (Persisted Report and Gate
+Evidence):
 
-- Use `REFINED -> SPEC_REVIEWED` only when no unresolved Critical or High
-  specification finding blocks implementation.
-- Otherwise use `REFINED -> BLOCKED` and record the findings, owner, and return
-  state.
+- Use `REFINED -> SPEC_REVIEWED` only when the outcome is `PASS` (no unresolved
+  Critical or High specification finding blocks implementation).
+- Otherwise record a `FAIL` gate row, do not transition, and record the blocking
+  findings, owner, and recommended next skill.
 
-Modify only `.github/skills/<bc-name>/status.md` as authoritative content, then
-run `npm run project:sync`; the generator projects its lifecycle.
+Write only the report file and `.github/skills/<bc-name>/status.md` as
+authoritative content, then run `npm run project:sync`; the generator projects
+its lifecycle.
 
 For `spec-only`, stop here.

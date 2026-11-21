@@ -137,6 +137,21 @@ already be committed.
 
 Do not maintain a global append-only decisions file or mutable lifecycle table.
 
+## Lifecycle Gate Evidence
+
+A BC enters a lifecycle state only when every required gate of that transition
+in `.github/skills/hgate-guide/references/lifecycle-gates.md` passes. Record one
+row per gate in the BC `status.md` `## Gate Evidence` table (kind `H` human
+with named signer and role, `D` tool result, `R` record only), then the
+Transition History row, then change `lifecycle:`. Rows are append-only.
+`npm run verify:spec` fails on missing or failed gates (`HGS` codes).
+`bc-review` reports persist under `docs/verification/bc-reviews/<bc>/`.
+
+Open Items rows carry an `ID` (`G<n>` shared with the domain/context maps, or
+local `OI-<n>`). When a gap is resolved, update its disposition in every table
+that lists it. Gap drift prints as `HGW001`/`HGW002` in a trailing
+`WARNINGS (n)` block; warnings do not fail commands but must be cleared.
+
 ## Canonical Project Projection
 
 Authoritative Markdown remains the source of truth:
@@ -152,15 +167,16 @@ Maintain one derived machine-readable projection at
 file, while continuing to support legacy Markdown projects. The projection is
 not an independent decision or lifecycle artifact.
 
-Schema version 1 has top-level `project`, `domains`, `boundedContexts`,
-`relationships`, and `journeys`. Use stable repository-unique kebab-case IDs.
+Schema version 2 has top-level `project`, `domains`, `boundedContexts`,
+`relationships`, `journeys`, `gaps`, and `diagnostics`. Use stable repository-unique kebab-case IDs.
 Each BC projects its name, domain ID, classification
 (`CORE|SUPPORTING|GENERIC|UNCONFIRMED`), boundary role
 in `role` (`PRIMARY|SHARED|SUPPORTING|UNCONFIRMED`), lifecycle from `status.md`,
 `owns`, `doesNotOwn`, capabilities, structured ports
 (`name`, `direction`, `purpose`, `contract`), ACLs
-(`name`, `system`, `direction`, `file`), and source artifact paths.
-Relationships project `id`, `from`, `to`, `information`, `sourceOfTruth`,
+(`name`, `system`, `direction`, `file`), source artifact paths, and, from
+`status.md` and `docs/verification/`, `transitions`, `gates`, `blockers`,
+`nextSkill`, `openItems`, `stats`, and `signoffs`. Relationships project `id`, `from`, `to`, `information`, `sourceOfTruth`,
 `consistency`, `interaction`, `translationAcl`, and `status`. Journeys project
 `id`, `name`, `boundedContextIds`, `entryPoint`, `outcome`, and
 `validationArtifact`.
@@ -174,6 +190,12 @@ on drift. Do not report the workflow complete with a stale or invalid
 projection. When information is undecided,
 resolve it in the owning Markdown artifact or use an allowed `UNCONFIRMED`
 value; never decide it directly in JSON.
+
+`npm run project:status` writes the git-derived, gitignored
+`.hgate/status.json` (per-BC changes at each transition, since the last
+transition, since the previous commit, and uncommitted). Never commit it. To
+review state, open `tools/gherkin-viewer/index.html` and pick the project
+folder (Board tab, drift banner, per-BC timeline).
 
 ## Guided Workflow
 

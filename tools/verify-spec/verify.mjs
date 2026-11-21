@@ -12,6 +12,13 @@ import {
   stripMarkup,
   toKebab,
 } from "./markdown.mjs";
+import {
+  GATE_CATALOG_PATHS,
+  GATE_CATALOG_SUFFIX,
+  checkGates,
+  parseGateCatalog,
+} from "../shared/gate-rules.mjs";
+import { GAP_ID_PATTERN, formatWarnings, gapIdFromText, mergeGaps } from "../shared/gaps.mjs";
 
 export const EXIT_VALID = 0;
 export const EXIT_INVALID = 1;
@@ -87,11 +94,14 @@ async function discoverBoundedContexts(skillsRoot) {
       continue;
     }
     const dir = path.join(skillsRoot, entry.name);
-    const hasBcArtifact =
+    // Spec checks need a domain model or scenarios; gate checks need only a
+    // status.md, so a DISCOVERED BC (status.md alone) is still gate-checked.
+    const spec =
       (await readOptional(path.join(dir, "domain-model.md"))) !== null ||
       (await readOptional(path.join(dir, "bdd-scenarios.md"))) !== null;
-    if (hasBcArtifact) {
-      contexts.push({ name: entry.name, dir });
+    const hasStatus = (await readOptional(path.join(dir, "status.md"))) !== null;
+    if (spec || hasStatus) {
+      contexts.push({ name: entry.name, dir, spec });
     }
   }
   return contexts;
@@ -405,6 +415,141 @@ function checkReadiness(ctx, out) {
   }
 }
 
+// Finds the project's gate catalog: --gates, else <skills-path>/hgate-guide,
+// .github/skills/hgate-guide (adopting projects) or skills/hgate-guide (hGATE).
+async function loadGateCatalog(root, skillsPath, explicit) {
+  const candidates = explicit
+    ? [explicit]
+    : [...new Set([`${skillsPath}/${GATE_CATALOG_SUFFIX}`, ...GATE_CATALOG_PATHS])];
+  for (const candidate of candidates) {
+    const file = path.resolve(root, candidate);
+    const source = await readOptional(file);
+    if (source !== null) {
+      return { file, source };
+    }
+  }
+  if (explicit) {
+    throw new Error(`gate catalog not found: ${explicit}`);
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------- gap drift
+// HGW001/HGW002 warnings from the shared gap ledger (tools/shared/gaps.mjs).
+// Reads the same tables as tools/project-projection/generate.mjs
+// (buildGapLedger): docs/domain-map.md "Open Boundary Gaps", docs/context-map.md
+// "Open Relationship Gaps" and each Bounded Context Inventory BC's status.md
+// "Open Items". The table parsing below mirrors the generator's strict `table()`
+// so both tools report identical warnings. Skipped without docs/domain-map.md.
+
+const gapClean = (cell) => {
+  const trimmed = cell.trim();
+  const match = /^`([^`]*)`$/.exec(trimmed);
+  return match ? match[1].trim() : trimmed;
+};
+const gapUnfilledCell = (value) =>
+  /^\[.*\]$/.test(value) || /^<.*>$/.test(value) || value.includes("YYYY-MM-DD");
+const gapUnfilledRow = (cells) => cells.some(gapUnfilledCell) || cells.every((cell) => cell === "");
+const gapPlaceholder = (value) => /^\[.*\]$/.test(value) || value === "";
+const gapSeparator = (line) => /^\|?[\s:|-]+\|?$/.test(line) && line.includes("-");
+const gapNone = (value) => /^(none\.?|n\/a|-|—)$/i.test(value.trim());
+const gapOrNull = (value) => (value === undefined || value === "" || gapNone(value) ? null : value);
+
+function gapSplitRow(line) {
+  let body = line.trim();
+  if (body.startsWith("|")) body = body.slice(1);
+  if (body.endsWith("|")) body = body.slice(0, -1);
+  return body.split(/(?<!\\)\|/).map((cell) => gapClean(cell.replace(/\\\|/g, "|")));
+}
+
+function gapTable(markdown, heading, { strict = false } = {}) {
+  const lines = markdown.split(/\r?\n/);
+  const start = lines.findIndex((line) => new RegExp(`^#{2,6}\\s+${heading}\\s*$`, "i").test(line));
+  if (start === -1) return [];
+  const level = /^#+/.exec(lines[start])[0].length;
+  const rows = [];
+  let header = null;
+  for (const [offset, line] of lines.slice(start + 1).entries()) {
+    const next = /^(#+)\s/.exec(line);
+    if (next && next[1].length <= level) break;
+    if (!line.trim().startsWith("|")) {
+      if (header && (rows.length || strict)) break;
+      continue;
+    }
+    if (!header) {
+      header = gapSplitRow(line).map((name) => name.toLowerCase());
+      continue;
+    }
+    if (gapSeparator(line.trim())) continue;
+    const cells = gapSplitRow(line);
+    if (strict ? gapUnfilledRow(cells) : gapPlaceholder(cells[0])) continue;
+    const row = {};
+    header.forEach((name, index) => {
+      row[name] = cells[index] ?? "";
+    });
+    row.line = start + offset + 2;
+    rows.push(row);
+  }
+  return rows;
+}
+
+export async function readGapDrift(root) {
+  const domainMap = await readOptional(path.join(root, "docs/domain-map.md"));
+  if (domainMap === null) return [];
+  const contextMap = (await readOptional(path.join(root, "docs/context-map.md"))) ?? "";
+  const sources = [];
+  const mapIds = new Set();
+  for (const [file, rows, affectedKey] of [
+    ["docs/domain-map.md", gapTable(domainMap, "Open Boundary Gaps", { strict: true }), "affected bcs"],
+    ["docs/context-map.md", gapTable(contextMap, "Open Relationship Gaps", { strict: true }), "relationship"],
+  ]) {
+    for (const row of rows) {
+      const id = row.id ?? "";
+      if (!id) continue;
+      mapIds.add(id);
+      sources.push({
+        id,
+        gap: row.gap ?? "",
+        affected: row[affectedKey] ?? "",
+        file,
+        line: row.line,
+        bc: null,
+        owner: row.owner ?? "",
+        disposition: row.disposition ?? "",
+      });
+    }
+  }
+  const bcs = gapTable(domainMap, "Bounded Context Inventory")
+    .map((row) => {
+      const id = row["bc id"];
+      const statusPath = row["local status"];
+      const dir = statusPath ? path.posix.dirname(statusPath) : `.github/skills/${id}`;
+      return { id, file: `${dir}/status.md` };
+    })
+    .sort((a, b) => compareText(a.id, b.id));
+  for (const bc of bcs) {
+    const status = await readOptional(path.join(root, bc.file));
+    if (status === null) continue;
+    for (const row of gapTable(status, "Open Items", { strict: true })) {
+      const item = row.item ?? row["open item"] ?? "";
+      const declared = "id" in row ? gapOrNull(row.id) : null;
+      const id = declared ?? gapIdFromText(item);
+      if (!id || !(GAP_ID_PATTERN.test(id) || mapIds.has(id))) continue;
+      sources.push({
+        id,
+        gap: item,
+        affected: "",
+        file: bc.file,
+        line: row.line,
+        bc: bc.id,
+        owner: row.owner ?? "",
+        disposition: row.disposition ?? "",
+      });
+    }
+  }
+  return mergeGaps(sources).diagnostics.map((d) => diagnostic(d.code, d.file, d.line, d.message));
+}
+
 export async function verifySpec(options = {}) {
   const root = path.resolve(options.root ?? ".");
   const skillsPath = options.skillsPath ?? DEFAULT_SKILLS_PATH;
@@ -434,9 +579,23 @@ export async function verifySpec(options = {}) {
   const rel = (file) => path.relative(root, file).split(path.sep).join("/");
   const readiness = phase === "implementation";
   const diagnostics = [];
+  const warnings = [];
+  const notes = [];
+
+  const catalogFile = await loadGateCatalog(root, skillsPath, options.gates);
+  let catalog = null;
+  if (catalogFile === null) {
+    notes.push("gate catalog (hgate-guide/references/lifecycle-gates.md) not found; gate checks skipped");
+  } else {
+    const parsed = parseGateCatalog(catalogFile.source, rel(catalogFile.file));
+    diagnostics.push(...parsed.diagnostics);
+    catalog = parsed.entries;
+  }
 
   // Scenario IDs are unique across every BC, even when only one is selected.
-  const selectedFiles = new Set(selected.map((c) => rel(path.join(c.dir, "bdd-scenarios.md"))));
+  const selectedFiles = new Set(
+    selected.filter((c) => c.spec).map((c) => rel(path.join(c.dir, "bdd-scenarios.md"))),
+  );
   const idOwners = new Map();
   for (const context of contexts) {
     const file = path.join(context.dir, "bdd-scenarios.md");
@@ -464,7 +623,20 @@ export async function verifySpec(options = {}) {
     }
   }
 
+  const gateChecked = [];
   for (const context of selected) {
+    const bcRel = rel(context.dir);
+    // Gate checks (and the HGS006 legacy warning) run for every BC, independent of spec files.
+    const status = await readOptional(path.join(context.dir, "status.md"));
+    if (catalog !== null) {
+      const gates = checkGates({ status, file: `${bcRel}/status.md`, catalog });
+      diagnostics.push(...gates.errors);
+      warnings.push(...gates.warnings);
+      gateChecked.push(context.name);
+    }
+    if (!context.spec) {
+      continue;
+    }
     const load = async (name) => {
       const file = path.join(context.dir, name);
       const source = await readOptional(file);
@@ -473,7 +645,6 @@ export async function verifySpec(options = {}) {
     const skill = await load("SKILL.md");
     const model = await load("domain-model.md");
     const bdd = await load("bdd-scenarios.md");
-    const bcRel = rel(context.dir);
     for (const [doc, name] of [[skill, "SKILL.md"], [model, "domain-model.md"], [bdd, "bdd-scenarios.md"]]) {
       if (!doc) {
         diagnostics.push(diagnostic("VSP014", `${bcRel}/${name}`, 1, `required file ${name} is missing`));
@@ -501,7 +672,7 @@ export async function verifySpec(options = {}) {
       aclFiles,
       aclSources,
       aclDocs,
-      status: await readOptional(path.join(context.dir, "status.md")),
+      status,
       sourceEventFiles: eventFiles,
       requireSource: options.requireSource === true,
       srcPath,
@@ -516,25 +687,51 @@ export async function verifySpec(options = {}) {
     }
   }
 
-  diagnostics.sort(
-    (a, b) =>
-      compareText(a.file, b.file) || a.line - b.line || compareText(a.code, b.code) || compareText(a.message, b.message),
-  );
+  // Gap drift is project-wide (maps + every BC), independent of --bc.
+  warnings.push(...(await readGapDrift(root)));
+
+  const byLocation = (a, b) =>
+    compareText(a.file, b.file) || a.line - b.line || compareText(a.code, b.code) || compareText(a.message, b.message);
+  diagnostics.sort(byLocation);
+  warnings.sort(byLocation);
   return {
     phase,
     checked: selected.map((c) => c.name),
+    specChecked: selected.filter((c) => c.spec).map((c) => c.name),
+    gateChecked,
     diagnostics,
+    warnings,
+    notes,
     exitCode: diagnostics.length > 0 ? EXIT_INVALID : EXIT_VALID,
   };
 }
 
+const formatDiagnostic = (d) => `${d.code} ${d.file}:${d.line} ${d.message}`;
+
+// Failures, then informational notes, then the summary line; warnings never
+// change the exit code and are printed last as a "WARNINGS (n)" block.
 export function formatTextReport(report) {
-  if (report.diagnostics.length === 0) {
-    return `verify-spec OK (${report.phase}): ${report.checked.length} BC(s)\n`;
+  const lines = report.diagnostics.map(formatDiagnostic);
+  for (const note of report.notes ?? []) {
+    lines.push(`INFO ${note}`);
   }
-  const lines = report.diagnostics.map((d) => `${d.code} ${d.file}:${d.line} ${d.message}`);
-  lines.push(`verify-spec FAILED (${report.phase}): ${report.diagnostics.length} issue(s)`);
+  lines.push(
+    report.diagnostics.length === 0
+      ? `verify-spec OK (${report.phase}): ${report.checked.length} BC(s) (spec ${(report.specChecked ?? report.checked).length}, gates ${(report.gateChecked ?? []).length})`
+      : `verify-spec FAILED (${report.phase}): ${report.diagnostics.length} issue(s)`,
+  );
+  // Same trailing block as tools/project-projection (tools/shared/gaps.mjs).
+  lines.push(...formatWarnings(report.warnings ?? []));
   return `${lines.join("\n")}\n`;
+}
+
+// GitHub Actions workflow-command annotations for warnings, in the same
+// format as tools/project-projection (formatWarnings with github: true).
+export function formatGithubAnnotations(report) {
+  return formatWarnings(report.warnings ?? [], { github: true })
+    .filter((line) => line.startsWith("::warning "))
+    .map((line) => `${line}\n`)
+    .join("");
 }
 
 export function formatJsonReport(report) {
@@ -550,6 +747,8 @@ Options:
   --src-path <path>      Source tree searched for *.event.ts (default: ${DEFAULT_SRC_PATH})
   --bc <name>            Only check this bounded context; repeatable
   --phase <name>         refinement (default) or implementation (adds readiness checks)
+  --gates <path>         Gate catalog (default: <skills-path>/${GATE_CATALOG_SUFFIX},
+                         then skills/${GATE_CATALOG_SUFFIX}; skipped if none)
   --require-source       Event files must exist under --src-path, not just in the module tree
   --format <text|json>   Report format (default: text)
   --help                 Show this help
@@ -569,7 +768,7 @@ function parseArguments(args) {
       continue;
     }
     const value = args[i + 1];
-    if (!["--root", "--skills-path", "--src-path", "--bc", "--phase", "--format"].includes(arg)) {
+    if (!["--root", "--skills-path", "--src-path", "--bc", "--phase", "--gates", "--format"].includes(arg)) {
       throw new Error(`unknown option: ${arg}`);
     }
     if (value === undefined) {
@@ -579,6 +778,7 @@ function parseArguments(args) {
     else if (arg === "--skills-path") options.skillsPath = value;
     else if (arg === "--src-path") options.srcPath = value;
     else if (arg === "--phase") options.phase = value;
+    else if (arg === "--gates") options.gates = value;
     else if (arg === "--bc") (options.bcs ??= []).push(value);
     else {
       if (!["text", "json"].includes(value)) {
@@ -606,7 +806,14 @@ async function main() {
   }
   try {
     const report = await verifySpec(parsed.options);
-    process.stdout.write(parsed.format === "json" ? formatJsonReport(report) : formatTextReport(report));
+    if (parsed.format === "json") {
+      process.stdout.write(formatJsonReport(report));
+    } else {
+      if (process.env.GITHUB_ACTIONS === "true") {
+        process.stdout.write(formatGithubAnnotations(report));
+      }
+      process.stdout.write(formatTextReport(report));
+    }
     process.exitCode = report.exitCode;
   } catch (error) {
     process.stderr.write(`VSP900 verifier failure: ${error.message}\n`);
