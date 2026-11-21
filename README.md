@@ -222,7 +222,9 @@ project root folder. Besides the Scenarios and Project tabs:
   next skill, blockers, stats), the gap ledger, and the diagnostics panel.
 - **Drift banner:** a warning count shown at the top of every tab while any
   warning exists; it cannot be dismissed. Affected BC cards and gap rows carry
-  an amber badge, and the Board opens with the drift list expanded.
+  an amber badge, and the Board opens with the drift list expanded. Partially
+  resolved gaps (`PARTIAL`) get a blue "Partial" badge, are not drift, and
+  count as open gaps on BC cards.
 - **BC details:** three change summaries at the top (since last transition,
   since previous commit, uncommitted), then a step-by-step timeline of
   transitions with their gates, signers and evidence; each step expands
