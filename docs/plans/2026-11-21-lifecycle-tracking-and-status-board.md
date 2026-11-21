@@ -210,7 +210,7 @@ acceptance boxes here.
     - [ ] Given BC file contents, returns ordered items with content hashes: scenarios, rules (D5), decision headings, model sections, ports, ACLs, gates, open items
     - [ ] Diff function returns added / removed / modified per category; deterministic
 
-- [ ] **T6b — Git walker and status report CLI**
+- [x] **T6b — Git walker and status report CLI**
   - Depends on: T6a
   - Files: `tools/project-status/generate.mjs`, README, tests that build temporary git repos
   - Acceptance:
@@ -309,3 +309,4 @@ Parallel-safe after T2: T3a, T3b, T4a. After T4a: T4b, T4c, T5, T6a.
 | 2026-11-21 | T6a | Done | `tools/project-status/snapshot.mjs`: `snapshotBc(files)`, `diffSnapshots(before, after)` over features, scenarios, rules, skill, model, ports, decisions, acls, aclSections, properties, gates, openItems; rules renumbering → `moved`. 19 tests pass |
 | 2026-11-21 | T5 | Done | `tools/verify-spec/gates.mjs`; codes HGS001–HGS007 (HGS006 legacy = warning); trailing WARNINGS block + GitHub annotations; strict HGS004 signer/role rules. Gap drift in verify-spec still to wire (T8, via `tools/shared/gaps.mjs`). 51/51 verify-spec tests |
 | 2026-11-21 | T4b, T4c | Done | Top-level `gaps[]` (state RESOLVED/DEFERRED/OPEN/MIXED) + `diagnostics[]` (HGW001 drift, HGW002 gap missing from maps), shared `tools/shared/gaps.mjs`; per-BC `stats` and `signoffs[]` (business sign-offs in `property-signoffs/`). Live-pet copy: 5 HGW001 warnings (G11–G13, G15, G16). Tests 179/180 |
+| 2026-11-21 | T6b | Done | `tools/project-status/generate.mjs` → `.hgate/status.json` (steps with commit/sharedCommit/changes; sinceLastTransition, sincePreviousCommit, uncommitted; optional `--bdd` coverage). No-git/shallow fallbacks exit 0 with a warning. Limitation: blame credits a row to the commit that last edited it (`git log -S` fallback not built). 31 tests pass |
