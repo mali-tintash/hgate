@@ -7,6 +7,16 @@
     <style>
       :root {
         color-scheme: light dark;
+        /* T13 gap attention panel; same hues as the red/amber badges. */
+        --gap-attention-bg: #fef2f2;
+        --gap-attention-border: #dc2626;
+        --gap-attention-text: #991b1b;
+        --gap-pending-bg: #fffbeb;
+        --gap-pending-border: #f59e0b;
+        --gap-pending-text: #92400e;
+        --gap-neutral-bg: #f8fafc;
+        --gap-neutral-border: #cbd5e1;
+        --gap-neutral-text: #334155;
       }
 
       body {
@@ -942,6 +952,113 @@
         font-weight: 700;
       }
 
+      /* T13: adaptive gap attention panel, distinct from .board-section. */
+      .gap-panel {
+        border: 1px solid var(--gap-neutral-border);
+        border-left-width: 4px;
+        border-radius: 12px;
+        background: var(--gap-neutral-bg);
+        color: #0f172a;
+        padding: 12px;
+      }
+
+      .gap-panel-attention {
+        border-color: var(--gap-attention-border);
+        background: var(--gap-attention-bg);
+      }
+
+      .gap-panel-pending {
+        border-color: var(--gap-pending-border);
+        background: var(--gap-pending-bg);
+      }
+
+      .gap-panel-clear,
+      .gap-panel-empty {
+        border-left-width: 1px;
+        padding: 8px 12px;
+      }
+
+      .gap-panel-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 8px;
+        color: var(--gap-neutral-text);
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .gap-panel-attention .gap-panel-header {
+        color: var(--gap-attention-text);
+      }
+
+      .gap-panel-pending .gap-panel-header {
+        color: var(--gap-pending-text);
+      }
+
+      .gap-panel-collapsed > summary {
+        cursor: pointer;
+      }
+
+      .gap-panel-collapsed > summary .gap-panel-header {
+        display: inline-flex;
+        margin: 0;
+        font-size: 15px;
+      }
+
+      .gap-panel-icon {
+        font-size: 1.1em;
+      }
+
+      .gap-panel-chips {
+        font-size: 12px;
+        font-weight: 600;
+        color: #334155;
+      }
+
+      .gap-panel-chip {
+        display: inline-block;
+        padding: 1px 8px;
+        border: 1px solid var(--gap-neutral-border);
+        border-radius: 999px;
+        background: #ffffff;
+        cursor: help;
+        white-space: nowrap;
+      }
+
+      .gap-panel-chip-open {
+        border-color: #fca5a5;
+        color: #991b1b;
+      }
+
+      .gap-panel-chip-mixed {
+        border-color: #f59e0b;
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      .gap-panel-chip-partial {
+        border-color: #60a5fa;
+        color: #1e40af;
+      }
+
+      .gap-panel-chip-resolved {
+        color: #166534;
+      }
+
+      .gap-panel-chip-sep {
+        color: #94a3b8;
+      }
+
+      .gap-panel .board-table td {
+        background: #ffffff;
+      }
+
+      .gap-panel-toggle {
+        margin-top: 8px;
+      }
+
       .legend {
         margin: 6px 0 0;
         color: #475569;
@@ -1077,9 +1194,9 @@
         <aside id="boardDetails" class="board-section" aria-label="Bounded context lifecycle details">
           <p class="muted">Select a bounded context card to see its lifecycle evidence.</p>
         </aside>
-        <section class="board-section" aria-labelledby="gapLedgerTitle">
-          <h2 id="gapLedgerTitle">Gap ledger</h2>
-          <div id="gapLedger"><p class="muted">No project loaded.</p></div>
+        <section id="gapLedger" class="gap-panel gap-panel-empty" aria-labelledby="gapLedgerTitle">
+          <h2 id="gapLedgerTitle" class="gap-panel-header">Gap ledger</h2>
+          <p class="muted">No project loaded.</p>
         </section>
         <details id="boardDiagnostics" class="board-section">
           <summary>Diagnostics (<span id="boardDiagnosticsCount">0</span>)</summary>

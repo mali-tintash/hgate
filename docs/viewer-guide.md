@@ -31,7 +31,7 @@ transitions only, with a hint to run `npm run project:status`.
 | Warning banner | Count of projection warnings (gap drift and missing gaps). Shown on every tab, cannot be dismissed. **Show** opens the diagnostics list. |
 | Swimlanes | One column per lifecycle state, from Discovered to Verified, plus Changing, Blocked and Deprecated. |
 | Cards | One per BC: classification and role, date of the last transition, next skill, blockers, counts (rules, scenarios, decisions, open gaps), gate count and sign-offs. |
-| Gap ledger | Every shared gap (`G<n>`) with its state and the disposition written in each source file. |
+| Gap ledger | Every shared gap (`G<n>`) with its state and the disposition written in each source file, in a panel whose colour follows its contents (see below). |
 | Diagnostics | Warnings with stable codes, e.g. `HGW001` (gap drift) and `HGW002` (gap missing from the maps). |
 | BC details | Click a card: blockers, warnings, change summaries, timeline, all gate evidence, open items, sign-offs. |
 | Change summaries | What changed in the BC spec **since the last transition**, **since the previous commit**, and **uncommitted** in the working tree. |
@@ -69,11 +69,27 @@ purpose), `OPEN` (not addressed yet).
 
 Hover any badge, abbreviation or state name in the viewer for its meaning.
 
+## Gap ledger panel
+
+The gap ledger is a separate panel. Its look follows the most severe gap state:
+
+| Panel | When | Look |
+|---|---|---|
+| **Gaps need attention** | Any gap is `OPEN` or `MIXED` | Soft red, red left border, ⚠ icon |
+| **Gaps pending** | No `OPEN` or `MIXED`, but some `PARTIAL` or `DEFERRED` | Soft amber, amber left border, ⚠ icon |
+| **All n gaps resolved** | Every gap is `RESOLVED` | Neutral, one collapsed line with ✓; click to expand |
+| **No gaps recorded** | The projection has no gaps (schema v1 or legacy) | Neutral, one collapsed line |
+
+The header shows count chips such as `2 open · 3 partial · 1 drift` (zero
+counts are left out; `drift` counts `MIXED` gaps). Unresolved gaps come first,
+most severe first (`MIXED`, `OPEN`, `PARTIAL`, `DEFERRED`), then by gap ID.
+Resolved gaps sit behind **Show resolved (n)**.
+
 ## 5-minute review routine
 
 1. **Banner**: any warnings? Click **Show** and read each drift item.
 2. **Red gate counts and blockers** on cards: which BCs claim a state their gates do not support?
-3. **Partial and Mixed gaps** in the ledger: who owns the open part?
+3. **Gap ledger panel**: red means an `OPEN` or `MIXED` gap needs action now; amber means `PARTIAL` or `DEFERRED` gaps need an owner and a date; a collapsed ✓ line means nothing to do.
 4. **Open a BC**: read "since last transition" and "uncommitted". Unreviewed spec changes show up here.
 5. **Gates and signers** for the latest timeline step: right kind, right person, real evidence?
 

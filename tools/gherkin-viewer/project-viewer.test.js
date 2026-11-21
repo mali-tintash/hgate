@@ -969,3 +969,84 @@ test("renderMarkdown renders headings, nested lists, tables and paragraphs", () 
   assert.match(html, /<th scope="col">K<\/th>/);
   assert.match(html, /<td><code>H<\/code><\/td><td>Human<\/td>/);
 });
+
+// T13: adaptive gap attention panel.
+test("gapPanelModel is attention with sorted unresolved gaps when any gap is MIXED or OPEN", () => {
+  const model = viewer.gapPanelModel([
+    { id: "G11", state: "OPEN" },
+    { id: "G2", state: "OPEN" },
+    { id: "G4", state: "DEFERRED" },
+    { id: "G3", state: "PARTIAL" },
+    { id: "G10", state: "MIXED" },
+    { id: "G1", state: "RESOLVED" },
+    { id: "G5", state: "RESOLVED" },
+  ]);
+  assert.equal(model.level, "attention");
+  assert.equal(model.title, "Gaps need attention");
+  assert.deepEqual(model.counts, { open: 2, partial: 1, mixed: 1, deferred: 1, resolved: 2 });
+  assert.deepEqual(model.unresolved.map((gap) => gap.id), ["G10", "G2", "G11", "G3", "G4"]);
+  assert.deepEqual(model.resolved.map((gap) => gap.id), ["G1", "G5"]);
+  assert.equal(model.chipText, "2 open · 1 partial · 1 drift · 1 deferred · 2 resolved");
+});
+
+test("gapPanelModel is attention for a single OPEN gap and omits zero chips", () => {
+  const model = viewer.gapPanelModel([{ id: "G1", state: "OPEN" }]);
+  assert.equal(model.level, "attention");
+  assert.equal(model.chipText, "1 open");
+  assert.deepEqual(model.chips.map((chip) => chip.state), ["OPEN"]);
+});
+
+test("gapPanelModel is pending when only PARTIAL or DEFERRED gaps are unresolved", () => {
+  const model = viewer.gapPanelModel([
+    { id: "G3", state: "DEFERRED" },
+    { id: "G2", state: "PARTIAL" },
+    { id: "G1", state: "RESOLVED" },
+  ]);
+  assert.equal(model.level, "pending");
+  assert.equal(model.title, "Gaps pending");
+  assert.deepEqual(model.unresolved.map((gap) => gap.id), ["G2", "G3"]);
+  assert.equal(model.chipText, "1 partial · 1 deferred · 1 resolved");
+});
+
+test("gapPanelModel is clear when every gap is RESOLVED", () => {
+  const model = viewer.gapPanelModel([
+    { id: "G12", state: "RESOLVED" },
+    { id: "G2", state: "RESOLVED" },
+  ]);
+  assert.equal(model.level, "clear");
+  assert.equal(model.title, "All 2 gaps resolved");
+  assert.deepEqual(model.unresolved, []);
+  assert.deepEqual(model.resolved.map((gap) => gap.id), ["G2", "G12"]);
+  assert.equal(model.chipText, "2 resolved");
+  assert.equal(viewer.gapPanelModel([{ id: "G1", state: "RESOLVED" }]).title, "All 1 gap resolved");
+});
+
+test("gapPanelModel is empty when there are no gaps", () => {
+  for (const input of [[], undefined, null]) {
+    const model = viewer.gapPanelModel(input);
+    assert.equal(model.level, "empty");
+    assert.equal(model.title, "No gaps recorded");
+    assert.equal(model.chipText, "");
+    assert.deepEqual(model.unresolved, []);
+    assert.deepEqual(model.resolved, []);
+  }
+});
+
+test("gapPanelModel works on buildBoardModel gaps and GLOSSARY explains every panel level and chip", () => {
+  const board = viewer.buildBoardModel(
+    viewer.normalizeProject({
+      schemaVersion: 2,
+      project: { name: "Demo" },
+      domains: [],
+      boundedContexts: [],
+      relationships: [],
+      journeys: [],
+      gaps: [{ id: "G1", gap: "x", state: "PARTIAL", sources: [] }],
+    }),
+  );
+  assert.equal(viewer.gapPanelModel(board.gaps).level, "pending");
+  for (const level of ["attention", "pending", "clear", "empty"]) {
+    assert.ok(viewer.glossaryText("gapPanel", level), `gapPanel ${level}`);
+  }
+  assert.ok(viewer.compareGapIds("G2", "G11") < 0);
+});

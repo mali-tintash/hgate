@@ -946,6 +946,74 @@
     return Boolean(gap) && gap.state !== "RESOLVED";
   }
 
+  // T13: adaptive gap attention panel. Severity order for unresolved gaps.
+  const GAP_SEVERITY = ["MIXED", "OPEN", "PARTIAL", "DEFERRED"];
+
+  // Chip order and wording in the panel header ("2 open · 3 partial · 1 drift").
+  const GAP_PANEL_CHIPS = [
+    { key: "open", state: "OPEN", word: "open" },
+    { key: "partial", state: "PARTIAL", word: "partial" },
+    { key: "mixed", state: "MIXED", word: "drift" },
+    { key: "deferred", state: "DEFERRED", word: "deferred" },
+    { key: "resolved", state: "RESOLVED", word: "resolved" },
+  ];
+
+  // Natural order for gap IDs: G2 before G11.
+  function compareGapIds(left, right) {
+    return String(left || "").localeCompare(String(right || ""), "en", { numeric: true, sensitivity: "base" });
+  }
+
+  // Pure panel model: level follows the most severe gap state present.
+  function gapPanelModel(gaps) {
+    const list = Array.isArray(gaps) ? gaps.filter(Boolean) : [];
+    const stateOf = (gap) => gap.state || "OPEN";
+    const counts = { open: 0, partial: 0, mixed: 0, deferred: 0, resolved: 0 };
+    for (const gap of list) {
+      const chip = GAP_PANEL_CHIPS.find((item) => item.state === stateOf(gap));
+      counts[chip ? chip.key : "open"] += 1;
+    }
+    const rank = (gap) => {
+      const index = GAP_SEVERITY.indexOf(stateOf(gap));
+      return index === -1 ? 1 : index; // unknown states rank as OPEN
+    };
+    const unresolved = list
+      .filter((gap) => stateOf(gap) !== "RESOLVED")
+      .sort((left, right) => rank(left) - rank(right) || compareGapIds(left.id, right.id));
+    const resolved = list
+      .filter((gap) => stateOf(gap) === "RESOLVED")
+      .sort((left, right) => compareGapIds(left.id, right.id));
+    let level;
+    let title;
+    if (list.length === 0) {
+      level = "empty";
+      title = "No gaps recorded";
+    } else if (counts.mixed || counts.open) {
+      level = "attention";
+      title = "Gaps need attention";
+    } else if (counts.partial || counts.deferred) {
+      level = "pending";
+      title = "Gaps pending";
+    } else {
+      level = "clear";
+      title = `All ${list.length} gap${list.length === 1 ? "" : "s"} resolved`;
+    }
+    const chips = GAP_PANEL_CHIPS.filter((item) => counts[item.key] > 0).map((item) => ({
+      key: item.key,
+      state: item.state,
+      count: counts[item.key],
+      text: `${counts[item.key]} ${item.word}`,
+    }));
+    return {
+      level,
+      title,
+      counts,
+      chips,
+      chipText: chips.map((chip) => chip.text).join(" · "),
+      unresolved,
+      resolved,
+    };
+  }
+
   // Plain-language definitions shared by tooltips, legends and the guide (T12).
   // Each entry: `label` (short, used in legends) and `text` (full tooltip).
   const GLOSSARY = {
@@ -996,6 +1064,18 @@
           "n/m gates — n of the m gates required for the current transition are satisfied " +
           "(PASS, or WAIVED by a Tech lead); red when any is unmet",
       },
+    },
+    gapPanel: {
+      attention: {
+        label: "Gaps need attention",
+        text: "Gaps need attention — at least one gap is Open (not addressed) or Mixed (sources disagree); red panel",
+      },
+      pending: {
+        label: "Gaps pending",
+        text: "Gaps pending — no Open or Mixed gaps, but some are Partial or Deferred and still need an owner; amber panel",
+      },
+      clear: { label: "All gaps resolved", text: "All gaps resolved — every source file says each gap is resolved; collapsed" },
+      empty: { label: "No gaps recorded", text: "No gaps recorded — the projection carries no gap ledger (schema v1 or legacy)" },
     },
     lifecycle: {
       DISCOVERED: { label: "Discovered", text: "Boundary and purpose confirmed; detailed specification not approved" },
@@ -2204,32 +2284,99 @@
     }
   }
 
+  const GAP_PANEL_ICONS = {
+    attention: { icon: "\u26a0", text: "Warning:" },
+    pending: { icon: "\u26a0", text: "Pending:" },
+    clear: { icon: "\u2713", text: "All clear:" },
+    empty: { icon: "\u2013", text: "Empty:" },
+  };
+
+  function gapLedgerRows(gaps) {
+    return gaps.map((gap) => {
+      const stateValue = gap.state || "OPEN";
+      const state = withTooltip(
+        createElement("span", `gap-state gap-state-${slug(stateValue)}`, gap.stateLabel || gapStateLabel(stateValue)),
+        "gapState",
+        stateValue,
+      );
+      const sources = createElement("ul", "gap-sources");
+      for (const item of gap.sources || []) {
+        const li = createElement("li");
+        li.append(createElement("code", "", item.location || "–"));
+        li.append(document.createTextNode(` — ${item.disposition || "–"}${item.owner ? ` (${item.owner})` : ""}`));
+        sources.append(li);
+      }
+      return {
+        className: stateValue === "MIXED" ? "gap-mixed" : stateValue === "PARTIAL" ? "gap-partial" : "",
+        cells: [gap.id, gap.gap, state, sources, gap.warningCount ? warningBadge(gap.warningCount) : ""],
+      };
+    });
+  }
+
+  const GAP_LEDGER_HEADERS = ["ID", "Gap", "State", "Dispositions by source", "Warnings"];
+
+  // Header line: icon (aria-hidden, with screen-reader text), title, count chips.
+  function gapPanelHeader(model, tag) {
+    const header = createElement(tag, "gap-panel-header");
+    header.id = "gapLedgerTitle";
+    const icon = GAP_PANEL_ICONS[model.level];
+    const iconElement = createElement("span", "gap-panel-icon", icon.icon);
+    iconElement.setAttribute("aria-hidden", "true");
+    header.append(iconElement, createElement("span", "visually-hidden", `${icon.text} `));
+    const title = createElement("span", "gap-panel-title", `Gap ledger: ${model.title}`);
+    withTooltip(title, "gapPanel", model.level, { hidden: false });
+    header.append(title);
+    if (model.chips.length) {
+      const chips = createElement("span", "gap-panel-chips");
+      model.chips.forEach((chip, index) => {
+        if (index) chips.append(createElement("span", "gap-panel-chip-sep", " · "));
+        const chipElement = createElement("span", `gap-panel-chip gap-panel-chip-${chip.key}`, chip.text);
+        withTooltip(chipElement, "gapState", chip.state, { hidden: false });
+        chips.append(chipElement);
+      });
+      header.append(chips);
+    }
+    return header;
+  }
+
   function renderGapLedger(board, container) {
+    const model = gapPanelModel(board ? board.gaps : []);
     container.replaceChildren();
-    appendTable(
-      container,
-      "",
-      ["ID", "Gap", "State", "Dispositions by source", "Warnings"],
-      board.gaps.map((gap) => {
-        const state = withTooltip(
-          createElement("span", `gap-state gap-state-${slug(gap.state)}`, gap.stateLabel || gap.state),
-          "gapState",
-          gap.state,
-        );
-        const sources = createElement("ul", "gap-sources");
-        for (const item of gap.sources) {
-          const li = createElement("li");
-          li.append(createElement("code", "", item.location || "–"));
-          li.append(document.createTextNode(` — ${item.disposition || "–"}${item.owner ? ` (${item.owner})` : ""}`));
-          sources.append(li);
-        }
-        return {
-          className: gap.mixed ? "gap-mixed" : gap.partial ? "gap-partial" : "",
-          cells: [gap.id, gap.gap, state, sources, gap.warningCount ? warningBadge(gap.warningCount) : ""],
-        };
-      }),
-      { empty: "No gaps in the projection (schema v1 and legacy projects carry none)." },
-    );
+    container.className = `gap-panel gap-panel-${model.level}`;
+    container.dataset.level = model.level;
+
+    if (model.level === "clear" || model.level === "empty") {
+      const details = createElement("details", "gap-panel-collapsed");
+      const summary = createElement("summary");
+      summary.append(gapPanelHeader(model, "span"));
+      details.append(summary);
+      appendTable(details, "", GAP_LEDGER_HEADERS, gapLedgerRows(model.resolved), {
+        empty: "No gaps in the projection (schema v1 and legacy projects carry none).",
+      });
+      if (model.level === "clear") details.append(renderLegend("gaps"));
+      container.append(details);
+      return;
+    }
+
+    container.append(gapPanelHeader(model, "h2"));
+    appendTable(container, "", GAP_LEDGER_HEADERS, gapLedgerRows(model.unresolved));
+    if (model.resolved.length) {
+      const toggle = createElement("button", "gap-panel-toggle", `Show resolved (${model.resolved.length})`);
+      toggle.type = "button";
+      toggle.setAttribute("aria-expanded", "false");
+      const resolvedWrap = createElement("div", "gap-panel-resolved");
+      resolvedWrap.id = "gapLedgerResolved";
+      resolvedWrap.hidden = true;
+      toggle.setAttribute("aria-controls", resolvedWrap.id);
+      appendTable(resolvedWrap, "", GAP_LEDGER_HEADERS, gapLedgerRows(model.resolved));
+      toggle.addEventListener("click", () => {
+        const expanded = toggle.getAttribute("aria-expanded") === "true";
+        toggle.setAttribute("aria-expanded", String(!expanded));
+        toggle.textContent = `${expanded ? "Show" : "Hide"} resolved (${model.resolved.length})`;
+        resolvedWrap.hidden = expanded;
+      });
+      container.append(toggle, resolvedWrap);
+    }
     container.append(renderLegend("gaps"));
   }
 
@@ -2859,6 +3006,8 @@
     buildBoardModel,
     gapStateLabel,
     isOpenGap,
+    gapPanelModel,
+    compareGapIds,
     readStatusReport,
     isProjectFile,
     buildLegacyProject,
