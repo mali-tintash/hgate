@@ -25,6 +25,22 @@ Exit codes: `0` ok / in sync, `1` drift (`HGP001`) or unprojectable sources
 (`HGP002`, all problems listed), `2` usage or generator failure (`HGP009`).
 Warnings (`HGW…`) never change the exit code.
 
+## Schema version
+
+The generator emits `schemaVersion: 2` (ADR-009,
+[`docs/adr/2026-11-21-lifecycle-gate-evidence-and-status-report.md`](../../docs/adr/2026-11-21-lifecycle-gate-evidence-and-status-report.md)).
+Version 2 adds per-BC `nextSkill`, `blockers`, `transitions`, `gates`,
+`openItems`, `stats` and `signoffs`, and top-level `gaps` and `diagnostics`.
+If the project's `docs/hgate-project.schema.json` still declares version 1,
+generation stops with `HGP003` ("projection schema upgrade required"): copy the
+version 2 schema from hGATE and rerun. `status.md` files without Gate Evidence
+or Open Items IDs still generate (empty arrays, `id: null`). Gate rows follow
+the format in
+[`skills/hgate-guide/references/lifecycle-gates.md`](../../skills/hgate-guide/references/lifecycle-gates.md).
+
+Git history is not projected; it lives in the separate, gitignored status
+report (see [`tools/project-status/README.md`](../project-status/README.md)).
+
 ## Sources
 
 | Projected field | Authoritative source |

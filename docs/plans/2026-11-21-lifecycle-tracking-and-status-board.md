@@ -245,7 +245,7 @@ acceptance boxes here.
     - [ ] `.github/workflows/verify.yml` runs all test suites (closes F8)
     - [ ] `templates/ci/hgate-verify.yml` and hooks updated; `.hgate/` gitignored; `fetch-depth: 0` documented
 
-- [ ] **T9 — Documentation**
+- [x] **T9 — Documentation**
   - Depends on: T8
   - Files: `README.md`, `docs/adoption-guide.md`, tool READMEs, `templates/CLAUDE.hgate.md`
   - Acceptance:
@@ -313,3 +313,4 @@ Parallel-safe after T2: T3a, T3b, T4a. After T4a: T4b, T4c, T5, T6a.
 | 2026-11-21 | T7a | Done | Board tab (swimlanes, cards, gap ledger, diagnostics), non-dismissible `#warningBanner` on every tab, amber badges (also via gap→BC), v1/v2/legacy support; viewer loads optional `.hgate/status.json` into `statusReport`; timeline slot left for T7b. Tests 190/191 |
 | 2026-11-21 | T8 | Done | `project:status` script; `npm test` and CI run all suites (F8); `.hgate/` gitignored; GitHub template uploads status artifact (non-failing); new Bitbucket template; pre-commit runs verify:spec on map changes; verify-spec prints HGW001/HGW002 drift (project-wide, ignores `--bc`). Tests 223/224 |
 | 2026-11-21 | T7b | Done | Timeline in BC details: three change summaries, steps with commit, gates, signer, expandable diffs; `null` changes shown as Unknown; stale-report and git notices; hint when report missing. Display gate matching attaches a gate to the latest matching transition dated on/before it (differs from Validity Rule 1's "on or after" — display only; check in T11). Tests 230/231 |
+| 2026-11-21 | T9 | Done | README (Gates, Status Report, viewer v2, warning codes), adoption guide (scripts, Bitbucket, migration), CLAUDE.hgate.md gate rule, projection schema-version notes, map templates state shared `G<n>` IDs. Timeline wording aligned to T7b by orchestrator |

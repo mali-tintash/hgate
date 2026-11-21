@@ -65,6 +65,11 @@ ID merely because a display name changes.
 
 ## Open Boundary Gaps
 
+Gap IDs (`G<n>`) are shared with the exploration Gap Register and with the
+`ID` column of each affected BC's `status.md` Open Items. Resolving a gap
+updates its disposition in every table that lists it; differing dispositions
+are reported as `HGW001`.
+
 | ID | Gap | Affected BCs | Owner | Disposition |
 |---|---|---|---|---|
 | [...] | [...] | [...] | Open / Deferred / Out of scope |

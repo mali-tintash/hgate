@@ -1,7 +1,15 @@
 # project-status
 
-Builds the git-derived status report (`.hgate/status.json`). See
-`docs/plans/2026-11-21-lifecycle-tracking-and-status-board.md` (Track B).
+Builds the git-derived status report (`.hgate/status.json`): for each BC, what
+changed at every lifecycle transition, since the last transition, since the
+previous commit, and in the uncommitted working tree. The viewer
+(`tools/gherkin-viewer/index.html`) shows it as change summaries and a per-BC
+timeline; without it, the timeline lists transitions only and suggests running
+`npm run project:status`.
+
+Unlike the committed projection (`docs/hgate-project.json`), this file is
+derived from git, gitignored and never drift-checked. Design: ADR-009
+([`docs/adr/2026-11-21-lifecycle-gate-evidence-and-status-report.md`](../../docs/adr/2026-11-21-lifecycle-gate-evidence-and-status-report.md)).
 
 ## T6a: `snapshot.mjs` (pure semantic snapshot)
 

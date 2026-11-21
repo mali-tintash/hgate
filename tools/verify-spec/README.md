@@ -56,12 +56,14 @@ stated, `VSP106` `status.md` missing or lifecycle not
 `REFINED`/`SPEC_REVIEWED`/`IMPLEMENTING`.
 
 Scenario-ID uniqueness (`VSP009`) always considers every BC, even with `--bc`.
+Exit codes depend only on errors: warnings (`HGS006`, `HGW001`, `HGW002`) are
+printed last as a `WARNINGS (n)` block.
 
 ## Lifecycle gates (all phases)
 
 Every phase also validates each BC's `status.md` against the gate catalog,
 implementing the Validity Rules of
-`skills/hgate-guide/references/lifecycle-gates.md`: the current transition is
+[`skills/hgate-guide/references/lifecycle-gates.md`](../../skills/hgate-guide/references/lifecycle-gates.md): the current transition is
 the last Transition History row into `lifecycle:`; every catalog gate whose
 pattern (`-`, `*`, concrete states) matches it is required except the optional
 `GATE-IMPL-PROPS`; the latest row for that transition dated on or after it
