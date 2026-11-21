@@ -942,6 +942,296 @@
     }
   }
 
+
+  // --- Per-BC timeline and change view (T7b) ---------------------------------
+  // Pure model builders over the projection and the optional status report
+  // (.hgate/status.json, see tools/project-status/README.md).
+
+  const STATUS_COMMAND = "npm run project:status";
+  const CHANGE_CATEGORIES = [
+    ["features", "Features"],
+    ["scenarios", "Scenarios"],
+    ["rules", "Business rules"],
+    ["skill", "SKILL.md sections"],
+    ["model", "Domain model sections"],
+    ["ports", "Ports"],
+    ["decisions", "Decisions"],
+    ["acls", "ACL files"],
+    ["aclSections", "ACL sections"],
+    ["properties", "Properties"],
+    ["gates", "Gate evidence"],
+    ["openItems", "Open items"],
+  ];
+  const CHANGE_KINDS = ["added", "removed", "modified", "moved"];
+
+  function changeItemText(category, kind, item) {
+    const key = item && item.key !== undefined && item.key !== null ? String(item.key) : "";
+    const label = item && item.label ? String(item.label) : "";
+    // Rule keys are content hashes; their label ("#n: text") is the readable part.
+    let text = category === "rules" ? label || key : label && label !== key ? `${key} — ${label}` : key || label;
+    if (category === "rules" && kind === "modified" && item.labelBefore && item.labelBefore !== label) {
+      text = `${item.labelBefore} → ${label}`;
+    }
+    if (kind === "moved" && item.numberBefore !== undefined && item.numberAfter !== undefined) {
+      text = `${text} (#${item.numberBefore} → #${item.numberAfter})`;
+    }
+    return text;
+  }
+
+  function changeCountsText(totals) {
+    const parts = CHANGE_KINDS.filter((kind) => totals[kind]).map((kind) => `${totals[kind]} ${kind}`);
+    return parts.join(" · ");
+  }
+
+  // Flattens one diffSnapshots result. `changes: null` means "unknown" (no git,
+  // shallow clone, or no report) and is kept distinct from "no changes".
+  function summarizeChanges(changes) {
+    const totals = { added: 0, removed: 0, modified: 0, moved: 0 };
+    if (!changes || typeof changes !== "object") {
+      return { known: false, empty: false, total: 0, totals, lifecycle: null, categories: [], text: "Unknown" };
+    }
+    const categories = [];
+    for (const [id, label] of CHANGE_CATEGORIES) {
+      const raw = changes[id];
+      if (!raw || typeof raw !== "object") continue;
+      const entry = { id, label, count: 0 };
+      for (const kind of CHANGE_KINDS) {
+        const items = Array.isArray(raw[kind]) ? raw[kind] : [];
+        entry[kind] = items.map((item) => ({
+          key: item && item.key !== undefined ? item.key : null,
+          label: (item && item.label) || null,
+          text: changeItemText(id, kind, item || {}),
+        }));
+        entry.count += items.length;
+        totals[kind] += items.length;
+      }
+      if (entry.count) categories.push(entry);
+    }
+    const lifecycle =
+      changes.lifecycle && typeof changes.lifecycle === "object"
+        ? { from: changes.lifecycle.from ?? null, to: changes.lifecycle.to ?? null }
+        : null;
+    const total = totals.added + totals.removed + totals.modified + totals.moved;
+    const parts = [];
+    if (lifecycle) parts.push(`lifecycle ${lifecycle.from || "–"} → ${lifecycle.to || "–"}`);
+    if (total) parts.push(changeCountsText(totals));
+    const empty = total === 0 && !lifecycle;
+    return { known: true, empty, total, totals, lifecycle, categories, text: empty ? "No changes" : parts.join(" · ") };
+  }
+
+  function describeCommit(commit) {
+    if (commit && typeof commit === "object") {
+      return {
+        kind: "commit",
+        sha: commit.sha || null,
+        shortSha: commit.shortSha || (commit.sha ? String(commit.sha).slice(0, 7) : null),
+        subject: commit.subject || "",
+        date: commit.date || null,
+        text: `${commit.shortSha || String(commit.sha || "").slice(0, 7)}${commit.subject ? ` ${commit.subject}` : ""}`,
+      };
+    }
+    if (commit === "uncommitted") return { kind: "uncommitted", sha: null, shortSha: null, subject: "", date: null, text: "uncommitted" };
+    return { kind: "unknown", sha: null, shortSha: null, subject: "", date: null, text: "unknown" };
+  }
+
+  function commitIdentity(commit) {
+    if (commit && typeof commit === "object") return `sha:${commit.sha || commit.shortSha}`;
+    return commit === "uncommitted" ? "uncommitted" : null;
+  }
+
+  function stepTransition(step) {
+    return transitionKey(`${(step && step.from) || "-"} -> ${(step && step.to) || ""}`);
+  }
+
+  // Assigns each gate row to one transition occurrence with the same "FROM -> TO":
+  // the latest occurrence dated on or before the gate; a gate recorded before
+  // every occurrence (a FAIL run ahead of the transition) goes to the first one.
+  // Gates for a transition that has not happened yet stay unmatched.
+  function matchGatesToSteps(steps, gates) {
+    const assigned = steps.map(() => []);
+    const unmatched = [];
+    (gates || []).forEach((gate) => {
+      if (!gate) return;
+      const key = transitionKey(gate.transition);
+      const candidates = [];
+      steps.forEach((step, index) => {
+        if (stepTransition(step) === key) candidates.push(index);
+      });
+      if (candidates.length === 0) {
+        unmatched.push(gate);
+        return;
+      }
+      const date = String(gate.date || "");
+      let chosen = null;
+      for (const index of candidates) {
+        if (String(steps[index].date || "") <= date) chosen = index;
+      }
+      if (chosen === null) chosen = candidates[0];
+      assigned[chosen].push(gate);
+    });
+    return { assigned, unmatched };
+  }
+
+  // Pairs projection transitions with report steps (same from, to and date, in order).
+  function pairSteps(transitions, reportSteps) {
+    const used = new Set();
+    const pairs = transitions.map((transition) => {
+      const index = reportSteps.findIndex(
+        (step, i) =>
+          !used.has(i) &&
+          stepTransition(step) === stepTransition(transition) &&
+          String(step.date || "") === String(transition.date || ""),
+      );
+      if (index === -1) return { transition, step: null };
+      used.add(index);
+      return { transition, step: reportSteps[index] };
+    });
+    return { pairs, unusedReportSteps: reportSteps.length - used.size };
+  }
+
+  function formatCoverage(coverage) {
+    if (!coverage || typeof coverage !== "object") return null;
+    const summary = coverage.summary;
+    let detail = "";
+    if (summary && typeof summary === "object" && summary.scenarios !== undefined) {
+      detail = ` — ${summary.coveredScenarios ?? "?"}/${summary.scenarios} scenarios covered`;
+      if (summary.errors !== undefined) detail += `, ${summary.errors} error${summary.errors === 1 ? "" : "s"}`;
+    } else if (coverage.error) {
+      detail = ` — ${coverage.error}`;
+    }
+    return `BDD coverage (project): ${coverage.status || "unknown"}${detail}`;
+  }
+
+  function baselineFrom(id, title, entry, describeBase) {
+    const value = entry && typeof entry === "object" ? entry : {};
+    return {
+      id,
+      title,
+      base: describeBase(value.baseCommit),
+      summary: summarizeChanges(value.changes),
+      files: Array.isArray(value.files) ? value.files.slice() : null,
+    };
+  }
+
+  // Builds everything the BC timeline renders. statusReport may be null: the
+  // timeline then comes from the projection alone with a hint to run the report.
+  function buildTimelineModel(project, statusReport, bcId) {
+    const bc = project && (project.boundedContexts || []).find((item) => item.id === bcId);
+    if (!bc) return null;
+    const report = statusReport && typeof statusReport === "object" ? statusReport : null;
+    const reportBc = report && Array.isArray(report.boundedContexts)
+      ? report.boundedContexts.find((item) => item && item.id === bcId) || null
+      : null;
+    const git = (report && report.git) || null;
+    const notices = [];
+    let hint = null;
+    if (!report) {
+      hint = `Run \`${STATUS_COMMAND}\` to see what changed`;
+    } else {
+      if (git && git.available === false) {
+        notices.push("Git is not available: commits and per-step changes are unknown.");
+      } else if (git && git.shallow) {
+        notices.push("Shallow clone: history is incomplete, so per-step commits and changes are unknown (fetch full history).");
+      }
+      if (!reportBc) notices.push(`This BC is not in the status report. Run \`${STATUS_COMMAND}\` again.`);
+    }
+
+    const transitions = Array.isArray(bc.transitions) ? bc.transitions : [];
+    const reportSteps = reportBc && Array.isArray(reportBc.steps) ? reportBc.steps : [];
+    let pairs;
+    if (transitions.length) {
+      const paired = pairSteps(transitions, reportSteps);
+      pairs = paired.pairs;
+      if (reportBc && (paired.unusedReportSteps || pairs.some((pair) => !pair.step))) {
+        notices.push(`The status report does not match the projection's transitions. Run \`${STATUS_COMMAND}\` again.`);
+      }
+    } else {
+      pairs = reportSteps.map((step) => ({ transition: step, step }));
+    }
+
+    const baseSteps = pairs.map((pair) => ({
+      from: pair.transition.from || "-",
+      to: pair.transition.to || "",
+      date: pair.transition.date || "",
+      actor: pair.transition.actor || "",
+      evidence: pair.transition.evidence || "",
+    }));
+    const { assigned, unmatched } = matchGatesToSteps(baseSteps, bc.gates || []);
+
+    const steps = pairs.map((pair, index) => {
+      const step = pair.step;
+      const next = pairs[index + 1] && pairs[index + 1].step;
+      const shared = Boolean(step && step.sharedCommit);
+      const groupContinues =
+        shared && next && next.sharedCommit && commitIdentity(next.commit) !== null &&
+        commitIdentity(next.commit) === commitIdentity(step.commit);
+      let groupSize = 1;
+      if (shared && !groupContinues) {
+        for (let back = index - 1; back >= 0; back -= 1) {
+          const previous = pairs[back].step;
+          if (!previous || !previous.sharedCommit || commitIdentity(previous.commit) !== commitIdentity(step.commit)) break;
+          groupSize += 1;
+        }
+      }
+      const base = baseSteps[index];
+      return {
+        index,
+        ...base,
+        transition: stepTransition(base),
+        line: step && step.line !== undefined ? step.line : null,
+        commit: step ? describeCommit(step.commit) : null,
+        sharedCommit: shared,
+        sharedNote: groupContinues ? "Recorded in the same commit as the next step; its changes are shown there." : null,
+        sharedGroupSize: groupSize,
+        // Earlier steps of a shared group carry an empty diff; the group's diff is on its last step.
+        changes: step && !groupContinues ? summarizeChanges(step.changes) : null,
+        gates: assigned[index].map((gate) => ({
+          gate: gate.gate,
+          kind: gate.kind || null,
+          result: gate.result || null,
+          evidence: gate.evidence || "",
+          signedBy: gate.signedBy || null,
+          date: gate.date || "",
+        })),
+      };
+    });
+
+    const baselines = reportBc
+      ? [
+          baselineFrom("sinceLastTransition", "Since last transition", reportBc.sinceLastTransition, (base) => {
+            if (base === "uncommitted") return "last transition not committed yet";
+            if (base && typeof base === "object") return `base ${describeCommit(base).text}`;
+            return "no transitions: compared with nothing";
+          }),
+          baselineFrom("sincePreviousCommit", "Since previous commit", reportBc.sincePreviousCommit, (base) => {
+            if (base && typeof base === "object") return `base ${describeCommit(base).text}`;
+            return "HEAD has no parent: compared with nothing";
+          }),
+          baselineFrom("uncommitted", "Uncommitted", reportBc.uncommitted, () => "working tree vs HEAD"),
+        ]
+      : [];
+
+    return {
+      bcId,
+      hasReport: Boolean(report),
+      hint,
+      notices,
+      coverage: report ? formatCoverage(report.coverage) : null,
+      head: git && git.head ? { shortSha: String(git.head).slice(0, 7), subject: git.headSubject || "" } : null,
+      baselines,
+      steps,
+      unmatchedGates: unmatched.map((gate) => ({
+        transition: transitionKey(gate.transition),
+        gate: gate.gate,
+        kind: gate.kind || null,
+        result: gate.result || null,
+        evidence: gate.evidence || "",
+        signedBy: gate.signedBy || null,
+        date: gate.date || "",
+      })),
+    };
+  }
+
   function createElement(tag, className, text) {
     const element = document.createElement(tag);
     if (className) element.className = className;
@@ -1498,9 +1788,146 @@
     details.open = board.warnings.expanded;
   }
 
+
+  // Text with `backtick` segments rendered as <code>.
+  function appendRichText(parent, text) {
+    String(text || "").split(/(`[^`]+`)/).forEach((part) => {
+      if (!part) return;
+      if (part.length > 2 && part.startsWith("`") && part.endsWith("`")) parent.append(createElement("code", "", part.slice(1, -1)));
+      else parent.append(document.createTextNode(part));
+    });
+    return parent;
+  }
+
+  function renderChangeLists(summary, container) {
+    for (const category of summary.categories) {
+      const block = createElement("div", "change-category");
+      block.append(createElement("h5", "", `${category.label} (${category.count})`));
+      const list = createElement("ul", "change-list");
+      for (const kind of CHANGE_KINDS) {
+        for (const item of category[kind]) {
+          const li = createElement("li", `change-${kind}`);
+          li.append(createElement("span", `change-kind change-kind-${kind}`, kind));
+          li.append(document.createTextNode(" "));
+          li.append(createElement("span", "change-text", item.text));
+          list.append(li);
+        }
+      }
+      block.append(list);
+      container.append(block);
+    }
+  }
+
+  // Collapsible change summary; "No changes" / "Unknown" render as plain text.
+  function renderChangeSummary(title, summary, extra) {
+    const hasBody = summary.known && (!summary.empty || (extra && extra.files && extra.files.length));
+    const wrapper = createElement(hasBody ? "details" : "div", "change-summary");
+    const head = createElement(hasBody ? "summary" : "p", "change-summary-head");
+    if (title) head.append(createElement("strong", "", `${title}: `));
+    head.append(createElement("span", summary.empty ? "muted" : summary.known ? "" : "muted", summary.text));
+    if (extra && extra.base) head.append(createElement("span", "change-base", ` (${extra.base})`));
+    wrapper.append(head);
+    if (!hasBody) return wrapper;
+    const body = createElement("div", "change-summary-body");
+    if (summary.lifecycle) {
+      body.append(createElement("p", "", `Lifecycle: ${summary.lifecycle.from || "–"} → ${summary.lifecycle.to || "–"}`));
+    }
+    renderChangeLists(summary, body);
+    if (extra && extra.files && extra.files.length) {
+      body.append(createElement("h5", "", `Files (${extra.files.length})`));
+      const files = createElement("ul", "change-files");
+      for (const file of extra.files) {
+        const li = createElement("li");
+        li.append(createElement("code", "", file));
+        files.append(li);
+      }
+      body.append(files);
+    }
+    wrapper.append(body);
+    return wrapper;
+  }
+
+  function renderGateList(gates, className) {
+    const list = createElement("ul", className || "timeline-gates");
+    for (const gate of gates) {
+      const li = createElement("li", gate.result === "FAIL" ? "gate-row-fail" : "");
+      li.append(resultBadge(gate.result), document.createTextNode(" "));
+      li.append(createElement("strong", "", gate.gate));
+      const meta = [gate.kind, gate.date, gate.signedBy ? `signed by ${gate.signedBy}` : "unsigned"].filter(Boolean);
+      li.append(createElement("span", "muted", ` · ${meta.join(" · ")}`));
+      if (gate.transition) li.append(createElement("span", "muted", ` · ${gate.transition}`));
+      if (gate.evidence) {
+        const evidence = createElement("div", "timeline-evidence");
+        appendRichText(evidence, gate.evidence);
+        li.append(evidence);
+      }
+      list.append(li);
+    }
+    return list;
+  }
+
+  function renderTimeline(model, slot) {
+    slot.replaceChildren();
+    slot.hidden = false;
+    slot.append(createElement("h3", "", "Timeline and changes"));
+    if (model.hint) {
+      const hint = createElement("p", "timeline-hint muted");
+      appendRichText(hint, model.hint);
+      slot.append(hint);
+    }
+    for (const notice of model.notices) {
+      const p = createElement("p", "timeline-notice");
+      appendRichText(p, notice);
+      slot.append(p);
+    }
+    if (model.baselines.length) {
+      const summaries = createElement("div", "change-summaries");
+      for (const baseline of model.baselines) {
+        summaries.append(renderChangeSummary(baseline.title, baseline.summary, { base: baseline.base, files: baseline.files }));
+      }
+      slot.append(summaries);
+    }
+    if (model.steps.length === 0) {
+      slot.append(createElement("p", "muted", "No transitions recorded."));
+    } else {
+      const list = createElement("ol", "timeline");
+      for (const step of model.steps) {
+        const item = createElement("li", "timeline-step");
+        const head = createElement("div", "timeline-step-head");
+        head.append(createElement("strong", "", `${step.from} → ${step.to}`));
+        head.append(createElement("span", "muted", ` · ${step.date || "no date"}${step.actor ? ` · ${step.actor}` : ""}`));
+        item.append(head);
+        if (step.commit) {
+          const commit = createElement("div", `timeline-commit commit-${step.commit.kind}`);
+          if (step.commit.kind === "commit") {
+            commit.append(createElement("code", "", step.commit.shortSha || ""));
+            if (step.commit.subject) commit.append(document.createTextNode(` ${step.commit.subject}`));
+          } else {
+            commit.textContent = step.commit.text;
+          }
+          item.append(commit);
+        }
+        if (step.evidence) item.append(appendRichText(createElement("div", "timeline-evidence"), step.evidence));
+        if (step.gates.length) item.append(renderGateList(step.gates));
+        if (step.sharedNote) item.append(createElement("p", "timeline-shared muted", step.sharedNote));
+        if (step.changes) {
+          const title = step.sharedGroupSize > 1 ? `Changes (${step.sharedGroupSize} transitions in this commit)` : "Changes";
+          item.append(renderChangeSummary(title, step.changes));
+        }
+        list.append(item);
+      }
+      slot.append(list);
+    }
+    if (model.unmatchedGates.length) {
+      slot.append(createElement("h4", "", "Gates for transitions not recorded yet"));
+      slot.append(renderGateList(model.unmatchedGates));
+    }
+  }
+
   // Detail panel for one BC on the Board. Sections are appended in order; the
-  // timeline slot is reserved for the git-derived status report (T7b).
-  function renderBoardDetails(project, board, bcId, container) {
+  // timeline slot shows transitions, gates and the optional git-derived status
+  // report (T7b).
+  function renderBoardDetails(project, board, bcId, container, statusReport = null) {
     container.replaceChildren();
     const bc = project && project.boundedContexts.find((item) => item.id === bcId);
     const card = board && board.cards.find((item) => item.id === bcId);
@@ -1523,6 +1950,8 @@
           `${card.gateSummary.transition ? ` (${card.gateSummary.transition})` : ""}`,
       ),
     );
+    const timeline = buildTimelineModel(project, statusReport, bc.id);
+    if (timeline && timeline.coverage) container.append(createElement("p", "project-meta timeline-coverage", timeline.coverage));
     if (card.blocked) appendList(container, "Blockers", card.blockers, String);
     if (card.warningCount) {
       appendList(container, "Warnings", card.warnings, (item) => `${item.code ? `${item.code}: ` : ""}${item.message}`);
@@ -1532,15 +1961,10 @@
     timelineSlot.dataset.bcId = bc.id;
     timelineSlot.hidden = true;
     container.append(timelineSlot);
+    if (timeline) renderTimeline(timeline, timelineSlot);
     appendTable(
       container,
-      "Transitions",
-      ["Date", "From", "To", "Evidence", "Actor"],
-      (bc.transitions || []).map((item) => ({ cells: [item.date, item.from, item.to, item.evidence, item.actor] })),
-    );
-    appendTable(
-      container,
-      "Gates",
+      "All gate evidence",
       ["Transition", "Gate", "Kind", "Result", "Evidence", "Signed by", "Date"],
       (bc.gates || []).map((item) => ({
         className: item.result === "FAIL" ? "gate-row-fail" : "",
@@ -1581,7 +2005,7 @@
   }
 
   // Returns { project, diagnostics, statusReport }. statusReport is the optional
-  // .hgate/status.json (null when absent); the Board does not render it yet.
+  // .hgate/status.json (null when absent); the Board timeline renders it (T7b).
   async function loadProject(fileMap) {
     const loaded = await loadProjectModel(fileMap);
     const status = await readStatusReport(fileMap);
@@ -1671,7 +2095,7 @@
     let projectFiles = new Map();
     let loadedProject = null;
     let loadedBoard = null;
-    // Optional .hgate/status.json (or null). Kept for the per-BC timeline (T7b).
+    // Optional .hgate/status.json (or null). Rendered in the per-BC timeline (T7b).
     let statusReport = null;
     let selectedBcId = null;
     let activeScenarioId = null;
@@ -1736,7 +2160,7 @@
     const renderBoard = () => {
       if (!boardLanes || !loadedBoard) return;
       renderBoardLanes(loadedBoard, boardLanes, selectedBcId, selectBc);
-      renderBoardDetails(loadedProject, loadedBoard, selectedBcId, boardDetails);
+      renderBoardDetails(loadedProject, loadedBoard, selectedBcId, boardDetails, statusReport);
     };
 
     const selectBc = (bcId) => {
@@ -1746,7 +2170,7 @@
         for (const card of boardLanes.querySelectorAll(".board-card")) {
           card.setAttribute("aria-pressed", String(card.dataset.bcId === bcId));
         }
-        renderBoardDetails(loadedProject, loadedBoard, bcId, boardDetails);
+        renderBoardDetails(loadedProject, loadedBoard, bcId, boardDetails, statusReport);
       }
       const path = scenarioPathFor(bcId);
       viewScenariosButton.disabled = !path;
@@ -1899,6 +2323,10 @@
     transitionTarget,
     latestTransition,
     summarizeGates,
+    summarizeChanges,
+    matchGatesToSteps,
+    formatCoverage,
+    buildTimelineModel,
     warningBannerText,
     buildBoardModel,
     readStatusReport,

@@ -567,3 +567,215 @@ test("readProjectDirectory and indexFiles pick up .hgate/status.json", async () 
   assert.equal(viewer.isProjectFile(".hgate/status.json"), true);
   assert.equal(viewer.isProjectFile(".hgate/cache.json"), false);
 });
+
+// --- Per-BC timeline and change view (T7b) -----------------------------------
+
+function emptyDiff() {
+  const diff = {};
+  for (const id of ["features", "scenarios", "skill", "model", "ports", "decisions", "acls", "aclSections", "properties", "gates", "openItems"]) {
+    diff[id] = { added: [], removed: [], modified: [] };
+  }
+  diff.rules = { added: [], removed: [], modified: [], moved: [] };
+  diff.summary = { added: 0, removed: 0, modified: 0, moved: 0, changed: false };
+  return diff;
+}
+
+const COMMIT_A = { sha: "a".repeat(40), shortSha: "aaaaaaa", date: "2026-11-10T10:00:00+00:00", subject: "docs(catalog): refine spec" };
+const COMMIT_B = { sha: "b".repeat(40), shortSha: "bbbbbbb", date: "2026-11-20T10:00:00+00:00", subject: "feat(catalog): verify" };
+
+function catalogReport() {
+  const scenarioDiff = emptyDiff();
+  scenarioDiff.scenarios.added = [{ key: "@scenario:CAT-BROWSE-001", label: "Browse products" }];
+  scenarioDiff.rules.modified = [{ key: "h2", label: "#2: Prices are shown in cents", labelBefore: "#2: Prices are shown", previousKey: "h1", numberBefore: 2, numberAfter: 2 }];
+  scenarioDiff.rules.moved = [{ key: "h3", label: "#3: Channel is required", numberBefore: 4, numberAfter: 3 }];
+  scenarioDiff.lifecycle = { from: "REFINING", to: "REFINED" };
+  const uncommittedDiff = emptyDiff();
+  uncommittedDiff.decisions.added = [{ key: "Use cached channel token", label: "Use cached channel token" }];
+  const steps = [
+    ["-", "DISCOVERED", "2026-11-01", COMMIT_A, true, emptyDiff()],
+    ["DISCOVERED", "REFINING", "2026-11-05", COMMIT_A, true, emptyDiff()],
+    ["REFINING", "REFINED", "2026-11-10", COMMIT_A, true, scenarioDiff],
+    ["REFINED", "IMPLEMENTING", "2026-11-14", COMMIT_B, false, emptyDiff()],
+    ["IMPLEMENTING", "IMPLEMENTED", "2026-11-18", "uncommitted", true, emptyDiff()],
+    ["IMPLEMENTED", "VERIFIED", "2026-11-20", "uncommitted", true, uncommittedDiff],
+  ].map(([from, to, date, commit, sharedCommit, changes], index) => ({
+    from, to, date, actor: "session", evidence: "e", line: 20 + index, commit, sharedCommit, changes,
+  }));
+  return {
+    schemaVersion: 1,
+    git: { available: true, head: COMMIT_B.sha, headSubject: COMMIT_B.subject, shallow: false, branch: "main" },
+    boundedContexts: [
+      {
+        id: "catalog",
+        dir: ".github/skills/catalog",
+        lifecycle: "VERIFIED",
+        steps,
+        sinceLastTransition: { baseCommit: "uncommitted", changes: emptyDiff() },
+        sincePreviousCommit: { baseCommit: COMMIT_A, changes: scenarioDiff },
+        uncommitted: { changes: uncommittedDiff, files: ["decisions.md", "status.md"] },
+      },
+    ],
+    coverage: { status: "ok", exitCode: 0, summary: { scenarios: 4, coveredScenarios: 3, errors: 0 }, diagnosticCodes: [], scenarioCount: 4 },
+  };
+}
+
+function exampleProject() {
+  return viewer.normalizeProject(exampleV2, "canonical");
+}
+
+test("summarizeChanges counts per category, keeps null as unknown and empty as no changes", () => {
+  assert.deepEqual(
+    { known: viewer.summarizeChanges(null).known, text: viewer.summarizeChanges(null).text },
+    { known: false, text: "Unknown" },
+  );
+  const empty = viewer.summarizeChanges(emptyDiff());
+  assert.equal(empty.known, true);
+  assert.equal(empty.empty, true);
+  assert.equal(empty.text, "No changes");
+  assert.deepEqual(empty.categories, []);
+
+  const summary = viewer.summarizeChanges(catalogReport().boundedContexts[0].sincePreviousCommit.changes);
+  assert.equal(summary.empty, false);
+  assert.deepEqual(summary.totals, { added: 1, removed: 0, modified: 1, moved: 1 });
+  assert.deepEqual(summary.lifecycle, { from: "REFINING", to: "REFINED" });
+  assert.equal(summary.text, "lifecycle REFINING → REFINED · 1 added · 1 modified · 1 moved");
+  assert.deepEqual(summary.categories.map((category) => category.id), ["scenarios", "rules"]);
+  const scenarios = summary.categories[0];
+  assert.equal(scenarios.added[0].text, "@scenario:CAT-BROWSE-001 — Browse products");
+  const rules = summary.categories[1];
+  assert.equal(rules.modified[0].text, "#2: Prices are shown → #2: Prices are shown in cents");
+  assert.equal(rules.moved[0].text, "#3: Channel is required (#4 → #3)");
+});
+
+test("matchGatesToSteps assigns gates by transition and date and keeps pending gates unmatched", () => {
+  const steps = [
+    { from: "REFINING", to: "REFINED", date: "2026-11-10" },
+    { from: "REFINED", to: "CHANGING", date: "2026-11-12" },
+    { from: "CHANGING", to: "REFINED", date: "2026-11-15" },
+    { from: "CHANGING", to: "REFINED", date: "2026-11-25" },
+  ];
+  const gates = [
+    { transition: "REFINING -> REFINED", gate: "GATE-REF-SPEC", result: "FAIL", date: "2026-11-09" },
+    { transition: "REFINING → REFINED", gate: "GATE-REF-SPEC", result: "PASS", date: "2026-11-10" },
+    { transition: "CHANGING -> REFINED", gate: "GATE-REF-APPROVAL", result: "PASS", date: "2026-11-15" },
+    { transition: "CHANGING -> REFINED", gate: "GATE-REF-APPROVAL", result: "PASS", date: "2026-11-26" },
+    { transition: "REFINED -> SPEC_REVIEWED", gate: "GATE-SPEC-REVIEW", result: "PASS", date: "2026-11-27" },
+  ];
+  const { assigned, unmatched } = viewer.matchGatesToSteps(steps, gates);
+  assert.deepEqual(assigned[0].map((gate) => gate.result), ["FAIL", "PASS"]);
+  assert.deepEqual(assigned[1], []);
+  assert.deepEqual(assigned[2].map((gate) => gate.date), ["2026-11-15"]);
+  assert.deepEqual(assigned[3].map((gate) => gate.date), ["2026-11-26"]);
+  assert.deepEqual(unmatched.map((gate) => gate.gate), ["GATE-SPEC-REVIEW"]);
+});
+
+test("buildTimelineModel without a status report uses the projection and hints at project:status", () => {
+  const model = viewer.buildTimelineModel(exampleProject(), null, "catalog");
+  assert.equal(model.hasReport, false);
+  assert.equal(model.hint, "Run `npm run project:status` to see what changed");
+  assert.deepEqual(model.notices, []);
+  assert.deepEqual(model.baselines, []);
+  assert.equal(model.coverage, null);
+  assert.equal(model.steps.length, 6);
+  for (const step of model.steps) {
+    assert.equal(step.commit, null);
+    assert.equal(step.changes, null);
+  }
+  const refined = model.steps[2];
+  assert.equal(refined.transition, "REFINING -> REFINED");
+  assert.deepEqual(refined.gates.map((gate) => `${gate.gate}:${gate.result}`), [
+    "GATE-REF-SPEC:FAIL",
+    "GATE-REF-SPEC:PASS",
+    "GATE-REF-APPROVAL:PASS",
+  ]);
+  assert.equal(refined.gates[2].signedBy, "A. Reviewer (Tech lead)");
+  assert.deepEqual(model.steps[0].gates.map((gate) => gate.gate), ["GATE-DISC-BOUNDARY", "GATE-PROJ-SYNC"]);
+  assert.deepEqual(model.unmatchedGates, []);
+  assert.equal(viewer.buildTimelineModel(exampleProject(), null, "missing"), null);
+});
+
+test("buildTimelineModel with a report attaches commits, baselines, coverage and shared-commit diffs", () => {
+  const model = viewer.buildTimelineModel(exampleProject(), catalogReport(), "catalog");
+  assert.equal(model.hasReport, true);
+  assert.equal(model.hint, null);
+  assert.deepEqual(model.notices, []);
+  assert.equal(model.coverage, "BDD coverage (project): ok — 3/4 scenarios covered, 0 errors");
+
+  assert.deepEqual(model.baselines.map((baseline) => baseline.title), ["Since last transition", "Since previous commit", "Uncommitted"]);
+  const [sinceTransition, sincePrevious, uncommitted] = model.baselines;
+  assert.equal(sinceTransition.summary.text, "No changes");
+  assert.equal(sinceTransition.base, "last transition not committed yet");
+  assert.equal(sincePrevious.base, "base aaaaaaa docs(catalog): refine spec");
+  assert.equal(sincePrevious.summary.totals.added, 1);
+  assert.deepEqual(uncommitted.files, ["decisions.md", "status.md"]);
+  assert.equal(uncommitted.summary.categories[0].id, "decisions");
+
+  const [discovered, refining, refined, implementing, implemented, verified] = model.steps;
+  // Shared commit A: the group diff lives on the last step (REFINING -> REFINED).
+  assert.equal(discovered.commit.text, "aaaaaaa docs(catalog): refine spec");
+  assert.match(discovered.sharedNote, /same commit as the next step/);
+  assert.equal(discovered.changes, null);
+  assert.equal(refining.changes, null);
+  assert.equal(refined.sharedNote, null);
+  assert.equal(refined.sharedGroupSize, 3);
+  assert.equal(refined.changes.totals.added, 1);
+  // Single commit: its own diff, no note.
+  assert.equal(implementing.commit.kind, "commit");
+  assert.equal(implementing.sharedCommit, false);
+  assert.equal(implementing.changes.text, "No changes");
+  // Uncommitted rows form their own shared group.
+  assert.equal(implemented.commit.kind, "uncommitted");
+  assert.equal(implemented.commit.text, "uncommitted");
+  assert.match(implemented.sharedNote, /same commit/);
+  assert.equal(verified.sharedGroupSize, 2);
+  assert.equal(verified.changes.categories[0].id, "decisions");
+  assert.deepEqual(verified.gates.map((gate) => gate.gate), ["GATE-VER-REPORT", "GATE-PROJ-SYNC"]);
+});
+
+test("buildTimelineModel treats null changes as unknown and shows git notices", () => {
+  const report = catalogReport();
+  report.git = { available: false, head: null, headSubject: null, shallow: false, branch: null };
+  const [bc] = report.boundedContexts;
+  for (const step of bc.steps) {
+    step.commit = null;
+    step.changes = null;
+    step.sharedCommit = false;
+  }
+  bc.sincePreviousCommit = { baseCommit: null, changes: null };
+  bc.uncommitted = { changes: null, files: [] };
+  const model = viewer.buildTimelineModel(exampleProject(), report, "catalog");
+  assert.deepEqual(model.notices, ["Git is not available: commits and per-step changes are unknown."]);
+  assert.equal(model.steps[0].commit.text, "unknown");
+  assert.equal(model.steps[0].changes.known, false);
+  assert.equal(model.steps[0].changes.text, "Unknown");
+  assert.equal(model.steps[0].sharedNote, null);
+  assert.equal(model.baselines[1].summary.text, "Unknown");
+  assert.equal(model.baselines[1].base, "HEAD has no parent: compared with nothing");
+
+  report.git = { available: true, head: COMMIT_B.sha, headSubject: "x", shallow: true, branch: "main" };
+  assert.match(viewer.buildTimelineModel(exampleProject(), report, "catalog").notices[0], /^Shallow clone/);
+});
+
+test("buildTimelineModel flags BCs missing from or out of step with the report", () => {
+  const missing = viewer.buildTimelineModel(exampleProject(), catalogReport(), "ordering");
+  assert.equal(missing.hint, null);
+  assert.match(missing.notices[0], /not in the status report/);
+  assert.deepEqual(missing.baselines, []);
+  assert.equal(missing.steps.length, 2);
+  assert.equal(missing.steps[0].commit, null);
+
+  const stale = catalogReport();
+  stale.boundedContexts[0].steps.pop();
+  const model = viewer.buildTimelineModel(exampleProject(), stale, "catalog");
+  assert.match(model.notices[0], /does not match the projection/);
+  assert.equal(model.steps[5].commit, null);
+  assert.equal(model.steps[5].changes, null);
+});
+
+test("formatCoverage summarizes the optional verify:bdd result", () => {
+  assert.equal(viewer.formatCoverage(null), null);
+  assert.equal(
+    viewer.formatCoverage({ status: "unavailable", summary: null, error: "tools/bdd-traceability/verify.mjs not found" }),
+    "BDD coverage (project): unavailable — tools/bdd-traceability/verify.mjs not found",
+  );
+});

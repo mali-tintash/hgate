@@ -229,7 +229,7 @@ acceptance boxes here.
     - [ ] Persistent, non-dismissible warning banner and amber badges per §3.1
     - [ ] Works on v1 and v2 projections; tests in `project-viewer.test.js`
 
-- [ ] **T7b — Per-BC timeline and change view (status report)**
+- [x] **T7b — Per-BC timeline and change view (status report)**
   - Depends on: T6b, T7a
   - Acceptance:
     - [ ] Timeline of transitions with gates, signer, evidence links
@@ -312,3 +312,4 @@ Parallel-safe after T2: T3a, T3b, T4a. After T4a: T4b, T4c, T5, T6a.
 | 2026-11-21 | T6b | Done | `tools/project-status/generate.mjs` → `.hgate/status.json` (steps with commit/sharedCommit/changes; sinceLastTransition, sincePreviousCommit, uncommitted; optional `--bdd` coverage). No-git/shallow fallbacks exit 0 with a warning. Limitation: blame credits a row to the commit that last edited it (`git log -S` fallback not built). 31 tests pass |
 | 2026-11-21 | T7a | Done | Board tab (swimlanes, cards, gap ledger, diagnostics), non-dismissible `#warningBanner` on every tab, amber badges (also via gap→BC), v1/v2/legacy support; viewer loads optional `.hgate/status.json` into `statusReport`; timeline slot left for T7b. Tests 190/191 |
 | 2026-11-21 | T8 | Done | `project:status` script; `npm test` and CI run all suites (F8); `.hgate/` gitignored; GitHub template uploads status artifact (non-failing); new Bitbucket template; pre-commit runs verify:spec on map changes; verify-spec prints HGW001/HGW002 drift (project-wide, ignores `--bc`). Tests 223/224 |
+| 2026-11-21 | T7b | Done | Timeline in BC details: three change summaries, steps with commit, gates, signer, expandable diffs; `null` changes shown as Unknown; stale-report and git notices; hint when report missing. Display gate matching attaches a gate to the latest matching transition dated on/before it (differs from Validity Rule 1's "on or after" — display only; check in T11). Tests 230/231 |

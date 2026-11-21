@@ -705,6 +705,139 @@
         color: #991b1b;
       }
 
+      .result-waived {
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      .timeline-coverage {
+        font-size: 13px;
+      }
+
+      .timeline-hint,
+      .timeline-notice {
+        margin: 4px 0 8px;
+        font-size: 13px;
+      }
+
+      .timeline-notice {
+        padding: 4px 8px;
+        border-left: 3px solid #f59e0b;
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      .change-summaries {
+        display: grid;
+        gap: 6px;
+        margin-bottom: 12px;
+      }
+
+      .change-summary {
+        border: 1px solid #bae6fd;
+        border-radius: 8px;
+        background: #ffffff;
+        padding: 4px 8px;
+        font-size: 13px;
+      }
+
+      .change-summary-head {
+        margin: 0;
+      }
+
+      details.change-summary > summary {
+        cursor: pointer;
+      }
+
+      .change-base {
+        color: #475569;
+      }
+
+      .change-summary-body h5,
+      .change-category h5 {
+        margin: 8px 0 2px;
+        color: #0c4a6e;
+        font-size: 12px;
+      }
+
+      .change-list,
+      .change-files,
+      .timeline-gates {
+        margin: 0;
+        padding-left: 16px;
+      }
+
+      .change-kind {
+        display: inline-block;
+        min-width: 60px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .change-kind-added {
+        color: #166534;
+      }
+
+      .change-kind-removed {
+        color: #b91c1c;
+      }
+
+      .change-kind-modified {
+        color: #92400e;
+      }
+
+      .change-kind-moved {
+        color: #475569;
+      }
+
+      .timeline {
+        margin: 0;
+        padding-left: 20px;
+        border-left: 2px solid #bae6fd;
+        list-style: none;
+      }
+
+      .timeline-step {
+        position: relative;
+        margin: 0 0 12px;
+        font-size: 13px;
+      }
+
+      .timeline-step::before {
+        content: "";
+        position: absolute;
+        left: -26px;
+        top: 5px;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #0284c7;
+      }
+
+      .timeline-commit {
+        color: #334155;
+      }
+
+      .timeline-commit.commit-uncommitted,
+      .timeline-commit.commit-unknown {
+        color: #92400e;
+        font-style: italic;
+      }
+
+      .timeline-evidence {
+        color: #334155;
+      }
+
+      .timeline-gates li.gate-row-fail {
+        background: #fee2e2;
+      }
+
+      .timeline-shared {
+        margin: 2px 0;
+        font-style: italic;
+      }
+
       @media (max-width: 850px) {
         .project-layout {
           grid-template-columns: 1fr;
