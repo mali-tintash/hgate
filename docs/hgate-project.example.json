@@ -209,7 +209,7 @@
         "properties": 1,
         "acls": 1,
         "ports": 1,
-        "openItems": 2,
+        "openItems": 3,
         "openGaps": 4
       },
       "signoffs": [
@@ -443,7 +443,7 @@
       "id": "G15",
       "gap": "Sync vs async product lookup",
       "affected": "Both",
-      "state": "RESOLVED",
+      "state": "PARTIAL",
       "sources": [
         {
           "file": "docs/context-map.md",
@@ -459,7 +459,7 @@
     {
       "code": "HGW001",
       "severity": "warning",
-      "message": "gap G11 dispositions disagree: DEFERRED at docs/domain-map.md:31, RESOLVED at .github/skills/catalog/status.md:54",
+      "message": "gap G11 dispositions disagree: DEFERRED at docs/domain-map.md:31, PARTIAL at .github/skills/catalog/status.md:54",
       "file": "docs/domain-map.md",
       "line": 31,
       "bcId": null,

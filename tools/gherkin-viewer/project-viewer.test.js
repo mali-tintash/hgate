@@ -510,6 +510,47 @@ test("buildBoardModel badges MIXED gaps and drift warnings on gap rows and BC ca
   assert.equal(catalog.warningCount, 3);
 });
 
+test("buildBoardModel shows PARTIAL gaps with a Partial badge, not as drift, and counts them as open", () => {
+  const board = viewer.buildBoardModel(viewer.normalizeProject(exampleV2, "canonical"));
+  const g15 = board.gaps.find((gap) => gap.id === "G15");
+  assert.equal(g15.state, "PARTIAL");
+  assert.equal(g15.partial, true);
+  assert.equal(g15.mixed, false);
+  assert.equal(g15.stateLabel, "Partial");
+  assert.equal(g15.warningCount, 0);
+  assert.equal(board.gaps.find((gap) => gap.id === "G11").stateLabel, "MIXED");
+
+  // Without projected stats, BC cards derive open gaps and include PARTIAL.
+  const raw = JSON.parse(JSON.stringify(exampleV2));
+  for (const bc of raw.boundedContexts) delete bc.stats.openGaps;
+  raw.gaps = [
+    { id: "G1", gap: "a", affected: null, state: "PARTIAL", sources: [{ file: "s.md", line: 1, bc: "catalog", owner: "", disposition: "Resolved for Catalog; Ordering to confirm" }] },
+    { id: "G2", gap: "b", affected: null, state: "RESOLVED", sources: [{ file: "s.md", line: 2, bc: "catalog", owner: "", disposition: "Resolved" }] },
+  ];
+  const derived = viewer.buildBoardModel(viewer.normalizeProject(raw, "canonical"));
+  assert.equal(derived.cards.find((card) => card.id === "catalog").stats.openGaps, 1);
+  assert.equal(viewer.isOpenGap({ state: "PARTIAL" }), true);
+  assert.equal(viewer.isOpenGap({ state: "RESOLVED" }), false);
+});
+
+test("latestTransition and orderTransitions accept newest-first transitions", () => {
+  const oldestFirst = [
+    { date: "2026-10-14", from: "-", to: "DISCOVERED" },
+    { date: "2026-10-14", from: "DISCOVERED", to: "REFINING" },
+    { date: "2026-10-14", from: "REFINING", to: "REFINED" },
+  ];
+  const newestFirst = oldestFirst.slice().reverse();
+  assert.equal(viewer.latestTransition({ transitions: newestFirst }).to, "REFINED");
+  assert.equal(viewer.latestTransition({ transitions: oldestFirst }).to, "REFINED");
+  assert.deepEqual(viewer.orderTransitions(newestFirst), oldestFirst);
+  assert.equal(viewer.latestTransition({ transitions: [] }), null);
+  const dated = [
+    { date: "2026-11-20", from: "IMPLEMENTED", to: "VERIFIED" },
+    { date: "2026-11-01", from: "-", to: "DISCOVERED" },
+  ];
+  assert.equal(viewer.latestTransition({ transitions: dated }).to, "VERIFIED");
+});
+
 test("buildBoardModel badges BC cards by diagnostic bcId and sets the banner count", () => {
   const raw = v1Project();
   raw.schemaVersion = 2;
@@ -692,6 +733,22 @@ test("buildTimelineModel without a status report uses the projection and hints a
   assert.deepEqual(model.steps[0].gates.map((gate) => gate.gate), ["GATE-DISC-BOUNDARY", "GATE-PROJ-SYNC"]);
   assert.deepEqual(model.unmatchedGates, []);
   assert.equal(viewer.buildTimelineModel(exampleProject(), null, "missing"), null);
+});
+
+test("buildTimelineModel orders newest-first projection transitions chronologically", () => {
+  const project = exampleProject();
+  const bc = project.boundedContexts.find((item) => item.id === "catalog");
+  bc.transitions = bc.transitions.slice().reverse();
+  const model = viewer.buildTimelineModel(project, null, "catalog");
+  assert.deepEqual(model.steps.map((step) => step.transition), [
+    "- -> DISCOVERED",
+    "DISCOVERED -> REFINING",
+    "REFINING -> REFINED",
+    "REFINED -> IMPLEMENTING",
+    "IMPLEMENTING -> IMPLEMENTED",
+    "IMPLEMENTED -> VERIFIED",
+  ]);
+  assert.deepEqual(model.steps[0].gates.map((gate) => gate.gate), ["GATE-DISC-BOUNDARY", "GATE-PROJ-SYNC"]);
 });
 
 test("buildTimelineModel with a report attaches commits, baselines, coverage and shared-commit diffs", () => {

@@ -259,7 +259,7 @@ test("verify-spec text report is failures-only with code and file:line", async (
     `VSP005 ${CART}/bdd-scenarios.md:8 uses anti-term "basket" from the SKILL.md glossary; use the ubiquitous term\n` +
       "verify-spec FAILED (refinement): 1 issue(s)\n",
   );
-  assert.equal(formatTextReport(await verifySpec({ root: goodFixture })), "verify-spec OK (refinement): 1 BC(s)\n");
+  assert.equal(formatTextReport(await verifySpec({ root: goodFixture })), "verify-spec OK (refinement): 1 BC(s) (spec 1, gates 1)\n");
 });
 
 test("verify-spec --bc limits checks but still enforces repo-wide ID uniqueness", async () => {
@@ -547,6 +547,59 @@ test("verify-spec gate check: leaving BLOCKED needs only GATE-PROJ-SYNC (* -> * 
   assert.match(report.diagnostics[0].message, /GATE-PROJ-SYNC .*BLOCKED -> REFINED/);
 });
 
+test("verify-spec gate check reads a newest-first Transition History in chronological order", async () => {
+  // Newest first: the current transition into REFINED is BLOCKED -> REFINED (first
+  // row), not the older REFINING -> REFINED row at the bottom of the table.
+  const history = [
+    ["2026-10-20", "BLOCKED", "REFINED"],
+    ["2026-10-15", "REFINED", "BLOCKED"],
+    ["2026-10-14", "REFINING", "REFINED"],
+  ];
+  const blocked = [
+    ["REFINED -> BLOCKED", "GATE-BLOCK", "R", "PASS", "Waiting on payment contract; owner A. Lead; return REFINED", "-", "2026-10-15"],
+    ["REFINED -> BLOCKED", "GATE-PROJ-SYNC", "D", "PASS", "in-sync", "-", "2026-10-15"],
+  ];
+  const ok = await brokenCopy((f) =>
+    f.write(STATUS, statusFile("REFINED", history, [...blocked, ["BLOCKED -> REFINED", "GATE-PROJ-SYNC", "D", "PASS", "in-sync", "-", "2026-10-20"]])),
+  );
+  assert.deepEqual((await verifySpec({ root: ok })).diagnostics, []);
+  const missing = await brokenCopy((f) => f.write(STATUS, statusFile("REFINED", history, blocked)));
+  const report = await verifySpec({ root: missing });
+  assert.deepEqual(codes(report), [`HGS001 ${STATUS}:12`]);
+  assert.match(report.diagnostics[0].message, /GATE-PROJ-SYNC .*BLOCKED -> REFINED/);
+});
+
+test("verify-spec gate-checks a DISCOVERED BC that has only status.md", async () => {
+  const companion = ".github/skills/companion/status.md";
+  const discovered = (result) =>
+    statusFile(
+      "DISCOVERED",
+      [["2026-11-21", "-", "DISCOVERED"]],
+      [
+        ["- -> DISCOVERED", "GATE-DISC-BOUNDARY", "H", result, "BC row in `docs/domain-map.md`", "A. Reviewer (Tech lead)", "2026-11-21"],
+        ["- -> DISCOVERED", "GATE-PROJ-SYNC", "D", "PASS", "in-sync", "-", "2026-11-21"],
+      ],
+    ).replace("bounded_context: cart", "bounded_context: companion");
+  const failing = await brokenCopy((f) => f.write(companion, discovered("FAIL")));
+  const report = await verifySpec({ root: failing });
+  assert.deepEqual(codes(report), [`HGS002 ${companion}:18`]);
+  assert.match(report.diagnostics[0].message, /GATE-DISC-BOUNDARY/);
+  assert.equal(report.exitCode, EXIT_INVALID);
+  assert.deepEqual(report.checked, ["cart", "companion"]);
+  assert.deepEqual(report.specChecked, ["cart"]);
+  assert.deepEqual(report.gateChecked, ["cart", "companion"]);
+  await assert.rejects(execFileAsync(process.execPath, [cli, "--root", failing]), (error) => error.code === EXIT_INVALID);
+  assert.deepEqual((await verifySpec({ root: failing, bcs: ["companion"] })).gateChecked, ["companion"]);
+
+  const passing = await brokenCopy((f) => f.write(companion, discovered("PASS")));
+  const ok = await verifySpec({ root: passing });
+  assert.deepEqual(ok.diagnostics, []);
+  assert.equal(formatTextReport(ok), "verify-spec OK (refinement): 2 BC(s) (spec 1, gates 2)\n");
+
+  const legacy = await brokenCopy((f) => f.write(companion, "---\nlifecycle: DISCOVERED\n---\n\n# Companion\n"));
+  assert.deepEqual(codes(await verifySpec({ root: legacy }), "warnings"), [`HGS006 ${companion}:1`]);
+});
+
 test("verify-spec gate check warns once per legacy status.md without failing", async () => {
   const root = await brokenCopy((f) =>
     f.write(STATUS, "---\nbounded_context: cart\nlifecycle: REFINED\n---\n\n# Cart Lifecycle Status\n"),
@@ -557,7 +610,7 @@ test("verify-spec gate check warns once per legacy status.md without failing", a
   assert.deepEqual(codes(report, "warnings"), [`HGS006 ${STATUS}:1`]);
   const text = formatTextReport(report);
   const lines = text.trimEnd().split("\n");
-  assert.equal(lines[0], "verify-spec OK (implementation): 1 BC(s)");
+  assert.equal(lines[0], "verify-spec OK (implementation): 1 BC(s) (spec 1, gates 1)");
   assert.equal(lines[1], "WARNINGS (1)");
   assert.match(lines[2], /^HGS006 \.github\/skills\/cart\/status\.md:1 .*Gate Evidence/);
   assert.equal(lines.length, 3);
@@ -579,7 +632,7 @@ test("verify-spec skips gate checks with one INFO line when no catalog exists", 
   assert.equal(report.notes.length, 1);
   assert.equal(
     formatTextReport(report),
-    `INFO ${report.notes[0]}\nverify-spec OK (refinement): 1 BC(s)\n`,
+    `INFO ${report.notes[0]}\nverify-spec OK (refinement): 1 BC(s) (spec 1, gates 0)\n`,
   );
   assert.ok(codes(await verifySpec({ root, gates: REPO_CATALOG })).includes(`HGS004 ${STATUS}:5`));
   await assert.rejects(verifySpec({ root, gates: "missing/lifecycle-gates.md" }), /gate catalog not found/);

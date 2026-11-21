@@ -75,6 +75,9 @@ when the required gates of the transition into it are satisfied, as defined in
    that applies, including `GATE-PROJ-SYNC`), then the Transition History row,
    and only then change `lifecycle:` and the Current State section. Gate rows
    are append-only; a failed attempt stays as a `FAIL` row.
+   Transition History rows may be kept newest-first or oldest-first; keep one
+   order within a file. Tools (`project:sync`, `verify:spec`, `project:status`,
+   the viewer) normalise either order to chronological order.
 4. `BLOCKED` must record the blocker, owner, and intended return state.
 5. A behavior change makes previous verification stale:
    `VERIFIED -> CHANGING -> IMPLEMENTED`; run `bc-review full` to return to

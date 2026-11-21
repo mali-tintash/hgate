@@ -261,11 +261,11 @@ acceptance boxes here.
     - [ ] Board shows Pet Mind `REFINED`, Pet Companion `DISCOVERED`, gap ledger, drift cleared after the fix
     - [ ] Pet Mind timeline shows three transitions with changes
 
-- [ ] **T10.5 — Fix bugs found in T10**
+- [x] **T10.5 — Fix bugs found in T10**
   - Acceptance:
-    - [ ] Transition History accepted in either order; all tools normalise to chronological order (shared helper)
-    - [ ] verify-spec gate-checks every BC with a `status.md`, including DISCOVERED
-    - [ ] Partially resolved gaps get a distinct `PARTIAL` state, visible on the board (not a drift warning)
+    - [x] Transition History accepted in either order; all tools normalise to chronological order (shared helper)
+    - [x] verify-spec gate-checks every BC with a `status.md`, including DISCOVERED
+    - [x] Partially resolved gaps get a distinct `PARTIAL` state, visible on the board (not a drift warning)
 
 - [ ] **T11 — Independent verification**
   - Depends on: T10
@@ -321,3 +321,4 @@ Parallel-safe after T2: T3a, T3b, T4a. After T4a: T4b, T4c, T5, T6a.
 | 2026-11-21 | T7b | Done | Timeline in BC details: three change summaries, steps with commit, gates, signer, expandable diffs; `null` changes shown as Unknown; stale-report and git notices; hint when report missing. Display gate matching attaches a gate to the latest matching transition dated on/before it (differs from Validity Rule 1's "on or after" — display only; check in T11). Tests 230/231 |
 | 2026-11-21 | T9 | Done | README (Gates, Status Report, viewer v2, warning codes), adoption guide (scripts, Bitbucket, migration), CLAUDE.hgate.md gate rule, projection schema-version notes, map templates state shared `G<n>` IDs. Timeline wording aligned to T7b by orchestrator |
 | 2026-11-21 | T10 | Done (test bed, uncommitted) | Live-pet: tools/skills/schema copied, both status.md migrated (backfilled gates signed `Product owner (Technical PM)`), gaps aligned, projection in-sync, verify-spec OK, no drift. Status report from a reconstructed history in VM scratch (labelled in `.hgate/README.md`). Bugs found → T10.5: (1) newest-first Transition History breaks project-status ordering; (2) verify-spec skips BCs without model/scenarios, so DISCOVERED gates are unchecked; (3) "Resolved for X; Y to confirm" classified RESOLVED, partial gaps invisible |
+| 2026-11-21 | T10.5 | Done | `tools/shared/transitions.mjs` `orderTransitions` used by generator, verify-spec, project-status, viewer; project-status uses `git blame -M`; verify-spec gate-checks every BC with status.md (`N BC(s) (spec X, gates Y)`); `PARTIAL` gap state + blue badge. Live-pet: 0 diagnostics, G11/G15/G16 PARTIAL, `OK: 2 BC(s) (spec 1, gates 2)`, status steps e2fd0aa → 408e714 (shared). Tests 244/245 |

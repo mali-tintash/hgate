@@ -147,6 +147,26 @@ test("buildProjection should emit schemaVersion 2 with gates, transitions and op
   );
 });
 
+test("buildProjection should emit transitions chronologically when Transition History is newest-first", async () => {
+  const root = await workspace();
+  try {
+    const status = path.join(root, ".github/skills/catalog/status.md");
+    const text = await readFile(status, "utf8");
+    const lines = text.split("\n");
+    const start = lines.indexOf("## Transition History") + 4;
+    let end = start;
+    while (lines[end] && lines[end].startsWith("|")) end += 1;
+    const reversed = [...lines.slice(0, start), ...lines.slice(start, end).reverse(), ...lines.slice(end)];
+    await writeFile(status, reversed.join("\n"));
+    const original = bcById(await buildProjection(fixture), "catalog");
+    const catalog = bcById(await buildProjection(root), "catalog");
+    assert.deepEqual(catalog.transitions, original.transitions);
+    assert.equal(catalog.transitions.at(-1).to, "VERIFIED");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("buildProjection should parse blockers and nextSkill when Current State has them", async () => {
   const projection = await buildProjection(fixture);
   const catalog = bcById(projection, "catalog");

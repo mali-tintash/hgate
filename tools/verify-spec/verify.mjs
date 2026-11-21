@@ -94,11 +94,14 @@ async function discoverBoundedContexts(skillsRoot) {
       continue;
     }
     const dir = path.join(skillsRoot, entry.name);
-    const hasBcArtifact =
+    // Spec checks need a domain model or scenarios; gate checks need only a
+    // status.md, so a DISCOVERED BC (status.md alone) is still gate-checked.
+    const spec =
       (await readOptional(path.join(dir, "domain-model.md"))) !== null ||
       (await readOptional(path.join(dir, "bdd-scenarios.md"))) !== null;
-    if (hasBcArtifact) {
-      contexts.push({ name: entry.name, dir });
+    const hasStatus = (await readOptional(path.join(dir, "status.md"))) !== null;
+    if (spec || hasStatus) {
+      contexts.push({ name: entry.name, dir, spec });
     }
   }
   return contexts;
@@ -590,7 +593,9 @@ export async function verifySpec(options = {}) {
   }
 
   // Scenario IDs are unique across every BC, even when only one is selected.
-  const selectedFiles = new Set(selected.map((c) => rel(path.join(c.dir, "bdd-scenarios.md"))));
+  const selectedFiles = new Set(
+    selected.filter((c) => c.spec).map((c) => rel(path.join(c.dir, "bdd-scenarios.md"))),
+  );
   const idOwners = new Map();
   for (const context of contexts) {
     const file = path.join(context.dir, "bdd-scenarios.md");
@@ -618,7 +623,20 @@ export async function verifySpec(options = {}) {
     }
   }
 
+  const gateChecked = [];
   for (const context of selected) {
+    const bcRel = rel(context.dir);
+    // Gate checks (and the HGS006 legacy warning) run for every BC, independent of spec files.
+    const status = await readOptional(path.join(context.dir, "status.md"));
+    if (catalog !== null) {
+      const gates = checkGates({ status, file: `${bcRel}/status.md`, catalog });
+      diagnostics.push(...gates.errors);
+      warnings.push(...gates.warnings);
+      gateChecked.push(context.name);
+    }
+    if (!context.spec) {
+      continue;
+    }
     const load = async (name) => {
       const file = path.join(context.dir, name);
       const source = await readOptional(file);
@@ -627,17 +645,10 @@ export async function verifySpec(options = {}) {
     const skill = await load("SKILL.md");
     const model = await load("domain-model.md");
     const bdd = await load("bdd-scenarios.md");
-    const bcRel = rel(context.dir);
     for (const [doc, name] of [[skill, "SKILL.md"], [model, "domain-model.md"], [bdd, "bdd-scenarios.md"]]) {
       if (!doc) {
         diagnostics.push(diagnostic("VSP014", `${bcRel}/${name}`, 1, `required file ${name} is missing`));
       }
-    }
-    const status = await readOptional(path.join(context.dir, "status.md"));
-    if (catalog !== null) {
-      const gates = checkGates({ status, file: `${bcRel}/status.md`, catalog });
-      diagnostics.push(...gates.errors);
-      warnings.push(...gates.warnings);
     }
     if (!skill) {
       continue;
@@ -686,6 +697,8 @@ export async function verifySpec(options = {}) {
   return {
     phase,
     checked: selected.map((c) => c.name),
+    specChecked: selected.filter((c) => c.spec).map((c) => c.name),
+    gateChecked,
     diagnostics,
     warnings,
     notes,
@@ -704,7 +717,7 @@ export function formatTextReport(report) {
   }
   lines.push(
     report.diagnostics.length === 0
-      ? `verify-spec OK (${report.phase}): ${report.checked.length} BC(s)`
+      ? `verify-spec OK (${report.phase}): ${report.checked.length} BC(s) (spec ${(report.specChecked ?? report.checked).length}, gates ${(report.gateChecked ?? []).length})`
       : `verify-spec FAILED (${report.phase}): ${report.diagnostics.length} issue(s)`,
   );
   const warnings = report.warnings ?? [];

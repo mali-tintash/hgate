@@ -8,10 +8,13 @@ import { fileURLToPath } from "node:url";
 
 import { buildProjection } from "../generate.mjs";
 import {
+  GAP_STATES,
   classifyDisposition,
   compareGapIds,
   formatWarnings,
   gapIdFromText,
+  gapState,
+  isOpenGapState,
   mergeGaps,
 } from "../../shared/gaps.mjs";
 
@@ -38,7 +41,12 @@ const gapById = (projection, id) => projection.gaps.find((gap) => gap.id === id)
 
 test("classifyDisposition should map resolved, partial, deferred and other text to states", () => {
   assert.equal(classifyDisposition("Resolved (no forgetting)"), "RESOLVED");
-  assert.equal(classifyDisposition("Resolved for Pet Mind (synchronous); Companion to confirm"), "RESOLVED");
+  assert.equal(classifyDisposition("Resolved for Pet Mind (synchronous); Companion to confirm"), "PARTIAL");
+  assert.equal(classifyDisposition("Resolved for Pet Mind (five traits)"), "PARTIAL");
+  assert.equal(classifyDisposition("Resolved (traits); starter repertoire pending Companion refinement"), "PARTIAL");
+  assert.equal(classifyDisposition("Resolved; channel fallback to confirm"), "PARTIAL");
+  assert.equal(classifyDisposition("Resolved; retries deferred for v2"), "PARTIAL");
+  assert.equal(classifyDisposition("Resolved by ADR-0001; model name is deployment config"), "RESOLVED");
   assert.equal(classifyDisposition("Out of scope"), "RESOLVED");
   assert.equal(classifyDisposition("Deferred to bc-refinement"), "DEFERRED");
   assert.equal(classifyDisposition("Open"), "OPEN");
@@ -84,6 +92,33 @@ test("mergeGaps should derive state and emit HGW001 when sources disagree", () =
     { ...diagnostics[0], message: undefined },
     { code: "HGW001", severity: "warning", message: undefined, file: "docs/domain-map.md", line: 5, bcId: null, gapId: "G1" },
   );
+});
+
+test("mergeGaps should mark scoped resolutions PARTIAL without HGW001 when sources are consistent", () => {
+  const partial = "Resolved for Pet Mind (synchronous in-process); Pet Companion to confirm in its refinement";
+  const { gaps, diagnostics } = mergeGaps([
+    { id: "G15", gap: "Sync vs async", file: "docs/domain-map.md", line: 5, disposition: partial },
+    { id: "G15", file: "docs/context-map.md", line: 3, disposition: partial },
+    { id: "G15", file: "c/status.md", line: 8, bc: "pet-companion", disposition: partial },
+    { id: "G15", file: "m/status.md", line: 9, bc: "pet-mind", disposition: partial },
+    { id: "G16", gap: "Mood scale", file: "docs/domain-map.md", line: 6, disposition: "Resolved for Pet Mind; Companion to confirm" },
+    { id: "G16", file: "m/status.md", line: 10, bc: "pet-mind", disposition: "Resolved (five-point scale)" },
+    { id: "G17", gap: "Retry", file: "docs/domain-map.md", line: 7, disposition: "Resolved for Mind" },
+    { id: "G17", file: "c/status.md", line: 11, bc: "pet-companion", disposition: "Deferred to bc-refinement" },
+  ]);
+  assert.deepEqual(gaps.map((g) => [g.id, g.state]), [["G15", "PARTIAL"], ["G16", "PARTIAL"], ["G17", "MIXED"]]);
+  assert.deepEqual(diagnostics.map((d) => [d.code, d.gapId]), [["HGW001", "G17"]], "only genuine disagreement is drift");
+  assert.match(diagnostics[0].message, /PARTIAL at docs\/domain-map\.md:7, DEFERRED at c\/status\.md:11/);
+});
+
+test("gapState and isOpenGapState should treat PARTIAL as open", () => {
+  assert.equal(gapState([]), "OPEN");
+  assert.equal(gapState(["PARTIAL", "PARTIAL"]), "PARTIAL");
+  assert.equal(gapState(["RESOLVED", "PARTIAL"]), "PARTIAL");
+  assert.equal(gapState(["PARTIAL", "OPEN"]), "MIXED");
+  assert.equal(isOpenGapState("PARTIAL"), true);
+  assert.equal(isOpenGapState("RESOLVED"), false);
+  assert.ok(GAP_STATES.includes("PARTIAL"));
 });
 
 test("mergeGaps should emit HGW002 per BC source when a gap is absent from the maps", () => {
@@ -141,7 +176,7 @@ test("buildProjection should reproduce the live-pet G11-G13 drift as HGW001 warn
   assert.equal(gapById(projection, "G3").state, "DEFERRED", "agreeing sources are not drift");
   assert.equal(gapById(projection, "G14").state, "OPEN");
   assert.equal(gapById(projection, "G14").affected, "catalog-to-ordering-product-selection");
-  assert.equal(gapById(projection, "G15").state, "RESOLVED", "partial resolution counts as resolved");
+  assert.equal(gapById(projection, "G15").state, "PARTIAL", "scoped resolution is partial, not drift");
   assert.equal(projection.gaps.some((g) => g.id === "OI-1"), false, "local items stay out of the ledger");
 });
 
@@ -285,7 +320,7 @@ test("buildProjection should count many artifacts and index sign-offs by path", 
     properties: 1,
     acls: 1,
     ports: 1,
-    openItems: 2,
+    openItems: 3,
     openGaps: 4,
   });
   assert.deepEqual(catalog.signoffs, [

@@ -328,7 +328,7 @@
         "id": { "type": "string", "minLength": 1 },
         "gap": { "type": "string" },
         "affected": { "type": ["string", "null"] },
-        "state": { "enum": ["RESOLVED", "DEFERRED", "OPEN", "MIXED"] },
+        "state": { "enum": ["RESOLVED", "PARTIAL", "DEFERRED", "OPEN", "MIXED"] },
         "sources": {
           "type": "array",
           "items": { "$ref": "#/$defs/gapSource" }

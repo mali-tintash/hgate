@@ -473,8 +473,13 @@ transition lacks passing gates (`HGS001`–`HGS007`, see
 
 Open Items carry an `ID`: a shared gap ID (`G<n>`, also listed in the domain or
 context map) or a local `OI-<n>`. When a gap is resolved, update its
-disposition in every table that lists it. Disagreement is reported as `HGW001`;
-a gap only in a BC `status.md` is `HGW002`.
+disposition in every table that lists it. A scoped resolution ("Resolved for
+<BC>; <other BC> to confirm", or resolved text that is still "pending" or
+"deferred for" something) is classified `PARTIAL` and still counts as an open
+gap; it is not drift. Genuine disagreement (for example Deferred in the map,
+Resolved in a BC) is reported as `HGW001`; a gap only in a BC `status.md` is
+`HGW002`. Transition History may be written newest-first or oldest-first; the
+tools normalise it to chronological order.
 
 ### Reviewing project status
 

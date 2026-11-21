@@ -4,6 +4,7 @@
 // pass file contents and receive diagnostics; no file system access here.
 
 import { parseTable, splitSections } from "./markdown.mjs";
+import { orderTransitions } from "../shared/transitions.mjs";
 
 // Removes backticks and bold markers only; "_" and "*" are significant in
 // state names (SPEC_REVIEWED) and catalog patterns ("* -> *").
@@ -322,8 +323,9 @@ export function checkGates({ status, file, catalog }) {
     );
     return { errors, warnings };
   }
-  const history = readHistory(sections);
-  const current = (history ?? []).filter((row) => row.to === lifecycle.value).at(-1);
+  // History may be written newest-first or oldest-first; normalise first.
+  const history = orderTransitions(readHistory(sections) ?? []);
+  const current = history.filter((row) => row.to === lifecycle.value).at(-1);
   if (!current) {
     errors.push(
       diagnostic(

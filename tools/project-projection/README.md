@@ -52,7 +52,7 @@ report (see [`tools/project-status/README.md`](../project-status/README.md)).
 | `lifecycle` | `lifecycle:` frontmatter of the BC's `status.md` |
 | `nextSkill` | `**Recommended next skill:**` in `status.md` (backticks stripped; `None`/placeholder → `null`) |
 | `blockers` | bullets (or inline value) after `**Blockers:**` in `status.md` `## Current State`, excluding `None` |
-| `transitions` | `## Transition History` table in `status.md` (`date`, `from`, `to`, `evidence`, `actor`), file order |
+| `transitions` | `## Transition History` table in `status.md` (`date`, `from`, `to`, `evidence`, `actor`), chronological order (newest-first or oldest-first tables are normalised by `tools/shared/transitions.mjs`) |
 | `gates` | `## Gate Evidence` table in `status.md` (`transition` as `FROM -> TO`, `gate`, `kind` H/D/R, `result` PASS/FAIL/WAIVED/N/A, `evidence`, `signedBy` or `null`, `date`), file order; malformed rows fail with `HGP002` |
 | `openItems` | `## Open Items` table in `status.md` (`id` or `null` when the table has no ID column, `item`, `owner`, `disposition`), file order |
 | `purpose` | first paragraph of `## Purpose` in the BC `SKILL.md` |
@@ -86,10 +86,13 @@ Each entry: `id`, `gap` (text from the first source that has it), `affected`
 `sources[]` of `{file, line, bc (null for maps), owner, disposition}`.
 Gaps are ordered naturally by ID (`G2` before `G11`).
 
-Each disposition is classified: contains "Resolved" (including partial
-"Resolved for X; Y to confirm") or "Out of scope" → `RESOLVED`; contains
-"Deferred" → `DEFERRED`; anything else → `OPEN`. `state` is the shared class,
-or `MIXED` when sources disagree.
+Each disposition is classified: contains "Resolved" or "Out of scope" →
+`RESOLVED`, unless the resolution is scoped ("Resolved for X") or the text also
+says "to confirm", "pending" or "deferred for" → `PARTIAL`; contains "Deferred"
+→ `DEFERRED`; anything else → `OPEN`. `state` is the shared class; `PARTIAL`
+when sources mix only `PARTIAL` and `RESOLVED` (one side resolved, the rest to
+confirm: consistent, not drift); otherwise `MIXED` when sources disagree (for
+example `DEFERRED` vs `RESOLVED`, or `PARTIAL` vs `OPEN`).
 
 `diagnostics[]` entries are `{code, severity: "warning", message, file, line,
 bcId, gapId}`, sorted by code, file, line, gap ID:
@@ -119,8 +122,8 @@ warnings. The merge and formatting logic lives in `tools/shared/gaps.mjs`
 | `decisions` | `## ` headings in `decisions.md`, excluding headings starting with "Related" |
 | `properties` | distinct `@property:<ID>` markers in `properties.md` (0 if absent) |
 | `acls`, `ports` | length of the projected `acls` and `ports` |
-| `openItems` | Open Items rows whose disposition is not classified `RESOLVED` |
-| `openGaps` | ledger gaps with a source in this BC's `status.md` whose `state` is not `RESOLVED` |
+| `openItems` | Open Items rows whose disposition is not classified `RESOLVED` (`PARTIAL` counts as open) |
+| `openGaps` | ledger gaps with a source in this BC's `status.md` whose `state` is not `RESOLVED` (`PARTIAL` counts as open) |
 
 ## Sign-off index
 

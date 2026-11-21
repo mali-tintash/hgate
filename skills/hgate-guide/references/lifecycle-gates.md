@@ -75,8 +75,12 @@ Rows are append-only and in chronological order. A failed attempt stays as a
 
 ## Validity Rules
 
-1. **Current transition.** The transition into the current state is the last
-   Transition History row whose `To` equals the `lifecycle:` frontmatter value.
+1. **Current transition.** The transition into the current state is the
+   chronologically last Transition History row whose `To` equals the
+   `lifecycle:` frontmatter value. The Transition History table may be written
+   newest-first or oldest-first; tools normalise it to chronological order
+   (by `Date`, then by chaining same-date rows from `-` and `From` = previous
+   `To`; see `tools/shared/transitions.mjs`).
    Its gate rows are the Gate Evidence rows with the same `Transition` and a
    `Date` on or after that Transition History row's date.
 2. **Required gates.** Every catalog row whose pattern matches the current

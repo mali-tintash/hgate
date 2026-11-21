@@ -10,8 +10,10 @@ import {
   classifyDisposition,
   formatWarnings,
   gapIdFromText,
+  isOpenGapState,
   mergeGaps,
 } from "../shared/gaps.mjs";
+import { orderTransitions } from "../shared/transitions.mjs";
 
 export const EXIT_OK = 0;
 export const EXIT_INVALID = 1;
@@ -285,7 +287,7 @@ export async function buildProjection(root) {
   projection.diagnostics = ledger.diagnostics;
   for (const bc of projection.boundedContexts) {
     bc.stats.openGaps = ledger.gaps.filter(
-      (gap) => gap.state !== "RESOLVED" && gap.sources.some((source) => source.bc === bc.id),
+      (gap) => isOpenGapState(gap.state) && gap.sources.some((source) => source.bc === bc.id),
     ).length;
   }
   checkReferences(projection, problems);
@@ -385,8 +387,9 @@ function readBlockers(status) {
   return blockers.filter((item) => item && !isNone(item) && !isUnfilledCell(item));
 }
 
+// Emitted in chronological order whichever order the file uses.
 function readTransitions(status) {
-  return table(status, "Transition History", { strict: true }).map((row) => ({
+  return orderTransitions(table(status, "Transition History", { strict: true })).map((row) => ({
     date: row.date ?? "",
     from: row.from ?? "",
     to: row.to ?? "",

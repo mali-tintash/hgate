@@ -63,8 +63,13 @@ printed last as a `WARNINGS (n)` block.
 
 Every phase also validates each BC's `status.md` against the gate catalog,
 implementing the Validity Rules of
-[`skills/hgate-guide/references/lifecycle-gates.md`](../../skills/hgate-guide/references/lifecycle-gates.md): the current transition is
-the last Transition History row into `lifecycle:`; every catalog gate whose
+[`skills/hgate-guide/references/lifecycle-gates.md`](../../skills/hgate-guide/references/lifecycle-gates.md).
+Gate checks run for every BC directory with a `status.md` (or with spec files),
+independently of the spec checks, so a `DISCOVERED` BC that has only
+`status.md` is still gate-checked. The current transition is the
+chronologically last Transition History row into `lifecycle:` (the table may be
+newest-first or oldest-first; it is normalised by
+`tools/shared/transitions.mjs`); every catalog gate whose
 pattern (`-`, `*`, concrete states) matches it is required except the optional
 `GATE-IMPL-PROPS`; the latest row for that transition dated on or after it
 must be `PASS`, or `WAIVED` signed by a `Tech lead` with a reason. Earlier
@@ -90,14 +95,15 @@ ignored, as in `project:sync`. Warnings never change the exit code; they are
 printed after the summary line as the last lines of output:
 
 ```text
-verify-spec OK (refinement): 2 BC(s)
+verify-spec OK (refinement): 2 BC(s) (spec 1, gates 2)
 WARNINGS (1)
 HGS006 .github/skills/cart/status.md:1 status.md has no "## Gate Evidence" section; migrate it ...
 ```
 
 Under GitHub Actions (`GITHUB_ACTIONS=true`) the text format also emits a
 `::warning file=…,line=…::` annotation per warning. `--format json` adds
-`warnings` and `notes` arrays.
+`warnings` and `notes` arrays, and `specChecked` / `gateChecked` BC lists
+(the summary line counts both).
 
 ## Gap drift warnings (HGW001, HGW002)
 

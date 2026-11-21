@@ -770,14 +770,58 @@
     return parts.length > 1 ? parts[parts.length - 1].trim() : "";
   }
 
-  // Latest transition by date; on equal dates the later row wins.
-  function latestTransition(bc) {
-    let latest = null;
-    for (const transition of (bc && bc.transitions) || []) {
-      if (!transition) continue;
-      if (!latest || String(transition.date || "") >= String(latest.date || "")) latest = transition;
+  // Copy of tools/shared/transitions.mjs (the viewer runs without imports).
+  // Projections emit transitions chronologically; this is defensive for older
+  // projections built from newest-first Transition History tables.
+  const TRANSITION_DATE = /^\d{4}-\d{2}-\d{2}$/;
+  const cleanCell = (value) => String(value == null ? "" : value).replace(/`/g, "").trim();
+
+  function orderTransitions(rows) {
+    const list = Array.isArray(rows) ? rows.filter((row) => row) : [];
+    if (list.length < 2) return list.slice();
+    const first = list[0];
+    const last = list[list.length - 1];
+    const newestFirst =
+      cleanCell(first.date) >= cleanCell(last.date) && cleanCell(last.from) === "-" && cleanCell(first.from) !== "-";
+    const base = newestFirst ? list.slice().reverse() : list.slice();
+    if (!base.every((row) => TRANSITION_DATE.test(cleanCell(row.date)))) return base;
+    const sorted = base
+      .map((row, index) => ({ row, index }))
+      .sort((a, b) => {
+        const da = cleanCell(a.row.date);
+        const db = cleanCell(b.row.date);
+        return da < db ? -1 : da > db ? 1 : a.index - b.index;
+      })
+      .map((entry) => entry.row);
+    const result = [];
+    let i = 0;
+    while (i < sorted.length) {
+      let j = i;
+      while (j + 1 < sorted.length && cleanCell(sorted[j + 1].date) === cleanCell(sorted[i].date)) j += 1;
+      const pending = sorted.slice(i, j + 1);
+      let previousTo = result.length ? cleanCell(result[result.length - 1].to) : null;
+      while (pending.length) {
+        let pick = pending.findIndex((row) => cleanCell(row.from) === "-");
+        if (pick === -1 && previousTo !== null) pick = pending.findIndex((row) => cleanCell(row.from) === previousTo);
+        if (pick === -1) {
+          pick = pending.findIndex(
+            (row) => !pending.some((other) => other !== row && cleanCell(other.to) === cleanCell(row.from)),
+          );
+        }
+        if (pick === -1) pick = 0;
+        const picked = pending.splice(pick, 1)[0];
+        result.push(picked);
+        previousTo = cleanCell(picked.to);
+      }
+      i = j + 1;
     }
-    return latest;
+    return result;
+  }
+
+  // Latest transition in chronological order (either file order is accepted).
+  function latestTransition(bc) {
+    const ordered = orderTransitions((bc && bc.transitions) || []);
+    return ordered.length ? ordered[ordered.length - 1] : null;
   }
 
   // Summarizes the gates recorded for the transition into the BC's current lifecycle.
@@ -821,6 +865,16 @@
     return `${count} warning${count === 1 ? "" : "s"} in the project projection`;
   }
 
+  // PARTIAL (scoped resolution, still open) reads as "Partial"; other states as-is.
+  function gapStateLabel(state) {
+    return state === "PARTIAL" ? "Partial" : state;
+  }
+
+  // Open gaps: every state except RESOLVED (PARTIAL counts as open).
+  function isOpenGap(gap) {
+    return Boolean(gap) && gap.state !== "RESOLVED";
+  }
+
   function buildBoardModel(project) {
     const source = project || {};
     const contexts = source.boundedContexts || [];
@@ -846,7 +900,7 @@
       const transition = latestTransition(bc);
       const derivedOpenGaps = rawGaps.length
         ? rawGaps.filter(
-            (gap) => gap.state !== "RESOLVED" && gapBcIds.get(gap.id) && gapBcIds.get(gap.id).has(bc.id),
+            (gap) => isOpenGap(gap) && gapBcIds.get(gap.id) && gapBcIds.get(gap.id).has(bc.id),
           ).length
         : null;
       const warnings = warningsForBc(bc.id);
@@ -899,6 +953,8 @@
         affected: gap.affected || "",
         state: gap.state || "OPEN",
         mixed: gap.state === "MIXED",
+        partial: gap.state === "PARTIAL",
+        stateLabel: gapStateLabel(gap.state || "OPEN"),
         sources: (gap.sources || []).map((item) => ({
           file: item.file || "",
           line: item.line === undefined ? null : item.line,
@@ -1136,7 +1192,7 @@
       if (!reportBc) notices.push(`This BC is not in the status report. Run \`${STATUS_COMMAND}\` again.`);
     }
 
-    const transitions = Array.isArray(bc.transitions) ? bc.transitions : [];
+    const transitions = orderTransitions(Array.isArray(bc.transitions) ? bc.transitions : []);
     const reportSteps = reportBc && Array.isArray(reportBc.steps) ? reportBc.steps : [];
     let pairs;
     if (transitions.length) {
@@ -1751,7 +1807,7 @@
       "",
       ["ID", "Gap", "State", "Dispositions by source", "Warnings"],
       board.gaps.map((gap) => {
-        const state = createElement("span", `gap-state gap-state-${slug(gap.state)}`, gap.state);
+        const state = createElement("span", `gap-state gap-state-${slug(gap.state)}`, gap.stateLabel || gap.state);
         const sources = createElement("ul", "gap-sources");
         for (const item of gap.sources) {
           const li = createElement("li");
@@ -1760,7 +1816,7 @@
           sources.append(li);
         }
         return {
-          className: gap.mixed ? "gap-mixed" : "",
+          className: gap.mixed ? "gap-mixed" : gap.partial ? "gap-partial" : "",
           cells: [gap.id, gap.gap, state, sources, gap.warningCount ? warningBadge(gap.warningCount) : ""],
         };
       }),
@@ -2322,6 +2378,7 @@
     transitionKey,
     transitionTarget,
     latestTransition,
+    orderTransitions,
     summarizeGates,
     summarizeChanges,
     matchGatesToSteps,
@@ -2329,6 +2386,8 @@
     buildTimelineModel,
     warningBannerText,
     buildBoardModel,
+    gapStateLabel,
+    isOpenGap,
     readStatusReport,
     isProjectFile,
     buildLegacyProject,

@@ -91,9 +91,10 @@ directory of `sources.status` (else `<skills-path>/<id>`); without a readable
 projection, every `<skills-path>/*/status.md` (workflow skills have none and are
 skipped).
 
-**Attribution:** `git blame --porcelain` on `status.md` maps every Transition
+**Attribution:** `git blame -M --porcelain` on `status.md` maps every Transition
 History row (by line) to the commit that introduced it (renames followed by
-blame's default rename detection). Rows blamed to the all-zero sha, or a
+blame's default rename detection; `-M` follows rows moved within the file, so
+switching the table between newest-first and oldest-first keeps attribution). Rows blamed to the all-zero sha, or a
 `status.md` not tracked at `HEAD`, are `"uncommitted"`. Limitation: a row edited
 later (for example its evidence text) is attributed to the editing commit; a
 squash merge collapses all its transitions into one commit.
@@ -116,8 +117,10 @@ the working tree; each revision is snapshotted once.
   coverage: null | { status, exitCode, summary, diagnosticCodes, scenarioCount } }
 ```
 
-`Diff` is `diffSnapshots` output. BCs are sorted by id; steps keep document
-order; no timestamps besides commit author dates, so the same repo state gives
+`Diff` is `diffSnapshots` output. BCs are sorted by id; steps are in
+chronological order (a newest-first or oldest-first Transition History is
+normalised by `tools/shared/transitions.mjs`; `line` keeps the row's file
+line), and "since last transition" uses the chronologically last step; no timestamps besides commit author dates, so the same repo state gives
 identical bytes.
 
 - **Shared commits:** consecutive steps attributed to the same commit (or all

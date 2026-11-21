@@ -168,6 +168,45 @@ gitTest("since last transition covers commits after the transition commit", () =
   assert.deepEqual(bc.uncommitted.files, []);
 });
 
+gitTest("newest-first Transition History is reported in chronological order", () => {
+  // Same-date rows, newest first (as live-pet wrote them): order comes from
+  // chaining "-" -> DISCOVERED -> REFINING -> REFINED, not from file order.
+  const day = (row) => row.replace(/^\| \d{4}-\d{2}-\d{2} \|/, "| 2026-11-01 |");
+  const root = mkdtempSync(path.join(os.tmpdir(), "hgate-status-newest-"));
+  git(root, ["init", "-q", "-b", "main"]);
+  write(root, `${BC}/status.md`, status("DISCOVERED", [day(ROW_DISC)]));
+  git(root, ["add", "-A"]);
+  git(root, ["commit", "-q", "-m", "docs(cart): discover cart"], "2026-11-01T10:00:00+00:00");
+  write(root, `${BC}/status.md`, status("REFINED", [day(ROW_REFINED), day(ROW_REFINING), day(ROW_DISC)]));
+  write(root, `${BC}/SKILL.md`, SKILL);
+  write(root, `${BC}/bdd-scenarios.md`, bdd(scenario("CART-SUBMIT-001", "Submit a cart")));
+  git(root, ["add", "-A"]);
+  git(root, ["commit", "-q", "-m", "docs(cart): refine cart"], "2026-11-01T12:00:00+00:00");
+  write(root, `${BC}/bdd-scenarios.md`, bdd(scenario("CART-SUBMIT-001", "Submit a cart"), scenario("CART-SUBMIT-002", "Submit twice")));
+  git(root, ["add", "-A"]);
+  git(root, ["commit", "-q", "-m", "docs(cart): add scenario"], "2026-11-01T14:00:00+00:00");
+  const [c1, c2] = shas(root);
+
+  const bc = buildReport({ root }, quiet).boundedContexts[0];
+  assert.deepEqual(bc.steps.map((s) => `${s.from} -> ${s.to}`), ["- -> DISCOVERED", "DISCOVERED -> REFINING", "REFINING -> REFINED"]);
+  assert.deepEqual(bc.steps.map((s) => s.commit.sha), [c1, c2, c2]);
+  assert.deepEqual(bc.steps.map((s) => s.line), [14, 13, 12], "line keeps the file position");
+  assert.deepEqual(bc.steps[0].changes.lifecycle, { from: null, to: "DISCOVERED" });
+  assert.equal(bc.steps[1].changes.summary.changed, false);
+  assert.deepEqual(bc.steps[2].changes.lifecycle, { from: "DISCOVERED", to: "REFINED" });
+  assert.deepEqual(bc.steps[2].changes.scenarios.added.map((i) => i.key), ["@scenario:CART-SUBMIT-001"]);
+  // Since last transition is based on the REFINING -> REFINED commit, not on the
+  // "- -> DISCOVERED" row that sits last in the file.
+  assert.equal(bc.sinceLastTransition.baseCommit.sha, c2);
+  assert.deepEqual(bc.sinceLastTransition.changes.scenarios.added.map((i) => i.key), ["@scenario:CART-SUBMIT-002"]);
+
+  // Reordering the committed rows oldest-first (uncommitted) keeps attribution.
+  write(root, `${BC}/status.md`, status("REFINED", [day(ROW_DISC), day(ROW_REFINING), day(ROW_REFINED)]));
+  const reordered = buildReport({ root }, quiet).boundedContexts[0];
+  assert.deepEqual(reordered.steps.map((s) => s.commit.sha), [c1, c2, c2]);
+  assert.equal(reordered.sinceLastTransition.baseCommit.sha, c2);
+});
+
 gitTest("CLI output is deterministic and written only when changed", () => {
   const root = buildRepo();
   const run = () => execFileSync(process.execPath, [cli, "--root", root, "--stdout"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });

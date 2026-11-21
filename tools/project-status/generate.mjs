@@ -15,6 +15,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { diffSnapshots, parseFrontmatter, snapshotBc, splitSections } from "./snapshot.mjs";
+import { orderTransitions } from "../shared/transitions.mjs";
 
 export const STATUS_SCHEMA_VERSION = 1;
 export const UNCOMMITTED = "uncommitted";
@@ -281,9 +282,13 @@ export function parseTransitionHistory(statusMd) {
   return rows;
 }
 
-/** Map of final line number -> commit sha (or null for uncommitted) from `git blame --porcelain`. */
+/**
+ * Map of final line number -> commit sha (or null for uncommitted) from `git blame --porcelain`.
+ * `-M` follows rows moved within the file, so reordering Transition History
+ * (newest-first <-> oldest-first) keeps each row's original commit.
+ */
 function blameLines(ctx, relPath) {
-  const out = ctx.git(["blame", "--porcelain", "--", relPath], { allowFail: true });
+  const out = ctx.git(["blame", "-M", "--porcelain", "--", relPath], { allowFail: true });
   if (out === null) return null;
   const lines = new Map();
   for (const line of out.split("\n")) {
@@ -344,7 +349,8 @@ function buildBc(ctx, root, bc) {
   const statusRel = `${dir}/status.md`;
   const statusAbs = path.join(root, statusRel);
   const statusMd = existsSync(statusAbs) ? readFileSync(statusAbs, "utf8") : "";
-  const rows = parseTransitionHistory(statusMd);
+  // Chronological order whichever order the file uses (newest-first or oldest-first).
+  const rows = orderTransitions(parseTransitionHistory(statusMd));
 
   const attribute = ctx.available && !ctx.shallow;
   let blame = null;

@@ -1,7 +1,10 @@
 // Pure gap-ledger logic shared by tools/project-projection and tools/verify-spec.
 // No file system access: callers parse Markdown tables and pass rows in.
 
-export const GAP_STATES = ["RESOLVED", "DEFERRED", "OPEN", "MIXED"];
+export const GAP_STATES = ["RESOLVED", "PARTIAL", "DEFERRED", "OPEN", "MIXED"];
+
+// States that still need work: everything except RESOLVED (PARTIAL included).
+export const isOpenGapState = (state) => state !== "RESOLVED";
 
 // Gap IDs shared between domain-map.md, context-map.md and status.md Open Items.
 // Local BC items use OI-<n> and are not part of the ledger.
@@ -12,14 +15,31 @@ export const DIAGNOSTIC_CODES = {
   HGW002: "gap referenced in a BC status.md but missing from the maps",
 };
 
-// RESOLVED when the text mentions "resolved" (including partial "Resolved for X;
-// Y to confirm") or marks the gap closed as "out of scope"; DEFERRED when it
-// mentions "deferred"; anything else (including empty) is OPEN.
+// RESOLVED when the text mentions "resolved" or marks the gap closed as "out
+// of scope"; PARTIAL when that resolution is scoped ("Resolved for <X>") or the
+// text also leaves something open ("to confirm", "pending", "deferred for");
+// DEFERRED when it mentions "deferred"; anything else (including empty) is OPEN.
 export function classifyDisposition(text) {
   const value = String(text ?? "").toLowerCase();
-  if (/\bresolved\b/.test(value) || /\bout of scope\b/.test(value)) return "RESOLVED";
+  if (/\bresolved\b/.test(value) || /\bout of scope\b/.test(value)) {
+    if (/\bresolved for\b/.test(value) || /\bto confirm\b/.test(value) || /\bpending\b/.test(value) || /\bdeferred for\b/.test(value)) {
+      return "PARTIAL";
+    }
+    return "RESOLVED";
+  }
   if (/\bdeferred\b/.test(value)) return "DEFERRED";
   return "OPEN";
+}
+
+// Gap state from its sources' classes: the shared class; PARTIAL when every
+// source is PARTIAL or RESOLVED (one side resolved, the scoped rest still to
+// confirm: consistent, not drift); otherwise MIXED (genuine disagreement).
+export function gapState(categories) {
+  const distinct = [...new Set(categories)];
+  if (distinct.length === 0) return "OPEN";
+  if (distinct.length === 1) return distinct[0];
+  if (distinct.every((c) => c === "PARTIAL" || c === "RESOLVED")) return "PARTIAL";
+  return "MIXED";
 }
 
 // Legacy Open Items tables have no ID column; a leading "G<n>" in the item text
@@ -75,8 +95,7 @@ export function mergeGaps(sources) {
       disposition: text(source.disposition),
     }));
     const categories = entries.map((entry) => classifyDisposition(entry.disposition));
-    const distinct = [...new Set(categories)];
-    const state = distinct.length === 1 ? distinct[0] : "MIXED";
+    const state = gapState(categories);
     const firstGap = group.find((source) => text(source.gap));
     const firstAffected = group.find((source) => text(source.affected));
     gaps.push({
