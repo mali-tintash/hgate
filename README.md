@@ -30,6 +30,10 @@ cp -R tools/bdd-traceability tools/verify-spec tools/shared \
 ```
 
 Preserve each skill's `SKILL.md`, `assets/`, `references/`, and `decisions.md`.
+Add the `verify:spec`, `project:sync`, `project:check`, `project:status` and
+`verify:bdd` scripts and add `.hgate/` to `.gitignore`, as listed in the
+[adoption guide](docs/adoption-guide.md); its GitHub Actions and Bitbucket
+Pipelines templates (`templates/ci/`) run every verifier.
 The verifier and its human sign-off protocol are required parts of hGATE
 adoption for TypeScript/Jest projects. The verifiers parse tests with the
 project's own `typescript` package (see
@@ -118,7 +122,7 @@ understood but a technical or cross-system architecture decision remains open.
 | `domain-exploration` | The problem, language, capabilities, or BC boundaries are unclear | Confirmed domain map, context map, and BC handoffs | Yes |
 | `architecture-decision-exploration` | A technical or cross-system architecture decision is unresolved | ADR or design report | Yes |
 | `bc-refinement` | One BC needs an approved specification | BC skill, domain model, BDD scenarios, decisions, status, and ACLs | Yes |
-| `bc-review` | One BC needs a read-only specification or implementation audit | Evidence-based findings | One BC per invocation |
+| `bc-review` | One BC needs a read-only specification or implementation audit | Evidence-based findings, persisted as gate evidence under `docs/verification/bc-reviews/` | One BC per invocation |
 | `bc-implementation` | One refined BC has no material implementation | Tested implementation, traceability report, and module sign-off | Yes |
 | `bc-enhancement` | An implemented BC needs new capability, a changed rule, a bug fix, or a gap closed — including iterative slices after first delivery | Synchronized specification/code, ghost behavior removed, and module sign-off | Yes |
 | `cross-bc-validation` | One completed journey crosses several implemented BCs | Feature-local contract and journey validation report | Yes |
@@ -210,10 +214,12 @@ renders a single scenario file, and you can paste Markdown directly. The viewer:
 The viewer prefers `docs/hgate-project.json` to render a project-wide view of
 domains, bounded contexts, relationships, and journeys, while retaining legacy
 Markdown support. It reads schema versions 1 and 2. Schema version 2 adds, per
-BC, `transitions`, `gates`, `blockers`, `nextSkill`, `openItems`, `stats`
-(rules, scenarios, features, decisions, properties, ACLs, ports, open items)
-and `signoffs`, plus top-level `gaps` (the merged gap ledger) and
-`diagnostics` (warnings).
+BC, `transitions`, `gates`, `gateStatus` (required gates of the current
+transition, evaluated by the same rules as `verify-spec`), `blockers`,
+`nextSkill`, `openItems`, `stats` (rules, scenarios, features, decisions,
+properties, ACLs, ports, open items) and `signoffs`, plus top-level `gaps` (the
+merged gap ledger, each gap `RESOLVED`, `PARTIAL`, `MIXED`, `DEFERRED` or
+`OPEN`) and `diagnostics` (warnings).
 
 Reading guide for tech leads and PMs: [`docs/viewer-guide.md`](docs/viewer-guide.md)
 (also behind the viewer's **?** button).
@@ -222,12 +228,18 @@ Open `tools/gherkin-viewer/index.html`, click **Load project** and pick the
 project root folder. Besides the Scenarios and Project tabs:
 
 - **Board tab:** lifecycle swimlanes with one card per BC (classification,
-  next skill, blockers, stats), the gap ledger, and the diagnostics panel.
+  next skill, blockers, stats, and an `n/m gates` count that turns red and
+  lists the unmet gates when the current state is not backed by its gates),
+  the gap ledger, and the diagnostics panel. Legends and hover tooltips
+  explain every badge, state and abbreviation.
+- **Gap ledger:** a panel styled by its most severe gap: red "Gaps need
+  attention" for `OPEN` or `MIXED`, amber "Gaps pending" for `PARTIAL` or
+  `DEFERRED`, a collapsed neutral line when all are resolved. Count chips,
+  unresolved gaps first, resolved behind **Show resolved (n)**. `PARTIAL`
+  (blue badge) is not drift and counts as an open gap on BC cards.
 - **Drift banner:** a warning count shown at the top of every tab while any
   warning exists; it cannot be dismissed. Affected BC cards and gap rows carry
-  an amber badge, and the Board opens with the drift list expanded. Partially
-  resolved gaps (`PARTIAL`) get a blue "Partial" badge, are not drift, and
-  count as open gaps on BC cards.
+  an amber badge, and the Board opens with the drift list expanded.
 - **BC details:** three change summaries at the top (since last transition,
   since previous commit, uncommitted), then a step-by-step timeline of
   transitions with their gates, signers and evidence; each step expands
@@ -255,16 +267,17 @@ schema from this repository.
 
 `npm run project:status` (`tools/project-status/generate.mjs`) writes the
 gitignored `.hgate/status.json`. It attributes each `status.md` Transition
-History row to the commit that introduced it (`git blame`), snapshots the BC's
-specification at each step, and records what changed per step, since the last
-transition, since the previous commit, and in the uncommitted working tree.
-`--bdd` embeds `verify:bdd` coverage. No timestamps; the same repository state
-gives the same file.
+History row (newest-first or oldest-first) to its commit with `git blame -M`,
+snapshots the BC's specification at each step, and records what changed per
+step, since the last transition, since the previous commit, and in the
+uncommitted working tree. `--bdd` embeds `verify:bdd` coverage. No timestamps
+and no LLM calls; the same repository state gives the same file.
 
 Limitations: it needs full history (`fetch-depth: 0` in GitHub Actions,
-`clone: depth: full` in Bitbucket), otherwise step commits are `null`; a squash
-merge collapses its transitions into one step; blame credits a row to the
-commit that last edited it. See
+`clone: depth: full` in Bitbucket); without git or in a shallow clone it still
+exits 0 with a warning, and step commits are `null`. A squash merge collapses
+its transitions into one step; blame credits a row to the commit that last
+edited it. See
 [`tools/project-status/README.md`](tools/project-status/README.md).
 
 ## Specification Verifier
@@ -279,8 +292,10 @@ stable `VSP###` codes and `file:line`:
 node tools/verify-spec/verify.mjs --root . [--bc <name>] [--phase implementation]
 ```
 
-It also checks lifecycle gate evidence (`HGS001`–`HGS007`) and reports gap
-drift. Warnings (`HGS006` legacy `status.md`, `HGW001` gap disposition drift,
+It also checks lifecycle gate evidence (`HGS001`–`HGS007`) for every BC with a
+`status.md`, including `DISCOVERED` BCs that have no spec files yet (summary:
+`N BC(s) (spec X, gates Y)`), using the gate rules it shares with
+`project:sync` (`tools/shared/gate-rules.mjs`), and reports gap drift. Warnings (`HGS006` legacy `status.md`, `HGW001` gap disposition drift,
 `HGW002` gap only in a BC `status.md`) print last as a `WARNINGS (n)` block,
 never change the exit code, and are project-wide (they ignore `--bc`);
 `project:sync` and `project:check` print the same `HGW` block.
@@ -372,6 +387,9 @@ IMPLEMENTED | VERIFIED
   -> VERIFIED
 ```
 
+`BLOCKED` (with a recorded return state) and `DEPRECATED` side states also
+exist; see
+[`lifecycle-status.md`](skills/hgate-guide/references/lifecycle-status.md).
 Every BC owns its lifecycle in `.github/skills/<bc-name>/status.md`.
 
 ### Gates
@@ -386,7 +404,8 @@ transition requires `GATE-PROJ-SYNC`.
 
 Each BC records results in the `## Gate Evidence` table of its `status.md`
 (transition, gate, kind, result, evidence, signer, date); rows are
-append-only. Write order: gate rows first, then the Transition History row, then
+append-only. The Transition History table may be newest-first or oldest-first;
+tools normalise it to chronological order. Write order: gate rows first, then the Transition History row, then
 `lifecycle:` and Current State. `bc-review` persists its report under
 `docs/verification/bc-reviews/<bc>/YYYY-MM-DD-<mode>.md` as evidence for
 `SPEC_REVIEWED` and `VERIFIED`. `verify-spec` fails when the current lifecycle
@@ -395,6 +414,7 @@ lacks a passing gate.
 The `status.md` Open Items table has an `ID` column: gap IDs (`G<n>`) shared
 with the domain and context maps, or local `OI-<n>`. Resolving a gap updates
 its disposition in every table that lists it; differences surface as `HGW001`.
+A disposition such as "Resolved for X; Y to confirm" is `PARTIAL`, not drift.
 
 ## Example Prompts
 

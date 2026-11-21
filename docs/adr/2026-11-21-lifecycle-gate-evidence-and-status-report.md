@@ -77,7 +77,8 @@ requires the projection and treats the status report as optional.
 
 ### 5. Git derivation by blaming Transition History rows
 
-`tools/project-status` runs `git blame` on each BC's `status.md` and assigns
+`tools/project-status` runs `git blame -M` on each BC's `status.md` (so
+reordering rows does not reassign them) and assigns
 every Transition History row to the commit that introduced it; that commit is
 the transition's commit. No hashes are written by hand. Rows committed together
 share one commit (their step-to-step diffs collapse into one). Rows not yet
@@ -143,7 +144,8 @@ removal plus addition. Stable `BR-<BC>-NNN` IDs remain in the backlog.
 ## Consequences
 
 - CI that builds the status report needs full history (`fetch-depth: 0`);
-  shallow clones get a clear message instead of a partial report.
+  a shallow clone or missing git still produces a degraded report (step
+  commits are `null`) with a one-line warning and exit 0.
 - Squash merges collapse intermediate transitions into one commit; their
   step-to-step diffs are merged. This is a documented limitation.
 - `.hgate/` is gitignored; each developer or CI job regenerates the report.
