@@ -387,3 +387,183 @@ test("computeCanvasSize fills the visible area and grows to fit the layout and m
     { width: 1120, height: 720 },
   );
 });
+
+// --- Board (schema v2) -------------------------------------------------------
+
+const exampleV2 = require("../../docs/hgate-project.example.json");
+
+function v1Project() {
+  return {
+    schemaVersion: 1,
+    project: { name: "V1" },
+    domains: [{ id: "commerce", name: "Commerce", classification: "CORE", purpose: "Sell" }],
+    boundedContexts: [
+      {
+        id: "ordering",
+        name: "Ordering",
+        domainId: "commerce",
+        classification: "CORE",
+        role: "PRIMARY",
+        lifecycle: "REFINED",
+        owns: [],
+        doesNotOwn: [],
+        capabilities: [],
+        ports: [],
+        acls: [],
+        sources: {},
+      },
+    ],
+    relationships: [],
+    journeys: [],
+  };
+}
+
+test("validateProject accepts schemaVersion 1 and 2 and rejects others", () => {
+  assert.deepEqual(viewer.validateProject(v1Project()), []);
+  assert.deepEqual(viewer.validateProject(exampleV2), []);
+  const diagnostics = viewer.validateProject({ ...v1Project(), schemaVersion: 3 });
+  assert.match(diagnostics[0].message, /expected 1 or 2/);
+});
+
+test("normalizeProject gives v1 projects empty defaults for v2 fields", () => {
+  const project = viewer.normalizeProject(v1Project(), "canonical");
+  assert.equal(project.schemaVersion, 1);
+  assert.deepEqual(project.gaps, []);
+  assert.deepEqual(project.diagnostics, []);
+  const [bc] = project.boundedContexts;
+  assert.equal(bc.nextSkill, null);
+  for (const field of ["blockers", "transitions", "gates", "openItems", "signoffs"]) {
+    assert.deepEqual(bc[field], [], field);
+  }
+  assert.deepEqual(bc.stats, {});
+});
+
+test("buildBoardModel places v1 BCs in main columns and hides empty optional states", () => {
+  const board = viewer.buildBoardModel(viewer.normalizeProject(v1Project(), "canonical"));
+  assert.deepEqual(
+    board.columns.map((column) => column.state),
+    viewer.MAIN_LIFECYCLES,
+  );
+  assert.deepEqual(board.hiddenStates, ["CHANGING", "BLOCKED", "DEPRECATED"]);
+  const refined = board.columns.find((column) => column.state === "REFINED");
+  assert.equal(refined.cards[0].id, "ordering");
+  assert.equal(refined.cards[0].gateSummary.total, 0);
+  assert.equal(refined.cards[0].stats.openGaps, null);
+  assert.deepEqual(board.gaps, []);
+  assert.equal(board.warnings.count, 0);
+  assert.equal(board.warnings.expanded, false);
+});
+
+test("buildBoardModel shows an optional column only when a BC occupies it", () => {
+  const raw = v1Project();
+  raw.boundedContexts[0].lifecycle = "BLOCKED";
+  const board = viewer.buildBoardModel(viewer.normalizeProject(raw, "canonical"));
+  const blocked = board.columns.find((column) => column.state === "BLOCKED");
+  assert.equal(blocked.optional, true);
+  assert.equal(blocked.cards.length, 1);
+  assert.deepEqual(board.hiddenStates, ["CHANGING", "DEPRECATED"]);
+});
+
+test("buildBoardModel builds v2 cards with date, next skill, blockers, stats and sign-offs", () => {
+  const board = viewer.buildBoardModel(viewer.normalizeProject(exampleV2, "canonical"));
+  const verified = board.columns.find((column) => column.state === "VERIFIED");
+  const catalog = verified.cards.find((card) => card.id === "catalog");
+  assert.equal(catalog.lifecycleDate, "2026-11-20");
+  assert.equal(catalog.nextSkill, "bc-enhancement");
+  assert.equal(catalog.blocked, true);
+  assert.equal(catalog.blockers.length, 2);
+  assert.deepEqual(catalog.stats, { rules: 3, scenarios: 3, decisions: 2, openGaps: 4 });
+  assert.equal(catalog.signoffCount, 3);
+  assert.equal(catalog.gateSummary.label, "2/2 gates");
+  assert.equal(catalog.gateSummary.transition, "IMPLEMENTED -> VERIFIED");
+});
+
+test("summarizeGates keeps the latest row per gate and highlights failures", () => {
+  const bc = {
+    lifecycle: "REFINED",
+    gates: [
+      { transition: "REFINING -> REFINED", gate: "GATE-REF-SPEC", result: "FAIL", date: "2026-11-09" },
+      { transition: "REFINING -> REFINED", gate: "GATE-REF-SPEC", result: "PASS", date: "2026-11-10" },
+      { transition: "REFINING → REFINED", gate: "GATE-REF-APPROVAL", result: "FAIL", date: "2026-11-10" },
+      { transition: "REFINING -> REFINED", gate: "GATE-PROJ-SYNC", result: "N/A", date: "2026-11-10" },
+      { transition: "- -> DISCOVERED", gate: "GATE-DISC-BOUNDARY", result: "PASS", date: "2026-11-01" },
+    ],
+  };
+  const summary = viewer.summarizeGates(bc);
+  assert.equal(summary.total, 3);
+  assert.equal(summary.satisfied, 2);
+  assert.equal(summary.label, "2/3 gates");
+  assert.equal(summary.hasFail, true);
+  assert.deepEqual(summary.failedGates, ["GATE-REF-APPROVAL"]);
+});
+
+test("buildBoardModel badges MIXED gaps and drift warnings on gap rows and BC cards", () => {
+  const board = viewer.buildBoardModel(viewer.normalizeProject(exampleV2, "canonical"));
+  const g11 = board.gaps.find((gap) => gap.id === "G11");
+  assert.equal(g11.mixed, true);
+  assert.equal(g11.warningCount, 1);
+  assert.equal(g11.sources[1].location, ".github/skills/catalog/status.md:54");
+  const g3 = board.gaps.find((gap) => gap.id === "G3");
+  assert.equal(g3.mixed, false);
+  assert.equal(g3.warningCount, 0);
+  const catalog = board.cards.find((card) => card.id === "catalog");
+  assert.equal(catalog.warningCount, 3);
+});
+
+test("buildBoardModel badges BC cards by diagnostic bcId and sets the banner count", () => {
+  const raw = v1Project();
+  raw.schemaVersion = 2;
+  raw.diagnostics = [
+    { code: "HGW001", severity: "warning", message: "drift", file: "x.md", line: 1, bcId: "ordering", gapId: null },
+    { code: "HGW002", severity: "warning", message: "missing", file: "y.md", line: 2, bcId: null, gapId: "G9" },
+  ];
+  const board = viewer.buildBoardModel(viewer.normalizeProject(raw, "canonical"));
+  assert.equal(board.cards[0].warningCount, 1);
+  assert.equal(board.warnings.count, 2);
+  assert.equal(board.warnings.expanded, true);
+  assert.equal(board.warnings.message, "2 warnings in the project projection");
+  assert.equal(viewer.warningBannerText(1), "1 warning in the project projection");
+  assert.equal(viewer.warningBannerText(0), "");
+});
+
+test("buildBoardModel works for legacy Markdown projects", async () => {
+  const files = new Map([
+    [
+      "docs/domain-map.md",
+      fakeFile(`## Bounded Context Inventory
+
+| ID | Bounded context | Domain/Subdomain | Classification | Boundary role | Owns | Does not own | Local status |
+|---|---|---|---|---|---|---|---|
+| ordering | Ordering | Commerce | Core | Primary | Orders | Payments | status.md |
+`),
+    ],
+  ]);
+  const { project } = await viewer.buildLegacyProject(files);
+  const board = viewer.buildBoardModel(project);
+  assert.equal(board.columns.find((column) => column.state === "DISCOVERED").cards[0].id, "ordering");
+  assert.equal(board.warnings.count, 0);
+});
+
+test("loadProject keeps an optional status report and stays silent when it is missing", async () => {
+  const withoutReport = new Map([["docs/hgate-project.json", fakeFile(JSON.stringify(exampleV2))]]);
+  const missing = await viewer.loadProject(withoutReport);
+  assert.equal(missing.statusReport, null);
+  assert.equal(missing.diagnostics.length, 0);
+
+  const withReport = new Map(withoutReport);
+  withReport.set(".hgate/status.json", fakeFile(JSON.stringify({ schemaVersion: 1, bcs: [] })));
+  const loaded = await viewer.loadProject(withReport);
+  assert.deepEqual(loaded.statusReport, { schemaVersion: 1, bcs: [] });
+  assert.equal(loaded.project.schemaVersion, 2);
+});
+
+test("readProjectDirectory and indexFiles pick up .hgate/status.json", async () => {
+  const root = fakeDirectory({
+    docs: { "domain-map.md": "# map" },
+    ".hgate": { "status.json": "{}", "cache.json": "ignored" },
+  });
+  const map = await viewer.readProjectDirectory(root);
+  assert.deepEqual(Array.from(map.keys()).sort(), [".hgate/status.json", "docs/domain-map.md"]);
+  assert.equal(viewer.isProjectFile(".hgate/status.json"), true);
+  assert.equal(viewer.isProjectFile(".hgate/cache.json"), false);
+});

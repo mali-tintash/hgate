@@ -450,6 +450,261 @@
         color: #94a3b8;
       }
 
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+
+      /* Persistent, non-dismissible projection warning banner (plan §3.1). */
+      .warning-banner {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 14px;
+        padding: 10px 14px;
+        border: 1px solid #f59e0b;
+        border-left-width: 6px;
+        border-radius: 10px;
+        background: #fef3c7;
+        color: #78350f;
+        font-weight: 600;
+      }
+
+      .warning-banner button {
+        border-color: #f59e0b;
+        background: #fffbeb;
+        color: #78350f;
+        font-weight: 700;
+      }
+
+      .warning-badge {
+        display: inline-block;
+        padding: 1px 8px;
+        border: 1px solid #f59e0b;
+        border-radius: 999px;
+        background: #fef3c7;
+        color: #92400e;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .board-lanes {
+        display: flex;
+        gap: 10px;
+        overflow-x: auto;
+        padding-bottom: 8px;
+      }
+
+      .board-column {
+        flex: 0 0 220px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-height: 160px;
+        padding: 10px;
+        border: 1px solid #bae6fd;
+        border-radius: 12px;
+        background: #f8fdff;
+      }
+
+      .board-column.optional {
+        border-style: dashed;
+        background: #f1f5f9;
+      }
+
+      .board-column-title {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin: 0;
+        color: #0c4a6e;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+
+      .board-column-count {
+        padding: 0 8px;
+        border-radius: 999px;
+        background: #dbeafe;
+        color: #1d4ed8;
+        font-size: 12px;
+      }
+
+      .board-empty {
+        margin: 0;
+        font-size: 12px;
+      }
+
+      .board-card {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        width: 100%;
+        padding: 8px 10px;
+        border: 1px solid #93c5fd;
+        border-radius: 10px;
+        background: #ffffff;
+        color: #0f172a;
+        font-size: 12px;
+        text-align: left;
+      }
+
+      .board-card[aria-pressed="true"] {
+        border-color: #0284c7;
+        box-shadow: 0 0 0 2px #0284c7;
+      }
+
+      .board-card.has-warnings {
+        border-left: 5px solid #f59e0b;
+      }
+
+      .board-card-header,
+      .board-card-facts,
+      .board-card-stats,
+      .board-card-footer {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 4px 8px;
+      }
+
+      .board-card-title {
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .board-card-meta {
+        color: #0369a1;
+        font-weight: 700;
+      }
+
+      .board-card-facts,
+      .board-card-stats {
+        color: #475569;
+      }
+
+      .board-card-blockers {
+        padding: 3px 6px;
+        border-radius: 6px;
+        background: #fee2e2;
+        color: #991b1b;
+        font-weight: 600;
+      }
+
+      .stat-attention {
+        color: #92400e;
+        font-weight: 700;
+      }
+
+      .gate-summary {
+        color: #166534;
+        font-weight: 700;
+      }
+
+      .gate-summary.has-fail,
+      .gate-fail {
+        color: #b91c1c;
+        font-weight: 700;
+      }
+
+      .board-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 16px;
+        margin-top: 12px;
+      }
+
+      .board-section {
+        border: 1px solid #bae6fd;
+        border-radius: 12px;
+        background: #f8fdff;
+        padding: 12px;
+      }
+
+      .board-section > h2,
+      .board-section > summary {
+        margin: 0 0 8px;
+        color: #0c4a6e;
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .board-section > summary {
+        cursor: pointer;
+      }
+
+      .board-table-wrap {
+        overflow-x: auto;
+      }
+
+      .board-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+
+      .board-table th,
+      .board-table td {
+        border: 1px solid #bae6fd;
+        padding: 4px 8px;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      .board-table th {
+        background: #e0f2fe;
+      }
+
+      .board-table tr.gap-mixed td,
+      .board-table tr.gate-row-fail td {
+        background: #fef3c7;
+      }
+
+      .board-table tr.gate-row-fail td {
+        background: #fee2e2;
+      }
+
+      .gap-sources {
+        margin: 0;
+        padding-left: 16px;
+      }
+
+      .gap-state,
+      .result-badge {
+        display: inline-block;
+        padding: 1px 8px;
+        border-radius: 999px;
+        background: #e2e8f0;
+        color: #334155;
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .gap-state-resolved,
+      .result-pass {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      .gap-state-mixed {
+        border: 1px solid #f59e0b;
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      .gap-state-open,
+      .result-fail {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+
       @media (max-width: 850px) {
         .project-layout {
           grid-template-columns: 1fr;
@@ -459,12 +714,19 @@
   </head>
   <body>
     <h1>hGATE viewer</h1>
+    <div id="warningBanner" class="warning-banner" role="status" aria-live="polite" hidden>
+      <span id="warningBannerText"></span>
+      <button id="warningBannerShow" type="button">Show</button>
+    </div>
     <div class="tabs" role="tablist" aria-label="Viewer sections">
       <button id="scenarioTab" class="tab" role="tab" aria-selected="true">
         Scenarios
       </button>
       <button id="projectTab" class="tab" role="tab" aria-selected="false">
         Project
+      </button>
+      <button id="boardTab" class="tab" role="tab" aria-selected="false" aria-controls="boardPanel">
+        Board
       </button>
     </div>
 
@@ -530,6 +792,33 @@
         <aside id="projectDetails" class="project-details">
           <p class="muted">Load a project, then choose a bounded context.</p>
         </aside>
+      </div>
+    </section>
+
+    <section id="boardPanel" role="tabpanel" aria-labelledby="boardTab" hidden>
+      <p class="muted">
+        Lifecycle board from <code>docs/hgate-project.json</code>: where each bounded context
+        stands, the gates for its current transition, gap dispositions and projection warnings.
+      </p>
+      <div class="row project-toolbar">
+        <button id="boardLoadProjectBtn" type="button">Load project</button>
+        <span id="boardProjectStatus" class="muted" aria-live="polite">No project loaded</span>
+      </div>
+      <div id="boardLanes" class="board-lanes" aria-label="Lifecycle swimlanes">
+        <p class="muted">Load a project to see bounded contexts by lifecycle state.</p>
+      </div>
+      <div class="board-layout">
+        <aside id="boardDetails" class="board-section" aria-label="Bounded context lifecycle details">
+          <p class="muted">Select a bounded context card to see its lifecycle evidence.</p>
+        </aside>
+        <section class="board-section" aria-labelledby="gapLedgerTitle">
+          <h2 id="gapLedgerTitle">Gap ledger</h2>
+          <div id="gapLedger"><p class="muted">No project loaded.</p></div>
+        </section>
+        <details id="boardDiagnostics" class="board-section">
+          <summary>Diagnostics (<span id="boardDiagnosticsCount">0</span>)</summary>
+          <div id="boardDiagnosticsList" class="diagnostics"></div>
+        </details>
       </div>
     </section>
 

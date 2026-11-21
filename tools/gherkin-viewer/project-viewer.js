@@ -9,7 +9,9 @@
 })(typeof window !== "undefined" ? window : null, function () {
   "use strict";
 
-  const SCHEMA_VERSION = 1;
+  // Latest projection schema; the viewer reads every supported version.
+  const SCHEMA_VERSION = 2;
+  const SUPPORTED_SCHEMA_VERSIONS = [1, 2];
   const CLASSIFICATIONS = new Set(["CORE", "SUPPORTING", "GENERIC", "UNCONFIRMED"]);
   const ROLES = new Set(["PRIMARY", "SHARED", "SUPPORTING", "UNCONFIRMED"]);
   const DIRECTIONS = new Set(["INBOUND", "OUTBOUND", "BIDIRECTIONAL", "UNKNOWN"]);
@@ -365,7 +367,11 @@
   }
 
   function isProjectFile(path) {
-    return PROJECT_DOCS.some((name) => path === `docs/${name}`) || skillPathParts(path) !== null;
+    return (
+      PROJECT_DOCS.some((name) => path === `docs/${name}`) ||
+      path === STATUS_REPORT_PATH ||
+      skillPathParts(path) !== null
+    );
   }
 
   function skillsRootOf(fileMap) {
@@ -444,6 +450,15 @@
         }
       }
     }
+    const hgateDir = await childDirectory(rootHandle, [".hgate"]);
+    if (hgateDir) {
+      try {
+        const fileHandle = await hgateDir.getFileHandle("status.json");
+        map.set(STATUS_REPORT_PATH, await fileHandle.getFile());
+      } catch (error) {
+        if (!error || (error.name !== "NotFoundError" && error.name !== "TypeMismatchError")) throw error;
+      }
+    }
     for (const root of SKILLS_ROOTS) {
       const skillsDir = await childDirectory(rootHandle, root.split("/"));
       if (!skillsDir) continue;
@@ -475,11 +490,17 @@
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
       return [{ severity: "error", message: "Project manifest must be a JSON object." }];
     }
-    if (raw.schemaVersion !== SCHEMA_VERSION) {
+    if (!SUPPORTED_SCHEMA_VERSIONS.includes(raw.schemaVersion)) {
       diagnostics.push({
         severity: "error",
-        message: `Unsupported schemaVersion ${String(raw.schemaVersion)}; expected ${SCHEMA_VERSION}.`,
+        message:
+          `Unsupported schemaVersion ${String(raw.schemaVersion)}; ` +
+          `expected ${SUPPORTED_SCHEMA_VERSIONS.join(" or ")}.`,
       });
+    }
+    // Schema v2 additions are optional for the viewer; when present they must be arrays.
+    for (const field of ["gaps", "diagnostics"]) {
+      if (raw[field] !== undefined && !Array.isArray(raw[field])) error(`${field} must be an array.`);
     }
     for (const field of ["domains", "boundedContexts", "relationships", "journeys"]) {
       if (!Array.isArray(raw[field])) {
@@ -570,6 +591,10 @@
       if (!isObject(bc.sources) || Object.values(bc.sources).some((value) => !isString(value))) {
         error(`${bc.id}.sources must be an object of path strings.`);
       }
+      for (const field of ["blockers", "transitions", "gates", "openItems", "signoffs"]) {
+        if (bc[field] !== undefined && !Array.isArray(bc[field])) error(`${bc.id}.${field} must be an array.`);
+      }
+      if (bc.stats !== undefined && !isObject(bc.stats)) error(`${bc.id}.stats must be an object.`);
     }
     const relationshipIds = new Set();
     for (const relation of Array.isArray(raw.relationships) ? raw.relationships : []) {
@@ -602,9 +627,10 @@
     return diagnostics;
   }
 
+  // v1 and legacy-Markdown projects get empty defaults for the schema v2 fields.
   function normalizeProject(raw, sourceMode) {
     return {
-      schemaVersion: SCHEMA_VERSION,
+      schemaVersion: SUPPORTED_SCHEMA_VERSIONS.includes(raw.schemaVersion) ? raw.schemaVersion : 1,
       project: raw.project || { name: "hGATE project", description: "" },
       domains: raw.domains || [],
       boundedContexts: (raw.boundedContexts || []).map((bc) => ({
@@ -617,10 +643,19 @@
         sources: {},
         lifecycle: "DISCOVERED",
         inferred: sourceMode === "legacy",
+        nextSkill: null,
+        blockers: [],
+        transitions: [],
+        gates: [],
+        openItems: [],
+        stats: {},
+        signoffs: [],
         ...bc,
       })),
       relationships: raw.relationships || [],
       journeys: raw.journeys || [],
+      gaps: Array.isArray(raw.gaps) ? raw.gaps : [],
+      diagnostics: Array.isArray(raw.diagnostics) ? raw.diagnostics : [],
       sourceMode,
     };
   }
@@ -695,6 +730,216 @@
       message: "Using legacy Markdown extraction. Inferred fields are marked in the detail view.",
     });
     return { project, diagnostics };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Board model (schema v2). Pure functions so they can be unit tested in Node.
+  // ---------------------------------------------------------------------------
+
+  const STATUS_REPORT_PATH = ".hgate/status.json";
+  const MAIN_LIFECYCLES = [
+    "DISCOVERED",
+    "REFINING",
+    "REFINED",
+    "SPEC_REVIEWED",
+    "IMPLEMENTING",
+    "IMPLEMENTED",
+    "VERIFIED",
+  ];
+  // Shown only when at least one BC is in the state.
+  const OPTIONAL_LIFECYCLES = ["CHANGING", "BLOCKED", "DEPRECATED"];
+  const SATISFIED_GATE_RESULTS = new Set(["PASS", "N/A"]);
+
+  function lifecycleLabel(state) {
+    return String(state || "")
+      .toLowerCase()
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+  }
+
+  function transitionKey(value) {
+    return String(value || "")
+      .replace(/→/g, "->")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function transitionTarget(value) {
+    const parts = transitionKey(value).split("->");
+    return parts.length > 1 ? parts[parts.length - 1].trim() : "";
+  }
+
+  // Latest transition by date; on equal dates the later row wins.
+  function latestTransition(bc) {
+    let latest = null;
+    for (const transition of (bc && bc.transitions) || []) {
+      if (!transition) continue;
+      if (!latest || String(transition.date || "") >= String(latest.date || "")) latest = transition;
+    }
+    return latest;
+  }
+
+  // Summarizes the gates recorded for the transition into the BC's current lifecycle.
+  // A gate re-run keeps only its latest row (by date, then order), so FAIL → PASS counts as PASS.
+  function summarizeGates(bc) {
+    const target = bc && bc.lifecycle;
+    const latest = new Map();
+    ((bc && bc.gates) || []).forEach((row, index) => {
+      if (!row || transitionTarget(row.transition) !== target) return;
+      const previous = latest.get(row.gate);
+      if (!previous || String(row.date || "") >= String(previous.row.date || "")) {
+        latest.set(row.gate, { row, index });
+      }
+    });
+    const rows = Array.from(latest.values())
+      .sort((a, b) => a.index - b.index)
+      .map((entry) => entry.row);
+    const count = (predicate) => rows.filter(predicate).length;
+    const failedGates = rows.filter((row) => row.result === "FAIL").map((row) => row.gate);
+    const satisfied = count((row) => SATISFIED_GATE_RESULTS.has(row.result));
+    return {
+      transition: rows.length ? transitionKey(rows[rows.length - 1].transition) : null,
+      total: rows.length,
+      satisfied,
+      passed: count((row) => row.result === "PASS"),
+      notApplicable: count((row) => row.result === "N/A"),
+      failed: failedGates.length,
+      pending: rows.length - satisfied - failedGates.length,
+      failedGates,
+      hasFail: failedGates.length > 0,
+      label: rows.length ? `${satisfied}/${rows.length} gates` : "No gates recorded",
+    };
+  }
+
+  function numberOrNull(value) {
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+  }
+
+  function warningBannerText(count) {
+    if (!count) return "";
+    return `${count} warning${count === 1 ? "" : "s"} in the project projection`;
+  }
+
+  function buildBoardModel(project) {
+    const source = project || {};
+    const contexts = source.boundedContexts || [];
+    const diagnostics = Array.isArray(source.diagnostics) ? source.diagnostics : [];
+    const rawGaps = Array.isArray(source.gaps) ? source.gaps : [];
+
+    const gapBcIds = new Map();
+    for (const gap of rawGaps) {
+      const ids = new Set();
+      for (const item of gap.sources || []) if (item && item.bc) ids.add(item.bc);
+      gapBcIds.set(gap.id, ids);
+    }
+    const warningsForBc = (bcId) =>
+      diagnostics.filter(
+        (diagnostic) =>
+          diagnostic.bcId === bcId ||
+          (diagnostic.gapId && gapBcIds.has(diagnostic.gapId) && gapBcIds.get(diagnostic.gapId).has(bcId)),
+      );
+
+    const cards = contexts.map((bc) => {
+      const stats = bc.stats || {};
+      const blockers = Array.isArray(bc.blockers) ? bc.blockers : [];
+      const transition = latestTransition(bc);
+      const derivedOpenGaps = rawGaps.length
+        ? rawGaps.filter(
+            (gap) => gap.state !== "RESOLVED" && gapBcIds.get(gap.id) && gapBcIds.get(gap.id).has(bc.id),
+          ).length
+        : null;
+      const warnings = warningsForBc(bc.id);
+      const lifecycle = LIFECYCLES.has(bc.lifecycle) ? bc.lifecycle : "DISCOVERED";
+      return {
+        id: bc.id,
+        name: bc.name || bc.id,
+        classification: bc.classification || "UNCONFIRMED",
+        role: bc.role || "UNCONFIRMED",
+        lifecycle,
+        lifecycleDate: transition && transition.date ? transition.date : null,
+        nextSkill: bc.nextSkill || null,
+        blockers,
+        blocked: blockers.length > 0,
+        stats: {
+          rules: numberOrNull(stats.rules),
+          scenarios: numberOrNull(stats.scenarios),
+          decisions: numberOrNull(stats.decisions),
+          openGaps: numberOrNull(stats.openGaps) !== null ? stats.openGaps : derivedOpenGaps,
+        },
+        gateSummary: summarizeGates({ ...bc, lifecycle }),
+        signoffCount: Array.isArray(bc.signoffs) ? bc.signoffs.length : 0,
+        warnings,
+        warningCount: warnings.length,
+        inferred: Boolean(bc.inferred),
+      };
+    });
+
+    const byState = (state) =>
+      cards.filter((card) => card.lifecycle === state).sort((a, b) => a.name.localeCompare(b.name));
+    const columns = [];
+    const hiddenStates = [];
+    for (const state of MAIN_LIFECYCLES) {
+      columns.push({ state, label: lifecycleLabel(state), optional: false, cards: byState(state) });
+    }
+    for (const state of OPTIONAL_LIFECYCLES) {
+      const stateCards = byState(state);
+      if (stateCards.length) {
+        columns.push({ state, label: lifecycleLabel(state), optional: true, cards: stateCards });
+      } else {
+        hiddenStates.push(state);
+      }
+    }
+
+    const gaps = rawGaps.map((gap) => {
+      const warnings = diagnostics.filter((diagnostic) => diagnostic.gapId === gap.id);
+      return {
+        id: gap.id,
+        gap: gap.gap || "",
+        affected: gap.affected || "",
+        state: gap.state || "OPEN",
+        mixed: gap.state === "MIXED",
+        sources: (gap.sources || []).map((item) => ({
+          file: item.file || "",
+          line: item.line === undefined ? null : item.line,
+          location: item.line ? `${item.file}:${item.line}` : item.file || "",
+          bc: item.bc || null,
+          owner: item.owner || "",
+          disposition: item.disposition || "",
+        })),
+        warnings,
+        warningCount: warnings.length,
+      };
+    });
+
+    return {
+      columns,
+      hiddenStates,
+      cards,
+      gaps,
+      diagnostics,
+      warnings: {
+        count: diagnostics.length,
+        expanded: diagnostics.length > 0,
+        message: warningBannerText(diagnostics.length),
+      },
+    };
+  }
+
+  // Optional git-derived status report written by `project:status`. Missing → null, silently.
+  async function readStatusReport(fileMap) {
+    const file = fileMap && fileMap.get(STATUS_REPORT_PATH);
+    if (!file) return { statusReport: null, diagnostics: [] };
+    try {
+      return { statusReport: JSON.parse(await file.text()), diagnostics: [] };
+    } catch (error) {
+      return {
+        statusReport: null,
+        diagnostics: [
+          { severity: "warning", message: `Ignoring ${STATUS_REPORT_PATH}: ${error.message}` },
+        ],
+      };
+    }
   }
 
   function createElement(tag, className, text) {
@@ -1080,6 +1325,252 @@
     );
   }
 
+  function appendTable(parent, title, headers, rows, options = {}) {
+    const sectionElement = createElement("section", `project-detail-section ${options.className || ""}`.trim());
+    if (title) sectionElement.append(createElement("h3", "", title));
+    if (!rows || rows.length === 0) {
+      sectionElement.append(createElement("p", "muted", options.empty || "None recorded."));
+      parent.append(sectionElement);
+      return sectionElement;
+    }
+    const wrapper = createElement("div", "board-table-wrap");
+    const table = createElement("table", "board-table");
+    if (title) table.append(createElement("caption", "visually-hidden", title));
+    const head = createElement("thead");
+    const headRow = createElement("tr");
+    for (const header of headers) {
+      const cell = createElement("th", "", header);
+      cell.scope = "col";
+      headRow.append(cell);
+    }
+    head.append(headRow);
+    const body = createElement("tbody");
+    for (const row of rows) {
+      const tr = createElement("tr", row.className || "");
+      for (const value of row.cells) {
+        const cell = createElement("td");
+        if (value instanceof Node) cell.append(value);
+        else cell.textContent = value === null || value === undefined || value === "" ? "–" : String(value);
+        tr.append(cell);
+      }
+      body.append(tr);
+    }
+    table.append(head, body);
+    wrapper.append(table);
+    sectionElement.append(wrapper);
+    parent.append(sectionElement);
+    return sectionElement;
+  }
+
+  function resultBadge(result) {
+    const value = result || "–";
+    return createElement("span", `result-badge result-${slug(value) || "none"}`, value);
+  }
+
+  function warningBadge(count) {
+    return createElement("span", "warning-badge", `${count} warning${count === 1 ? "" : "s"}`);
+  }
+
+  function renderWarningBanner(board, banner, textElement) {
+    const count = board ? board.warnings.count : 0;
+    banner.hidden = count === 0;
+    if (textElement) textElement.textContent = board ? board.warnings.message : "";
+  }
+
+  function renderBoardCard(card, selected, onSelect) {
+    const button = createElement("button", "board-card");
+    button.type = "button";
+    button.dataset.bcId = card.id;
+    button.setAttribute("aria-pressed", String(selected));
+    if (card.blocked) button.classList.add("has-blockers");
+    if (card.warningCount) button.classList.add("has-warnings");
+
+    const header = createElement("span", "board-card-header");
+    header.append(createElement("span", "board-card-title", card.name));
+    if (card.warningCount) header.append(warningBadge(card.warningCount));
+    button.append(header);
+    button.append(
+      createElement("span", "board-card-meta", `${card.classification} · ${card.role}${card.inferred ? " · inferred" : ""}`),
+    );
+    const facts = createElement("span", "board-card-facts");
+    facts.append(createElement("span", "", card.lifecycleDate ? `Since ${card.lifecycleDate}` : "No transition date"));
+    facts.append(createElement("span", "", `Next: ${card.nextSkill || "–"}`));
+    button.append(facts);
+    if (card.blocked) {
+      button.append(
+        createElement(
+          "span",
+          "board-card-blockers",
+          `${card.blockers.length} blocker${card.blockers.length === 1 ? "" : "s"}: ${card.blockers.join("; ")}`,
+        ),
+      );
+    }
+    const show = (value) => (value === null || value === undefined ? "–" : String(value));
+    const stats = createElement("span", "board-card-stats");
+    stats.append(
+      createElement("span", "", `${show(card.stats.rules)} rules`),
+      createElement("span", "", `${show(card.stats.scenarios)} scenarios`),
+      createElement("span", "", `${show(card.stats.decisions)} decisions`),
+      createElement("span", card.stats.openGaps ? "stat-attention" : "", `${show(card.stats.openGaps)} open gaps`),
+    );
+    button.append(stats);
+    const footer = createElement("span", "board-card-footer");
+    const gates = createElement(
+      "span",
+      `gate-summary${card.gateSummary.hasFail ? " has-fail" : ""}`,
+      card.gateSummary.label,
+    );
+    if (card.gateSummary.transition) gates.title = card.gateSummary.transition;
+    footer.append(gates);
+    if (card.gateSummary.hasFail) {
+      footer.append(createElement("span", "gate-fail", `FAIL: ${card.gateSummary.failedGates.join(", ")}`));
+    }
+    footer.append(
+      createElement("span", "", `${card.signoffCount} sign-off${card.signoffCount === 1 ? "" : "s"}`),
+    );
+    button.append(footer);
+    button.addEventListener("click", () => onSelect(card.id));
+    return button;
+  }
+
+  function renderBoardLanes(board, container, selectedBcId, onSelect) {
+    container.replaceChildren();
+    for (const column of board.columns) {
+      const columnElement = createElement("section", `board-column${column.optional ? " optional" : ""}`);
+      const headingId = `board-column-${slug(column.state)}`;
+      columnElement.setAttribute("aria-labelledby", headingId);
+      const heading = createElement("h3", "board-column-title");
+      heading.id = headingId;
+      heading.append(
+        createElement("span", "", column.label),
+        createElement("span", "board-column-count", String(column.cards.length)),
+      );
+      columnElement.append(heading);
+      if (column.cards.length === 0) columnElement.append(createElement("p", "muted board-empty", "No BCs"));
+      for (const card of column.cards) {
+        columnElement.append(renderBoardCard(card, card.id === selectedBcId, onSelect));
+      }
+      container.append(columnElement);
+    }
+  }
+
+  function renderGapLedger(board, container) {
+    container.replaceChildren();
+    appendTable(
+      container,
+      "",
+      ["ID", "Gap", "State", "Dispositions by source", "Warnings"],
+      board.gaps.map((gap) => {
+        const state = createElement("span", `gap-state gap-state-${slug(gap.state)}`, gap.state);
+        const sources = createElement("ul", "gap-sources");
+        for (const item of gap.sources) {
+          const li = createElement("li");
+          li.append(createElement("code", "", item.location || "–"));
+          li.append(document.createTextNode(` — ${item.disposition || "–"}${item.owner ? ` (${item.owner})` : ""}`));
+          sources.append(li);
+        }
+        return {
+          className: gap.mixed ? "gap-mixed" : "",
+          cells: [gap.id, gap.gap, state, sources, gap.warningCount ? warningBadge(gap.warningCount) : ""],
+        };
+      }),
+      { empty: "No gaps in the projection (schema v1 and legacy projects carry none)." },
+    );
+  }
+
+  function renderBoardDiagnostics(board, details, list, countElement) {
+    list.replaceChildren();
+    countElement.textContent = String(board.diagnostics.length);
+    if (board.diagnostics.length === 0) {
+      list.append(createElement("p", "muted", "No diagnostics."));
+    }
+    for (const diagnostic of board.diagnostics) {
+      const item = createElement("div", `diagnostic ${diagnostic.severity || "warning"}`);
+      const location = diagnostic.file ? `${diagnostic.file}${diagnostic.line ? `:${diagnostic.line}` : ""}` : "";
+      if (diagnostic.code) item.append(createElement("strong", "", `${diagnostic.code} `));
+      item.append(document.createTextNode(diagnostic.message || ""));
+      if (location) {
+        item.append(document.createTextNode(" "));
+        item.append(createElement("code", "", location));
+      }
+      list.append(item);
+    }
+    details.open = board.warnings.expanded;
+  }
+
+  // Detail panel for one BC on the Board. Sections are appended in order; the
+  // timeline slot is reserved for the git-derived status report (T7b).
+  function renderBoardDetails(project, board, bcId, container) {
+    container.replaceChildren();
+    const bc = project && project.boundedContexts.find((item) => item.id === bcId);
+    const card = board && board.cards.find((item) => item.id === bcId);
+    if (!bc || !card) {
+      container.append(createElement("p", "muted", "Select a bounded context card to see its lifecycle evidence."));
+      return;
+    }
+    const heading = createElement("div", "project-detail-heading");
+    heading.append(createElement("h2", "", bc.name));
+    if (card.warningCount) heading.append(warningBadge(card.warningCount));
+    container.append(heading);
+    container.append(
+      createElement("p", "project-meta", `${card.classification} · ${card.role} · ${card.lifecycle}`),
+    );
+    container.append(
+      createElement(
+        "p",
+        "",
+        `Next skill: ${card.nextSkill || "–"} · ${card.gateSummary.label}` +
+          `${card.gateSummary.transition ? ` (${card.gateSummary.transition})` : ""}`,
+      ),
+    );
+    if (card.blocked) appendList(container, "Blockers", card.blockers, String);
+    if (card.warningCount) {
+      appendList(container, "Warnings", card.warnings, (item) => `${item.code ? `${item.code}: ` : ""}${item.message}`);
+    }
+    const timelineSlot = createElement("section", "project-detail-section board-timeline-slot");
+    timelineSlot.dataset.slot = "timeline";
+    timelineSlot.dataset.bcId = bc.id;
+    timelineSlot.hidden = true;
+    container.append(timelineSlot);
+    appendTable(
+      container,
+      "Transitions",
+      ["Date", "From", "To", "Evidence", "Actor"],
+      (bc.transitions || []).map((item) => ({ cells: [item.date, item.from, item.to, item.evidence, item.actor] })),
+    );
+    appendTable(
+      container,
+      "Gates",
+      ["Transition", "Gate", "Kind", "Result", "Evidence", "Signed by", "Date"],
+      (bc.gates || []).map((item) => ({
+        className: item.result === "FAIL" ? "gate-row-fail" : "",
+        cells: [
+          transitionKey(item.transition),
+          item.gate,
+          item.kind,
+          resultBadge(item.result),
+          item.evidence,
+          item.signedBy,
+          item.date,
+        ],
+      })),
+    );
+    appendTable(
+      container,
+      "Open items",
+      ["ID", "Item", "Owner", "Disposition"],
+      (bc.openItems || []).map((item) => ({ cells: [item.id, item.item, item.owner, item.disposition] })),
+    );
+    appendTable(
+      container,
+      "Sign-offs",
+      ["Kind", "File", "Date", "Outcome"],
+      (bc.signoffs || []).map((item) => ({
+        cells: [item.kind, createElement("code", "", item.file || "–"), item.date, item.outcome || item.status],
+      })),
+    );
+  }
+
   function indexFiles(files) {
     const map = new Map();
     for (const file of Array.from(files || [])) {
@@ -1089,7 +1580,19 @@
     return map;
   }
 
+  // Returns { project, diagnostics, statusReport }. statusReport is the optional
+  // .hgate/status.json (null when absent); the Board does not render it yet.
   async function loadProject(fileMap) {
+    const loaded = await loadProjectModel(fileMap);
+    const status = await readStatusReport(fileMap);
+    return {
+      project: loaded.project,
+      diagnostics: [...loaded.diagnostics, ...status.diagnostics],
+      statusReport: status.statusReport,
+    };
+  }
+
+  async function loadProjectModel(fileMap) {
     const manifest = fileMap.get("docs/hgate-project.json");
     if (manifest) {
       try {
@@ -1149,11 +1652,27 @@
     const scenarioLoadButton = document.getElementById("scenarioLoadProjectBtn");
     const scenarioStatus = document.getElementById("scenarioProjectStatus");
     const scenarioSources = document.getElementById("scenarioSources");
+    const boardTab = document.getElementById("boardTab");
+    const boardPanel = document.getElementById("boardPanel");
+    const boardLoadButton = document.getElementById("boardLoadProjectBtn");
+    const boardStatus = document.getElementById("boardProjectStatus");
+    const boardLanes = document.getElementById("boardLanes");
+    const boardDetails = document.getElementById("boardDetails");
+    const gapLedger = document.getElementById("gapLedger");
+    const boardDiagnostics = document.getElementById("boardDiagnostics");
+    const boardDiagnosticsList = document.getElementById("boardDiagnosticsList");
+    const boardDiagnosticsCount = document.getElementById("boardDiagnosticsCount");
+    const warningBanner = document.getElementById("warningBanner");
+    const warningBannerText = document.getElementById("warningBannerText");
+    const warningBannerShow = document.getElementById("warningBannerShow");
     if (!scenarioTab || !projectTab || !folderInput) return;
     let diagramZoom = 100;
     let topology = null;
     let projectFiles = new Map();
     let loadedProject = null;
+    let loadedBoard = null;
+    // Optional .hgate/status.json (or null). Kept for the per-BC timeline (T7b).
+    let statusReport = null;
     let selectedBcId = null;
     let activeScenarioId = null;
 
@@ -1214,20 +1733,37 @@
       activate("scenario");
     };
 
+    const renderBoard = () => {
+      if (!boardLanes || !loadedBoard) return;
+      renderBoardLanes(loadedBoard, boardLanes, selectedBcId, selectBc);
+      renderBoardDetails(loadedProject, loadedBoard, selectedBcId, boardDetails);
+    };
+
     const selectBc = (bcId) => {
       selectedBcId = bcId;
       if (loadedProject) renderDetails(loadedProject, bcId, details);
+      if (boardLanes && loadedBoard) {
+        for (const card of boardLanes.querySelectorAll(".board-card")) {
+          card.setAttribute("aria-pressed", String(card.dataset.bcId === bcId));
+        }
+        renderBoardDetails(loadedProject, loadedBoard, bcId, boardDetails);
+      }
       const path = scenarioPathFor(bcId);
       viewScenariosButton.disabled = !path;
       viewScenariosButton.title = path ? path : "No bdd-scenarios.md found for this bounded context";
     };
 
-    const activate = (tab) => {
-      const projectActive = tab === "project";
-      scenarioPanel.hidden = projectActive;
-      projectPanel.hidden = !projectActive;
-      scenarioTab.setAttribute("aria-selected", String(!projectActive));
-      projectTab.setAttribute("aria-selected", String(projectActive));
+    const tabs = [
+      ["scenario", scenarioTab, scenarioPanel],
+      ["project", projectTab, projectPanel],
+      ["board", boardTab, boardPanel],
+    ].filter(([, tab, panel]) => tab && panel);
+
+    const activate = (name) => {
+      for (const [tabName, tab, panel] of tabs) {
+        panel.hidden = tabName !== name;
+        tab.setAttribute("aria-selected", String(tabName === name));
+      }
     };
 
     const showLoadError = (message) => {
@@ -1249,11 +1785,20 @@
       activeScenarioId = null;
       const loaded = await loadProject(fileMap);
       loadedProject = loaded.project;
+      statusReport = loaded.statusReport;
+      loadedBoard = buildBoardModel(loaded.project);
+      if (warningBanner) renderWarningBanner(loadedBoard, warningBanner, warningBannerText);
+      if (boardDiagnostics) {
+        renderBoardDiagnostics(loadedBoard, boardDiagnostics, boardDiagnosticsList, boardDiagnosticsCount);
+      }
+      if (gapLedger) renderGapLedger(loadedBoard, gapLedger);
       renderSummary(loaded.project, summary);
       renderDiagnostics(loaded.diagnostics, diagnostics);
       topology = renderTopology(loaded.project, graph, selectBc);
       updateZoom(100);
-      selectBc(loaded.project.boundedContexts[0] && loaded.project.boundedContexts[0].id);
+      selectedBcId = loaded.project.boundedContexts[0] && loaded.project.boundedContexts[0].id;
+      renderBoard();
+      selectBc(selectedBcId);
       renderScenarioSources();
       if (scenarioStatus) {
         const items = listScenarioSources(loadedProject, projectFiles).flatMap((group) => group.items);
@@ -1261,6 +1806,14 @@
         scenarioStatus.textContent =
           `${folderName ? `${folderName}: ` : ""}${withScenarios} of ${items.length} ` +
           `bounded context${items.length === 1 ? "" : "s"} with scenarios (${skillsRootOf(fileMap)})`;
+      }
+      if (boardStatus) {
+        boardStatus.textContent =
+          `${folderName ? `${folderName}: ` : ""}${loadedProject.boundedContexts.length} bounded ` +
+          `context${loadedProject.boundedContexts.length === 1 ? "" : "s"}, ` +
+          `${loadedBoard.gaps.length} gap${loadedBoard.gaps.length === 1 ? "" : "s"}, ` +
+          `schema v${loadedProject.schemaVersion}` +
+          (loadedProject.sourceMode === "legacy" ? " (legacy Markdown)" : "");
       }
     };
 
@@ -1288,6 +1841,18 @@
 
     scenarioTab.addEventListener("click", () => activate("scenario"));
     projectTab.addEventListener("click", () => activate("project"));
+    if (boardTab) boardTab.addEventListener("click", () => activate("board"));
+    if (boardLoadButton) boardLoadButton.addEventListener("click", pickProject);
+    if (warningBannerShow) {
+      warningBannerShow.addEventListener("click", () => {
+        activate("board");
+        if (!boardDiagnostics) return;
+        boardDiagnostics.open = true;
+        boardDiagnostics.scrollIntoView({ block: "start" });
+        const summaryElement = boardDiagnostics.querySelector("summary");
+        if (summaryElement) summaryElement.focus();
+      });
+    }
     selectButton.addEventListener("click", pickProject);
     if (scenarioLoadButton) scenarioLoadButton.addEventListener("click", pickProject);
     viewScenariosButton.addEventListener("click", () =>
@@ -1324,8 +1889,20 @@
     parseFrontmatter,
     parsePorts,
     parseAcl,
+    SUPPORTED_SCHEMA_VERSIONS,
+    MAIN_LIFECYCLES,
+    OPTIONAL_LIFECYCLES,
+    STATUS_REPORT_PATH,
     validateProject,
     normalizeProject,
+    transitionKey,
+    transitionTarget,
+    latestTransition,
+    summarizeGates,
+    warningBannerText,
+    buildBoardModel,
+    readStatusReport,
+    isProjectFile,
     buildLegacyProject,
     indexFiles,
     skillsRootOf,
