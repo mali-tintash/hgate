@@ -94,6 +94,13 @@ Use the conversation and available artifacts to determine:
 When available, read the target BC's `status.md`. Treat it as a navigation aid,
 not proof. Confirm material claims against the actual artifacts.
 
+Read its `## Gate Evidence` table and apply the Validity Rules in
+`references/lifecycle-gates.md`. If any required gate of the transition into the
+current `lifecycle:` value is missing, `FAIL`, or `N/A`, treat that state as not
+reached: report the missing gate and recommend the skill that records it. If
+`status.md` has no Gate Evidence table, report it as unmigrated and qualify the
+stage.
+
 The viewer may read `docs/hgate-project.json` first, but the guide must treat it
 as a derived index, not authority. If it conflicts with a Markdown map,
 BC-local specification, ACL, or `status.md`, report the projection as stale and
@@ -225,7 +232,9 @@ artifacts and local lifecycle status after completing its gates.
 - **Use for:** Read-only audit of one BC
 - **Mode:** Current invocation; keep one BC in scope
 - **Consumes:** One BC's specification, and source/tests in full mode
-- **Produces:** Evidence-based findings and code-verification classifications
+- **Produces:** Evidence-based findings and code-verification classifications,
+  persisted under `docs/verification/bc-reviews/<bc-name>/`, and the
+  `GATE-SREV-REPORT` or `GATE-VER-REPORT` row
 - **Complete when:** Every finding is cited and classified
 
 ### `bc-implementation`

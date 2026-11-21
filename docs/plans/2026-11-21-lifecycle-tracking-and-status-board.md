@@ -153,14 +153,14 @@ acceptance boxes here.
     - [ ] Catalog matches the D6 outcome; every transition in lifecycle-status.md maps to at least one gate
     - [ ] Template contains no ambiguous placeholders the generator would mis-parse
 
-- [ ] **T3a — Specialist skills write gate evidence (refinement, exploration)**
+- [x] **T3a — Specialist skills write gate evidence (refinement, exploration)**
   - Depends on: T2
   - Files: `skills/domain-exploration/SKILL.md`, `skills/bc-refinement/SKILL.md` (+ phase-6/7 references)
   - Acceptance:
     - [ ] Each skill's close phase writes Gate Evidence rows for its transition before changing `lifecycle:`
     - [ ] Existing phase numbering unchanged
 
-- [ ] **T3b — Specialist skills write gate evidence (review, implementation, enhancement)**
+- [x] **T3b — Specialist skills write gate evidence (review, implementation, enhancement)**
   - Depends on: T2
   - Files: `skills/bc-review/SKILL.md` + `references/report-template.md` (persist report at `docs/verification/bc-reviews/<bc>/YYYY-MM-DD-<mode>.md`), `skills/bc-implementation/SKILL.md`, `skills/bc-enhancement/SKILL.md`, `skills/hgate-guide/SKILL.md` (reads gates when diagnosing)
   - Acceptance:
@@ -303,3 +303,5 @@ Parallel-safe after T2: T3a, T3b, T4a. After T4a: T4b, T4c, T5, T6a.
 |---|---|---|---|
 | 2026-11-21 | T0 | Done | D1 both, D2 gitignored, D3 warning-not-missable, D4 v2, D5 hash, D6 accepted. T6b method changed to row blame after finding live-pet commits transitions together |
 | 2026-11-21 | T1, T2 | Done | ADR-009 (two ADRs share 008); `lifecycle-gates.md` catalog + Gate Evidence format + validity rules; template gains Gate Evidence (DISC-BOUNDARY + PROJ-SYNC rows) and Open Items `ID`. Five transitions only require GATE-PROJ-SYNC. Parsers must treat `[...]` cells and `YYYY-MM-DD` as unfilled. Tests 129/130 (pre-existing BDD009 env failure) |
+| 2026-11-21 | T3a | Done | domain-exploration Phase 10 and bc-refinement Phase 0/5g/6/7 write gate rows before `lifecycle:`; resolved gaps must update map dispositions. Open: map templates should state gap IDs are shared with the Gap Register (fold into T9) |
+| 2026-11-21 | T3b | Done | bc-review persists reports to `docs/verification/bc-reviews/` with frontmatter and records SREV/VER gates (failing review = FAIL row, no transition; code-verification mode records no gate); implementation/enhancement gate tables; hgate-guide treats unmet gates as not reached |
