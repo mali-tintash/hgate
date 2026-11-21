@@ -69,7 +69,8 @@ When repository access is available, persist the confirmed output as:
 - `docs/hgate-project.json`, the deterministic machine-readable projection of
   the confirmed maps and BC-local authoritative artifacts
 - `.github/skills/<bc-name>/status.md` for each confirmed BC, created from the
-  `bc-refinement` status template with lifecycle `DISCOVERED`
+  `bc-refinement` status template with lifecycle `DISCOVERED` and the Gate
+  Evidence rows described in Phase 10
 
 If an artifact already exists, update only confirmed boundary changes. Do not
 overwrite unrelated BC entries or lifecycle history.
@@ -433,7 +434,8 @@ Every BC handoff should include:
 Persist the confirmed domain and context maps before closing the session. Create
 or update each confirmed BC's local `status.md` and record the transition to
 `DISCOVERED`. The domain map must link to local status files instead of
-duplicating mutable lifecycle state.
+duplicating mutable lifecycle state. Gap IDs in the Gap Register (`G<n>`) carry
+over unchanged into the `docs/domain-map.md` Open Boundary Gaps table.
 
 Then synchronize `docs/hgate-project.json` because confirmed boundaries,
 relationships, journeys, and lifecycle values changed. Project schema version 1
@@ -443,6 +445,23 @@ contains `project`, `domains`, `boundedContexts`, `relationships`, and
 collection deterministically by stable ID (and nested ports/ACLs by name).
 Validate the result against `docs/hgate-project.schema.json`. Do not complete
 the handoff if the projection is stale or invalid.
+
+Record gate evidence in each new or updated BC `status.md` for `- -> DISCOVERED`
+(catalog and rules: `skills/hgate-guide/references/lifecycle-gates.md`):
+
+1. `GATE-DISC-BOUNDARY` (`H`): Result `PASS` only after the user confirms the
+   final report; Evidence names the BC row in `docs/domain-map.md` and its
+   relationships in `docs/context-map.md`; Signed by `<Name> (Tech lead)` or
+   `<Name> (Technical PM)`. Ask for the signer's name and role; never invent one.
+2. `GATE-PROJ-SYNC` (`D`): Result `PASS` after `npm run project:sync` and
+   `npm run project:check` report in-sync; Signed by `-`.
+3. Open Items: one row per open or deferred gap affecting this BC, using the
+   same `G<n>` ID as `docs/domain-map.md` Open Boundary Gaps (or
+   `docs/context-map.md` Open Relationship Gaps), with matching owner and
+   disposition. Use `OI-<n>` only for items that are not map gaps.
+
+Write order: gate rows, then the Transition History row, then `lifecycle:` and
+Current State. For an existing BC, append rows; never rewrite earlier history.
 
 ## Recommendation Protocol
 
@@ -500,7 +519,9 @@ Domain exploration is complete only when:
 - Remaining open items are visible and assigned a disposition
 - The user explicitly confirms the final report
 - Confirmed maps are persisted when repository access is available
-- Every confirmed BC has a local lifecycle status artifact
+- Every confirmed BC has a local lifecycle status artifact with passing
+  `GATE-DISC-BOUNDARY` and `GATE-PROJ-SYNC` rows for `- -> DISCOVERED` and Open
+  Items IDs matching the map gap IDs
 - Stable IDs exist for every projected BC, relationship, and journey
 - `docs/hgate-project.json` matches the authoritative artifacts, has
   deterministic ordering and no timestamps, and passes schema validation

@@ -24,7 +24,11 @@ back to checking them manually.
 9. Every concluded BC decision from the session is recorded in this BC's
    `decisions.md`; cross-cutting decisions link to standalone ADRs.
 10. The BC-local `status.md` reflects `REFINED` only after user approval and all
-    validation checks pass.
+    validation checks pass, and only after passing `GATE-REF-SPEC`,
+    `GATE-REF-APPROVAL`, and `GATE-PROJ-SYNC` rows for `REFINING -> REFINED`
+    are written (see Phase 5g). The passing `verify:spec` run above is the
+    `GATE-REF-SPEC` evidence. Open Items `G<n>` dispositions match
+    `docs/domain-map.md` and `docs/context-map.md`.
 11. Every Scenario/Scenario Outline has one valid, repository-unique
     `@scenario:<ID>` tag; no ID is duplicated or reused. *(tool: VSP006-VSP009)*
 12. `domain-model.md` contains the structured Ports table and every port has a
@@ -41,7 +45,7 @@ back to checking them manually.
     metadata and one valid, repository-unique `@property:<ID>`; no property
     merely restates one named BDD example.
 
-Items 3, 5, 7, 8, and 9 plus 13-14 remain judgment checks (rule coverage, VO
+Items 3, 5, 7, 8, 9, and 10 plus 13-14 remain judgment checks (rule coverage, VO
 discipline, BC isolation, YAGNI, decision records, projection). Report any
 violations to the user after completing the update.
 

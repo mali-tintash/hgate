@@ -267,9 +267,30 @@ update the BC-local lifecycle status:
 REFINING -> REFINED
 ```
 
-Record the approval evidence, clear resolved blockers, recommend
-`bc-review spec-only` or `bc-implementation`, and append the transition history.
-If refinement cannot complete, use `REFINING -> BLOCKED` and record the blocker,
-owner, and return state.
+Follow `skills/hgate-guide/references/lifecycle-gates.md` and write in this
+order:
+
+1. Gate Evidence rows for `REFINING -> REFINED`:
+   - `GATE-REF-SPEC` (`D`): `npm run verify:spec -- --bc <bc-name>`
+     (refinement phase) exit 0; Signed by `-`.
+   - `GATE-REF-APPROVAL` (`H`): Evidence lists every approved spec file path;
+     Signed by `<Name> (Tech lead)` or `<Name> (Technical PM)`. Ask for the
+     signer's name and role; never invent one.
+   - `GATE-PROJ-SYNC` (`D`): `npm run project:sync` then `npm run project:check`
+     in-sync; Signed by `-`.
+2. The Transition History row.
+3. `lifecycle: REFINED` and the Current State section.
+
+Record a failed gate as a `FAIL` row and do not change `lifecycle:`. Clear
+resolved blockers and recommend `bc-review spec-only` or `bc-implementation`.
+
+Keep Open Items IDs stable (`G<n>` from the maps, or `OI-<n>`). When a `G<n>`
+gap is resolved or its disposition changes, update the same ID's disposition in
+`docs/domain-map.md` Open Boundary Gaps or `docs/context-map.md` Open
+Relationship Gaps in the same session, so the BC and the maps never disagree.
+
+If refinement cannot complete, use `REFINING -> BLOCKED`: write a `GATE-BLOCK`
+(`R`) row with blocker, owner, and return state, and a `GATE-PROJ-SYNC` row,
+before the Transition History row and `lifecycle:`.
 
 ---
