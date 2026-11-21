@@ -1,6 +1,6 @@
 # Plan: Lifecycle Tracking, Gate Evidence and Status Board
 
-**Status:** DRAFT — awaiting decisions D1–D6 before execution
+**Status:** APPROVED 2026-11-21 (decisions D1–D6 resolved, see §3)
 **Branch:** `enhanced-reviewability`
 **Date:** 2026-11-21
 **Scope:** Track A (project lifecycle data into the projection + status board) and
@@ -50,9 +50,12 @@ without change summaries.
 
 ### How "what changed" is derived (Track B)
 
-1. Walk `git log` for each BC's `status.md`; read `lifecycle:` frontmatter at
-   each commit. A commit where the value changes is that transition's commit.
-   No hashes are stored by hand.
+1. Attribute each row of a BC's `status.md` Transition History to the commit
+   that introduced it (`git blame` on that line; fall back to `git log -S`).
+   Several transitions recorded in one session share one commit; rows not yet
+   committed are attributed to the working tree. No hashes are stored by hand.
+   (Frontmatter-change detection alone would miss transitions committed
+   together, which is the normal case after a refinement session.)
 2. At each transition commit, and at `HEAD`, extract a **semantic snapshot** of
    the BC: scenario IDs + content hash, business rules + content hash,
    decision headings, domain-model sections, ports, ACLs, gates, open items.
@@ -68,14 +71,23 @@ intermediate transitions into one commit (documented limitation).
 
 ## 3. Decisions needed before execution
 
-| ID | Decision | Options | Recommendation |
-|---|---|---|---|
-| D1 | Default "what changed" baseline | (a) since the BC's last lifecycle transition, plus uncommitted; (b) since `HEAD~1`; (c) both | (a); the timeline also shows every step-to-step diff |
-| D2 | Status report location | (a) gitignored `.hgate/status.json`; (b) committed | (a) — avoids the self-reference problem |
-| D3 | Gap drift severity | (a) warning in viewer and `verify-spec`, non-failing; (b) fails `project:check` | (a) first; promote later |
-| D4 | Schema versioning | (a) `schemaVersion: 2`, viewer reads 1 and 2; (b) optional fields in v1 | (a), with a new ADR (ADR-008 asked to revisit past v1) |
-| D5 | Business-rule identity for diffs | (a) content hash, number as label (renumbering shows as modified); (b) introduce stable `BR-<BC>-NNN` IDs | (a) now; (b) in backlog |
-| D6 | Gate catalog | Draft in §4 | Review and adjust |
+| ID | Decision | Resolution (2026-11-21) |
+|---|---|---|
+| D1 | "What changed" baseline | **Both:** per BC, since its last lifecycle transition; and since the previous commit (`HEAD~1`); plus uncommitted working-tree changes. Timeline also shows every step-to-step diff |
+| D2 | Status report location | Gitignored `.hgate/status.json` (avoids the self-reference problem) |
+| D3 | Gap drift severity | **Warning only, but not missable** — see §3.1 |
+| D4 | Schema versioning | `schemaVersion: 2`; viewer reads 1 and 2; new ADR (ADR-008 asked to revisit past v1) |
+| D5 | Business-rule identity | Content hash with the rule number as label; renumbering shows as modified. Stable rule IDs stay in backlog |
+| D6 | Gate catalog | §4 accepted as drafted |
+
+### 3.1 "Not missable" drift warnings (D3)
+
+Warnings never fail a command, but every surface must show them:
+
+- **Viewer:** a persistent banner at the top of every tab with the warning count, not dismissible while warnings exist; amber badge on each affected BC card and gap row; Board tab opens with the drift list expanded when count > 0.
+- **CLI:** `project:sync`, `project:check` and `verify-spec` print a `WARNINGS (n)` block as the last lines of output, after the success line, and exit 0.
+- **CI:** emit `::warning file=…,line=…::` annotations (GitHub) and a summary line; Bitbucket gets the same summary in the log.
+- **Projection:** `diagnostics[]` with stable codes so tools can count them.
 
 ---
 
@@ -123,7 +135,7 @@ acceptance boxes here.
 
 ### Phase 0 — Decisions (main thread, no sub-agent)
 
-- [ ] **T0 — Resolve D1–D6** and mark this plan `APPROVED`.
+- [x] **T0 — Resolve D1–D6** and mark this plan `APPROVED`.
 
 ### Phase 1 — Model and rules
 
@@ -172,6 +184,7 @@ acceptance boxes here.
   - Acceptance:
     - [ ] Top-level `gaps[]` with sources and dispositions per file
     - [ ] Drift (differing dispositions) emitted as `diagnostics[]` warnings, non-failing per D3
+    - [ ] CLI prints the trailing `WARNINGS (n)` block per §3.1
     - [ ] Fixture reproduces the live-pet G11–G13 drift case
 
 - [ ] **T4c — Artifact stats and sign-off index**
@@ -185,7 +198,7 @@ acceptance boxes here.
   - Depends on: T4a
   - Acceptance:
     - [ ] Current `lifecycle` requires PASS rows for the gates of the transition into it (new `HGS` codes)
-    - [ ] Gap drift reported as warning
+    - [ ] Gap drift reported as warning with the trailing `WARNINGS (n)` block per §3.1
     - [ ] Tests for pass, missing gate, failed gate
 
 ### Phase 3 — Git-derived status report (Track B)
@@ -201,8 +214,8 @@ acceptance boxes here.
   - Depends on: T6a
   - Files: `tools/project-status/generate.mjs`, README, tests that build temporary git repos
   - Acceptance:
-    - [ ] Derives each transition's commit from `status.md` history
-    - [ ] Emits step-to-step diffs, last-transition→HEAD, HEAD→worktree (per D1)
+    - [ ] Attributes each Transition History row to its introducing commit (blame), including rows committed together and uncommitted rows
+    - [ ] Emits step-to-step diffs, last-transition→HEAD, `HEAD~1`→HEAD, HEAD→worktree (per D1)
     - [ ] Optionally embeds `verify:bdd --format json` coverage when tests exist
     - [ ] Clear message on shallow clone or missing git; no timestamps; idempotent
 
@@ -213,13 +226,14 @@ acceptance boxes here.
   - Acceptance:
     - [ ] Lifecycle swimlanes with BC cards (classification, next skill, blockers, stats)
     - [ ] Gap ledger with drift warnings; diagnostics panel
+    - [ ] Persistent, non-dismissible warning banner and amber badges per §3.1
     - [ ] Works on v1 and v2 projections; tests in `project-viewer.test.js`
 
 - [ ] **T7b — Per-BC timeline and change view (status report)**
   - Depends on: T6b, T7a
   - Acceptance:
     - [ ] Timeline of transitions with gates, signer, evidence links
-    - [ ] Each step expands to its semantic diff; "since last transition" and "uncommitted" shown at top
+    - [ ] Each step expands to its semantic diff; "since last transition", "since previous commit" and "uncommitted" shown at top
     - [ ] Degrades gracefully when `.hgate/status.json` is absent
 
 ### Phase 5 — Wiring and docs
@@ -242,7 +256,7 @@ acceptance boxes here.
 - [ ] **T10 — Live-pet migration and proof**
   - Depends on: T9
   - Steps: copy updated `tools/` and skills; migrate both BCs' `status.md` (Gate Evidence backfill, Open Items IDs); fix stale gaps in `domain-map.md`; run `project:sync`, `verify-spec`, `project:status`; open the viewer
-  - Note: the live-pet folder is a git worktree whose git directory is outside the connected folder, so git commands fail from the agent shell. Either run `project:status` locally or grant access to the main `live-pet` repo.
+  - Note: the connected live-pet folder is a git worktree whose git directory (`/Users/muhammadali/Codes/live-pet/.git`) is outside the connected folder, so git fails from the agent shell. `github.com/mali-tintash/live-pet` `main` has only the 3 setup commits; the Pet Mind work is not pushed. Before T10: push the worktree branch, or grant folder access to `/Users/muhammadali/Codes/live-pet`.
   - Acceptance:
     - [ ] Board shows Pet Mind `REFINED`, Pet Companion `DISCOVERED`, gap ledger, drift cleared after the fix
     - [ ] Pet Mind timeline shows three transitions with changes
@@ -287,3 +301,4 @@ Parallel-safe after T2: T3a, T3b, T4a. After T4a: T4b, T4c, T5, T6a.
 
 | Date | Task | Result | Notes |
 |---|---|---|---|
+| 2026-11-21 | T0 | Done | D1 both, D2 gitignored, D3 warning-not-missable, D4 v2, D5 hash, D6 accepted. T6b method changed to row blame after finding live-pet commits transitions together |
