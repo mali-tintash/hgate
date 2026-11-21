@@ -33,6 +33,11 @@ Exit codes: `0` ok / in sync, `1` drift (`HGP001`) or unprojectable sources
 | BC id, name, domain, classification, role, owns, doesNotOwn | `## Bounded Context Inventory` table |
 | `capabilities` | `## Business Capabilities` table (Owning BC = BC ID or name) |
 | `lifecycle` | `lifecycle:` frontmatter of the BC's `status.md` |
+| `nextSkill` | `**Recommended next skill:**` in `status.md` (backticks stripped; `None`/placeholder → `null`) |
+| `blockers` | bullets (or inline value) after `**Blockers:**` in `status.md` `## Current State`, excluding `None` |
+| `transitions` | `## Transition History` table in `status.md` (`date`, `from`, `to`, `evidence`, `actor`), file order |
+| `gates` | `## Gate Evidence` table in `status.md` (`transition` as `FROM -> TO`, `gate`, `kind` H/D/R, `result` PASS/FAIL/WAIVED/N/A, `evidence`, `signedBy` or `null`, `date`), file order; malformed rows fail with `HGP002` |
+| `openItems` | `## Open Items` table in `status.md` (`id` or `null` when the table has no ID column, `item`, `owner`, `disposition`), file order |
 | `purpose` | first paragraph of `## Purpose` in the BC `SKILL.md` |
 | `ports` | `## Ports` table in `domain-model.md` |
 | `acls` | each `*-acl.md`: frontmatter `acl`/`name`, `system`, `direction`; first paragraph of `## Purpose` |
@@ -41,7 +46,9 @@ Exit codes: `0` ok / in sync, `1` drift (`HGP001`) or unprojectable sources
 
 The BC directory is the dirname of the table's `Local status` path (falling
 back to `.github/skills/<bc-id>`). Template placeholder rows (`[...]`) are
-skipped. Cells may be wrapped in backticks; multiple `owns` entries are
+skipped; in `status.md` tables a row is skipped when any cell is a whole
+`[...]` or `<...>` cell or contains `YYYY-MM-DD`. Missing `status.md` sections
+project as empty arrays / `null`. Cells may be wrapped in backticks; multiple `owns` entries are
 separated by `;`.
 
 ## Determinism

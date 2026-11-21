@@ -169,7 +169,7 @@ acceptance boxes here.
 
 ### Phase 2 — Projection (Track A)
 
-- [ ] **T4a — Schema v2 + status parsing**
+- [x] **T4a — Schema v2 + status parsing**
   - Depends on: T2
   - Files: `docs/hgate-project.schema.json`, `tools/project-projection/generate.mjs`, tests and fixtures, `docs/hgate-project.example.json`
   - Adds per BC: `transitions[]`, `gates[]`, `blockers[]`, `nextSkill`, `openItems[]`
@@ -305,3 +305,4 @@ Parallel-safe after T2: T3a, T3b, T4a. After T4a: T4b, T4c, T5, T6a.
 | 2026-11-21 | T1, T2 | Done | ADR-009 (two ADRs share 008); `lifecycle-gates.md` catalog + Gate Evidence format + validity rules; template gains Gate Evidence (DISC-BOUNDARY + PROJ-SYNC rows) and Open Items `ID`. Five transitions only require GATE-PROJ-SYNC. Parsers must treat `[...]` cells and `YYYY-MM-DD` as unfilled. Tests 129/130 (pre-existing BDD009 env failure) |
 | 2026-11-21 | T3a | Done | domain-exploration Phase 10 and bc-refinement Phase 0/5g/6/7 write gate rows before `lifecycle:`; resolved gaps must update map dispositions. Open: map templates should state gap IDs are shared with the Gap Register (fold into T9) |
 | 2026-11-21 | T3b | Done | bc-review persists reports to `docs/verification/bc-reviews/` with frontmatter and records SREV/VER gates (failing review = FAIL row, no transition; code-verification mode records no gate); implementation/enhancement gate tables; hgate-guide treats unmet gates as not reached |
+| 2026-11-21 | T4a | Done | Schema v2: per BC `nextSkill, blockers, transitions, gates, openItems`; legacy status.md generates (empty arrays, `id: null`); malformed gate rows HGP002; v1 local schema → HGP003 upgrade message (document in T9). Schema rejects unknown fields, so T4b/T4c must add theirs. Viewer rejects v2 until T7a. Tests 139/140 |

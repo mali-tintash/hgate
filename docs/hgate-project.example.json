@@ -1,6 +1,6 @@
 {
   "$schema": "./hgate-project.schema.json",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "project": {
     "name": "Example commerce project",
     "description": "Illustrates the hGATE machine-readable project projection."
@@ -49,6 +49,140 @@
           "file": ".github/skills/catalog/ecommerce-catalog-acl.md"
         }
       ],
+      "nextSkill": "bc-enhancement",
+      "blockers": ["Awaiting eCommerce Core sandbox credentials for contract tests", "G3 channel fallback owner not named"],
+      "transitions": [
+        {
+          "date": "2026-11-01",
+          "from": "-",
+          "to": "DISCOVERED",
+          "evidence": "Confirmed domain exploration",
+          "actor": "domain-exploration session"
+        },
+        {
+          "date": "2026-11-05",
+          "from": "DISCOVERED",
+          "to": "REFINING",
+          "evidence": "Refinement started",
+          "actor": "bc-refinement session"
+        },
+        {
+          "date": "2026-11-10",
+          "from": "REFINING",
+          "to": "REFINED",
+          "evidence": "Spec approved",
+          "actor": "bc-refinement session"
+        },
+        {
+          "date": "2026-11-14",
+          "from": "REFINED",
+          "to": "IMPLEMENTING",
+          "evidence": "`verify-spec --phase implementation` OK",
+          "actor": "bc-implementation session"
+        },
+        {
+          "date": "2026-11-18",
+          "from": "IMPLEMENTING",
+          "to": "IMPLEMENTED",
+          "evidence": "BDD sign-off recorded",
+          "actor": "bc-implementation session"
+        },
+        {
+          "date": "2026-11-20",
+          "from": "IMPLEMENTED",
+          "to": "VERIFIED",
+          "evidence": "`bc-review full` report, no blocking findings",
+          "actor": "bc-review session"
+        }
+      ],
+      "gates": [
+        {
+          "transition": "- -> DISCOVERED",
+          "gate": "GATE-DISC-BOUNDARY",
+          "kind": "H",
+          "result": "PASS",
+          "evidence": "BC row in `docs/domain-map.md`; relationships in `docs/context-map.md`",
+          "signedBy": "A. Reviewer (Tech lead)",
+          "date": "2026-11-01"
+        },
+        {
+          "transition": "- -> DISCOVERED",
+          "gate": "GATE-PROJ-SYNC",
+          "kind": "D",
+          "result": "PASS",
+          "evidence": "`npm run project:check` in-sync",
+          "signedBy": null,
+          "date": "2026-11-01"
+        },
+        {
+          "transition": "REFINING -> REFINED",
+          "gate": "GATE-REF-SPEC",
+          "kind": "D",
+          "result": "FAIL",
+          "evidence": "`verify-spec` reported HGS004 (refinement)",
+          "signedBy": null,
+          "date": "2026-11-09"
+        },
+        {
+          "transition": "REFINING -> REFINED",
+          "gate": "GATE-REF-SPEC",
+          "kind": "D",
+          "result": "PASS",
+          "evidence": "`verify-spec` OK (refinement)",
+          "signedBy": null,
+          "date": "2026-11-10"
+        },
+        {
+          "transition": "REFINING -> REFINED",
+          "gate": "GATE-REF-APPROVAL",
+          "kind": "H",
+          "result": "PASS",
+          "evidence": "`SKILL.md`, `domain-model.md`, `bdd-scenarios.md`",
+          "signedBy": "A. Reviewer (Tech lead)",
+          "date": "2026-11-10"
+        },
+        {
+          "transition": "IMPLEMENTING -> IMPLEMENTED",
+          "gate": "GATE-IMPL-PROPS",
+          "kind": "H",
+          "result": "N/A",
+          "evidence": "Goal 3 declined, recorded in `decisions.md`",
+          "signedBy": null,
+          "date": "2026-11-18"
+        },
+        {
+          "transition": "IMPLEMENTED -> VERIFIED",
+          "gate": "GATE-VER-REPORT",
+          "kind": "H",
+          "result": "PASS",
+          "evidence": "docs/verification/bc-reviews/catalog/2026-11-20-full.md",
+          "signedBy": "A. Reviewer (Tech lead)",
+          "date": "2026-11-20"
+        },
+        {
+          "transition": "IMPLEMENTED -> VERIFIED",
+          "gate": "GATE-PROJ-SYNC",
+          "kind": "D",
+          "result": "PASS",
+          "evidence": "`npm run project:check` in-sync",
+          "signedBy": null,
+          "date": "2026-11-20"
+        }
+      ],
+      "openItems": [
+        {
+          "id": "G3",
+          "item": "Channel fallback when the tenant channel is missing",
+          "owner": "Tech lead",
+          "disposition": "Deferred"
+        },
+        {
+          "id": "OI-1",
+          "item": "Cache invalidation on channel token rotation",
+          "owner": "Catalog team",
+          "disposition": "Open"
+        }
+      ],
       "sources": {
         "skill": ".github/skills/catalog/SKILL.md",
         "domainModel": ".github/skills/catalog/domain-model.md",
@@ -82,6 +216,33 @@
         }
       ],
       "acls": [],
+      "nextSkill": "bc-review",
+      "blockers": [],
+      "transitions": [
+        {
+          "date": "2026-10-02",
+          "from": "-",
+          "to": "DISCOVERED",
+          "evidence": "Confirmed domain exploration",
+          "actor": "domain-exploration session"
+        },
+        {
+          "date": "2026-10-20",
+          "from": "IMPLEMENTING",
+          "to": "IMPLEMENTED",
+          "evidence": "Tests pass",
+          "actor": "bc-implementation session"
+        }
+      ],
+      "gates": [],
+      "openItems": [
+        {
+          "id": null,
+          "item": "OMS retry policy for timeouts",
+          "owner": "OMS team",
+          "disposition": "Open"
+        }
+      ],
       "sources": {
         "skill": ".github/skills/orders/SKILL.md",
         "domainModel": ".github/skills/orders/domain-model.md",

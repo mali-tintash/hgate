@@ -9,17 +9,34 @@ export const EXIT_OK = 0;
 export const EXIT_INVALID = 1;
 export const EXIT_USAGE = 2;
 
+export const SCHEMA_VERSION = 2;
 const DEFAULT_OUTPUT = "docs/hgate-project.json";
 const SCHEMA_PATH = "docs/hgate-project.schema.json";
 const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const BUNDLED_SCHEMA = path.resolve(THIS_DIR, "../..", SCHEMA_PATH);
 
 export class ProjectionError extends Error {
-  constructor(problems) {
+  constructor(problems, code = "HGP002") {
     super(problems.join("\n"));
     this.problems = problems;
+    this.code = code;
   }
 }
+
+export const LIFECYCLE_STATES = [
+  "DISCOVERED",
+  "REFINING",
+  "REFINED",
+  "SPEC_REVIEWED",
+  "IMPLEMENTING",
+  "IMPLEMENTED",
+  "VERIFIED",
+  "CHANGING",
+  "BLOCKED",
+  "DEPRECATED",
+];
+const GATE_KINDS = ["H", "D", "R"];
+const GATE_RESULTS = ["PASS", "FAIL", "WAIVED", "N/A"];
 
 const toPosix = (value) => value.split(path.sep).join("/");
 
@@ -42,6 +59,13 @@ const clean = (cell) => {
 
 const isPlaceholder = (value) => /^\[.*\]$/.test(value) || value === "";
 
+// Stricter check for status.md tables: an unfilled template cell is a whole
+// "[...]" or "<...>" cell, or any cell still containing "YYYY-MM-DD".
+const isUnfilledCell = (value) =>
+  /^\[.*\]$/.test(value) || /^<.*>$/.test(value) || value.includes("YYYY-MM-DD");
+const isUnfilledRow = (cells) =>
+  cells.some(isUnfilledCell) || cells.every((cell) => cell === "");
+
 function splitRow(line) {
   let body = line.trim();
   if (body.startsWith("|")) body = body.slice(1);
@@ -52,6 +76,10 @@ function splitRow(line) {
 const isSeparator = (line) => /^\|?[\s:|-]+\|?$/.test(line) && line.includes("-");
 
 function section(markdown, heading) {
+  return sectionAt(markdown, heading)?.body ?? null;
+}
+
+function sectionAt(markdown, heading) {
   const lines = markdown.split(/\r?\n/);
   const start = lines.findIndex((line) =>
     new RegExp(`^#{2,6}\\s+${heading}\\s*$`, "i").test(line),
@@ -64,19 +92,21 @@ function section(markdown, heading) {
     if (next && next[1].length <= level) break;
     body.push(line);
   }
-  return body;
+  return { body, start };
 }
 
-// Returns row objects keyed by lower-cased header; template placeholder rows
-// ("[...]" in the first cell) are skipped.
-function table(markdown, heading) {
-  const body = section(markdown, heading);
-  if (!body) return [];
+// Returns row objects keyed by lower-cased header. Template placeholder rows
+// are skipped: by default rows with "[...]" in the first cell; with
+// { strict: true } rows with any unfilled cell (see isUnfilledRow). Each row
+// carries a non-enumerable "line" (1-based line number in the file).
+function table(markdown, heading, { strict = false } = {}) {
+  const found = sectionAt(markdown, heading);
+  if (!found) return [];
   const rows = [];
   let header = null;
-  for (const line of body) {
+  for (const [offset, line] of found.body.entries()) {
     if (!line.trim().startsWith("|")) {
-      if (header && rows.length) break;
+      if (header && (rows.length || strict)) break;
       continue;
     }
     if (!header) {
@@ -85,11 +115,12 @@ function table(markdown, heading) {
     }
     if (isSeparator(line.trim())) continue;
     const cells = splitRow(line);
-    if (isPlaceholder(cells[0])) continue;
+    if (strict ? isUnfilledRow(cells) : isPlaceholder(cells[0])) continue;
     const row = {};
     header.forEach((name, index) => {
       row[name] = cells[index] ?? "";
     });
+    Object.defineProperty(row, "line", { value: found.start + offset + 2 });
     rows.push(row);
   }
   return rows;
@@ -231,7 +262,7 @@ export async function buildProjection(root) {
 
   const projection = {
     $schema: "./hgate-project.schema.json",
-    schemaVersion: 1,
+    schemaVersion: SCHEMA_VERSION,
     project,
     domains,
     boundedContexts,
@@ -275,12 +306,122 @@ async function buildBoundedContext({ root, id, row, dir, domainId, problems }) {
   bc.capabilities = [];
   bc.ports = domainModel === null ? [] : readPorts(domainModel, id, problems);
   bc.acls = await readAcls(root, dir, id, problems);
+  Object.assign(bc, readLifecycleRecord(status ?? "", `BC ${id}: ${file("status.md")}`, problems));
   bc.sources = {};
   if (skill !== null) bc.sources.skill = file("SKILL.md");
   if (domainModel !== null) bc.sources.domainModel = file("domain-model.md");
   if (status !== null) bc.sources.status = file("status.md");
   if (bdd !== null) bc.sources.bddScenarios = file("bdd-scenarios.md");
   return bc;
+}
+
+// ---------------------------------------------------------------- status.md
+
+const strip = (value) => value.replace(/`/g, "").trim();
+const isNone = (value) => /^(none\.?|n\/a|-|—)$/i.test(value.trim());
+const orNull = (value) => (value === undefined || value === "" || isNone(value) ? null : value);
+
+// Parses Current State, Transition History, Gate Evidence and Open Items.
+// Missing sections yield empty values so older status.md files still project.
+export function readLifecycleRecord(status, where, problems) {
+  return {
+    nextSkill: readNextSkill(status),
+    blockers: readBlockers(status),
+    transitions: readTransitions(status),
+    gates: readGates(status, where, problems),
+    openItems: readOpenItems(status),
+  };
+}
+
+function readNextSkill(status) {
+  const value = strip(boldField(status, "Recommended next skill"));
+  if (isUnfilledCell(value)) return null;
+  return orNull(value);
+}
+
+function readBlockers(status) {
+  const body = section(status, "Current State");
+  if (!body) return [];
+  const start = body.findIndex((line) => /^\*\*Blockers:\*\*/i.test(line.trim()));
+  if (start === -1) return [];
+  const blockers = [];
+  const inline = body[start].trim().replace(/^\*\*Blockers:\*\*/i, "").trim();
+  if (inline) blockers.push(inline);
+  for (const line of body.slice(start + 1)) {
+    const text = line.trim();
+    if (!text) {
+      if (blockers.length) break;
+      continue;
+    }
+    const bullet = /^[-*]\s+(.*)$/.exec(text);
+    if (!bullet) break;
+    blockers.push(bullet[1].trim());
+  }
+  return blockers.filter((item) => item && !isNone(item) && !isUnfilledCell(item));
+}
+
+function readTransitions(status) {
+  return table(status, "Transition History", { strict: true }).map((row) => ({
+    date: row.date ?? "",
+    from: row.from ?? "",
+    to: row.to ?? "",
+    evidence: row.evidence ?? "",
+    actor: row["actor/session"] ?? row.actor ?? row.session ?? "",
+  }));
+}
+
+const STATE_OR_INITIAL = new Set(["-", ...LIFECYCLE_STATES]);
+
+function readGates(status, where, problems) {
+  const gates = [];
+  for (const row of table(status, "Gate Evidence", { strict: true })) {
+    const at = `${where}:${row.line} Gate Evidence`;
+    const raw = row.transition ?? "";
+    const pair = /^(\S+)\s*(?:->|→)\s*(\S+)$/.exec(raw);
+    let transition = raw;
+    if (!pair || !STATE_OR_INITIAL.has(pair[1]) || !LIFECYCLE_STATES.includes(pair[2])) {
+      problems.push(`${at}: transition "${raw}" must be "FROM -> TO" with lifecycle states (FROM may be "-")`);
+    } else {
+      transition = `${pair[1]} -> ${pair[2]}`;
+    }
+    const gate = row.gate ?? "";
+    if (!/^GATE-[A-Z0-9]+(?:-[A-Z0-9]+)*$/.test(gate)) {
+      problems.push(`${at}: gate "${gate}" is not a gate ID (GATE-...)`);
+    }
+    const kind = (row.kind ?? "").toUpperCase();
+    if (!GATE_KINDS.includes(kind)) {
+      problems.push(`${at}: kind "${row.kind ?? ""}" must be one of ${GATE_KINDS.join(", ")}`);
+    }
+    const result = (row.result ?? "").toUpperCase();
+    if (!GATE_RESULTS.includes(result)) {
+      problems.push(`${at}: result "${row.result ?? ""}" must be one of ${GATE_RESULTS.join(", ")}`);
+    }
+    const evidence = row.evidence ?? "";
+    if (!evidence) problems.push(`${at}: evidence must not be empty`);
+    const date = row.date ?? "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      problems.push(`${at}: date "${date}" must be YYYY-MM-DD`);
+    }
+    gates.push({
+      transition,
+      gate,
+      kind,
+      result,
+      evidence,
+      signedBy: orNull(row["signed by"]),
+      date,
+    });
+  }
+  return gates;
+}
+
+function readOpenItems(status) {
+  return table(status, "Open Items", { strict: true }).map((row) => ({
+    id: "id" in row ? orNull(row.id) : null,
+    item: row.item ?? row["open item"] ?? "",
+    owner: row.owner ?? "",
+    disposition: row.disposition ?? "",
+  }));
 }
 
 function readPorts(domainModel, bcId, problems) {
@@ -399,6 +540,7 @@ export const renderProjection = (projection) => `${render(projection)}\n`;
 // Minimal JSON Schema subset validator covering the keywords used by
 // hgate-project.schema.json: type, enum, const, required, properties,
 // additionalProperties, items, pattern, minLength and $ref into #/$defs.
+// "type" may be a single name or an array of names (e.g. ["string", "null"]).
 export function validateSchema(data, schema) {
   const errors = [];
   const resolve = (ref) =>
@@ -413,8 +555,9 @@ export function validateSchema(data, schema) {
     }
     if (node.type) {
       const actual = Array.isArray(value) ? "array" : value === null ? "null" : typeof value;
-      if (actual !== node.type) {
-        errors.push(`${where}: expected ${node.type}, got ${actual}`);
+      const allowed = Array.isArray(node.type) ? node.type : [node.type];
+      if (!allowed.includes(actual)) {
+        errors.push(`${where}: expected ${allowed.join(" or ")}, got ${actual}`);
         return;
       }
     }
@@ -447,7 +590,18 @@ export function validateSchema(data, schema) {
 
 async function loadSchema(root) {
   const local = await readOptional(path.join(root, SCHEMA_PATH));
-  return JSON.parse(local ?? (await readFile(BUNDLED_SCHEMA, "utf8")));
+  const schema = JSON.parse(local ?? (await readFile(BUNDLED_SCHEMA, "utf8")));
+  const declared = schema.properties?.schemaVersion?.const;
+  if (local !== null && declared !== SCHEMA_VERSION) {
+    throw new ProjectionError(
+      [
+        `${SCHEMA_PATH} declares schemaVersion ${String(declared)}, but this generator emits schemaVersion ${SCHEMA_VERSION}`,
+        `upgrade: copy ${SCHEMA_PATH} from the hGATE repository into this project, then run project:sync`,
+      ],
+      "HGP003",
+    );
+  }
+  return schema;
 }
 
 // ---------------------------------------------------------------- operations
@@ -542,8 +696,10 @@ async function main() {
     }
   } catch (error) {
     if (error instanceof ProjectionError) {
+      const title =
+        error.code === "HGP003" ? "projection schema upgrade required" : "projection cannot be generated";
       process.stderr.write(
-        `HGP002 projection cannot be generated:\n${error.problems.map((p) => `  - ${p}`).join("\n")}\n`,
+        `${error.code} ${title}:\n${error.problems.map((p) => `  - ${p}`).join("\n")}\n`,
       );
       process.exitCode = EXIT_INVALID;
     } else {

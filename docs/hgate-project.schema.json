@@ -17,7 +17,7 @@
       "type": "string"
     },
     "schemaVersion": {
-      "const": 1
+      "const": 2
     },
     "project": {
       "type": "object",
@@ -101,6 +101,60 @@
         "file": { "type": "string" }
       }
     },
+    "lifecycleState": {
+      "enum": [
+        "DISCOVERED",
+        "REFINING",
+        "REFINED",
+        "SPEC_REVIEWED",
+        "IMPLEMENTING",
+        "IMPLEMENTED",
+        "VERIFIED",
+        "CHANGING",
+        "BLOCKED",
+        "DEPRECATED"
+      ]
+    },
+    "transition": {
+      "type": "object",
+      "required": ["date", "from", "to", "evidence", "actor"],
+      "additionalProperties": false,
+      "properties": {
+        "date": { "type": "string" },
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "evidence": { "type": "string" },
+        "actor": { "type": "string" }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "required": ["transition", "gate", "kind", "result", "evidence", "signedBy", "date"],
+      "additionalProperties": false,
+      "properties": {
+        "transition": {
+          "type": "string",
+          "pattern": "^(-|DISCOVERED|REFINING|REFINED|SPEC_REVIEWED|IMPLEMENTING|IMPLEMENTED|VERIFIED|CHANGING|BLOCKED|DEPRECATED) -> (DISCOVERED|REFINING|REFINED|SPEC_REVIEWED|IMPLEMENTING|IMPLEMENTED|VERIFIED|CHANGING|BLOCKED|DEPRECATED)$"
+        },
+        "gate": { "type": "string", "pattern": "^GATE-[A-Z0-9]+(?:-[A-Z0-9]+)*$" },
+        "kind": { "enum": ["H", "D", "R"] },
+        "result": { "enum": ["PASS", "FAIL", "WAIVED", "N/A"] },
+        "evidence": { "type": "string", "minLength": 1 },
+        "signedBy": { "type": ["string", "null"] },
+        "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+      }
+    },
+    "openItem": {
+      "type": "object",
+      "required": ["id", "item", "owner", "disposition"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": ["string", "null"] },
+        "item": { "type": "string" },
+        "owner": { "type": "string" },
+        "disposition": { "type": "string" }
+      }
+    },
     "boundedContext": {
       "type": "object",
       "required": [
@@ -115,6 +169,11 @@
         "capabilities",
         "ports",
         "acls",
+        "nextSkill",
+        "blockers",
+        "transitions",
+        "gates",
+        "openItems",
         "sources"
       ],
       "additionalProperties": false,
@@ -128,20 +187,7 @@
         "role": {
           "enum": ["PRIMARY", "SHARED", "SUPPORTING", "UNCONFIRMED"]
         },
-        "lifecycle": {
-          "enum": [
-            "DISCOVERED",
-            "REFINING",
-            "REFINED",
-            "SPEC_REVIEWED",
-            "IMPLEMENTING",
-            "IMPLEMENTED",
-            "VERIFIED",
-            "CHANGING",
-            "BLOCKED",
-            "DEPRECATED"
-          ]
-        },
+        "lifecycle": { "$ref": "#/$defs/lifecycleState" },
         "purpose": { "type": "string" },
         "owns": { "type": "array", "items": { "type": "string" } },
         "doesNotOwn": { "type": "array", "items": { "type": "string" } },
@@ -156,6 +202,20 @@
         "acls": {
           "type": "array",
           "items": { "$ref": "#/$defs/acl" }
+        },
+        "nextSkill": { "type": ["string", "null"] },
+        "blockers": { "type": "array", "items": { "type": "string" } },
+        "transitions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/transition" }
+        },
+        "gates": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/gate" }
+        },
+        "openItems": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/openItem" }
         },
         "sources": {
           "type": "object",
