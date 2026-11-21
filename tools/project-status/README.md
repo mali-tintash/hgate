@@ -134,3 +134,24 @@ identical bytes.
 | Repository without commits | `head: null` | all `"uncommitted"` | uncommitted = working tree vs nothing |
 
 CI needs full history (`fetch-depth: 0`).
+
+## npm scripts, CI and hooks (T8)
+
+```bash
+npm run project:status   # node tools/project-status/generate.mjs --root .
+npm test                 # every tool suite, including tools/project-status/tests
+```
+
+- **Output is derived and gitignored.** `.hgate/` is in `.gitignore`; never
+  commit `.hgate/status.json`. Regenerate it on demand or in CI.
+- **Full history required.** Use `fetch-depth: 0` (GitHub Actions
+  `actions/checkout`) or `clone: depth: full` (Bitbucket Pipelines). A shallow
+  clone degrades the report (`git.shallow: true`, step commits `null`).
+- **CI templates.** `templates/ci/hgate-verify.yml` (GitHub Actions) and
+  `templates/ci/bitbucket-pipelines.hgate.yml` run `project:check` and
+  `verify:spec`, then an optional `project:status` step that uploads
+  `.hgate/status.json` as a build artifact (`hgate-status`) and never fails the
+  build. Warnings from `verify:spec` (HGS006, HGW001/HGW002) print last and do
+  not change the exit code.
+- **Hooks.** `templates/hooks/pre-commit` and the Stop hook run `verify:spec`
+  (gate checks and gap drift) but never `project:status`.

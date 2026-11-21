@@ -1,1 +1,3 @@
 node_modules/
+# Derived, git-derived status report (npm run project:status); never commit.
+.hgate/

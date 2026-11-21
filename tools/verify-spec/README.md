@@ -97,6 +97,25 @@ Under GitHub Actions (`GITHUB_ACTIONS=true`) the text format also emits a
 `::warning file=…,line=…::` annotation per warning. `--format json` adds
 `warnings` and `notes` arrays.
 
+## Gap drift warnings (HGW001, HGW002)
+
+verify-spec also joins the gap ledger exactly as `project:sync` does (shared
+logic in `tools/shared/gaps.mjs`): `docs/domain-map.md` "Open Boundary Gaps",
+`docs/context-map.md` "Open Relationship Gaps", and the "Open Items" table of
+each BC listed in the domain map's Bounded Context Inventory (its
+`Local Status` path, else `.github/skills/<id>/status.md`). Status rows join
+by an `ID` column or a leading `G<n>` in the item text.
+
+| Code | Severity | Check |
+|---|---|---|
+| HGW001 | warning | Gap dispositions disagree across sources (for example `Deferred` in a map, `Resolved` in a BC) |
+| HGW002 | warning | Gap listed in a BC `status.md` but in neither map |
+
+These are project-wide: they ignore `--bc`, are skipped when there is no
+`docs/domain-map.md`, appear in the same trailing `WARNINGS (n)` block (and as
+annotations under GitHub Actions), and never change the exit code. A parity
+test checks they match the generator's `diagnostics[]` on its fixture.
+
 ## Tests and golden fixtures
 
 `tests/fixtures/good` is a known-good BC that must stay clean in both phases,

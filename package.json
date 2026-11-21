@@ -6,7 +6,8 @@
     "project:sync": "node tools/project-projection/generate.mjs --root .",
     "project:check": "node tools/project-projection/generate.mjs --root . --check",
     "verify:spec": "node tools/verify-spec/verify.mjs --root .",
-    "test": "node --test tools/project-projection/tests/*.test.mjs tools/verify-spec/tests/*.test.mjs tools/bdd-traceability/tests/*.test.mjs tools/business-verification/tests/*.test.mjs tools/gherkin-viewer/project-viewer.test.js"
+    "project:status": "node tools/project-status/generate.mjs --root .",
+    "test": "node --test tools/project-projection/tests/*.test.mjs tools/verify-spec/tests/*.test.mjs tools/project-status/tests/*.test.mjs tools/bdd-traceability/tests/*.test.mjs tools/business-verification/tests/*.test.mjs tools/gherkin-viewer/project-viewer.test.js"
   },
   "devDependencies": {
     "typescript": "^5.6.0"

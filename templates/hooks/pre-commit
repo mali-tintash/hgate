@@ -6,6 +6,11 @@
 # Checks the generated project projection and runs the deterministic
 # traceability verifiers only when a staged change can
 # affect them (tests, scenario or property specs, or the tooling itself).
+#
+# verify-spec includes the lifecycle gate checks (HGS*) and gap drift warnings
+# (HGW001/HGW002). Warnings are printed but never block the commit; only
+# errors do. project:status is never run here: .hgate/status.json is derived,
+# gitignored output (run `npm run project:status` on demand or in CI).
 
 set -eu
 
@@ -15,13 +20,16 @@ if printf '%s\n' "$staged" | grep -Eq '(domain-map\.md$|context-map\.md$|/(SKILL
   npm run --silent project:check
 fi
 
-if ! printf '%s\n' "$staged" | grep -Eq '(\.(spec|test)\.ts$|bdd-scenarios\.md$|properties\.md$|\.github/skills/.*\.md$|\.event\.ts$|^tools/)'; then
-  exit 0
+# Specification consistency, lifecycle gates and gap drift: BC skill files,
+# status.md, the domain/context maps, event files or the tooling.
+if [ -f tools/verify-spec/verify.mjs ] &&
+  printf '%s\n' "$staged" | grep -Eq '(\.github/skills/.*\.md$|domain-map\.md$|context-map\.md$|\.event\.ts$|^tools/)'; then
+  echo "hGATE: verifying specification consistency and lifecycle gates..."
+  npm run --silent verify:spec
 fi
 
-if [ -f tools/verify-spec/verify.mjs ]; then
-  echo "hGATE: verifying specification consistency..."
-  npm run --silent verify:spec
+if ! printf '%s\n' "$staged" | grep -Eq '(\.(spec|test)\.ts$|bdd-scenarios\.md$|properties\.md$|\.github/skills/.*\.md$|\.event\.ts$|^tools/)'; then
+  exit 0
 fi
 
 echo "hGATE: verifying BDD traceability..."

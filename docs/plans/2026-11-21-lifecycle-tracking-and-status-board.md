@@ -238,7 +238,7 @@ acceptance boxes here.
 
 ### Phase 5 — Wiring and docs
 
-- [ ] **T8 — Scripts, CI, hooks**
+- [x] **T8 — Scripts, CI, hooks**
   - Depends on: T5, T6b
   - Acceptance:
     - [ ] `package.json`: `project:status`; `test` includes new suites
@@ -311,3 +311,4 @@ Parallel-safe after T2: T3a, T3b, T4a. After T4a: T4b, T4c, T5, T6a.
 | 2026-11-21 | T4b, T4c | Done | Top-level `gaps[]` (state RESOLVED/DEFERRED/OPEN/MIXED) + `diagnostics[]` (HGW001 drift, HGW002 gap missing from maps), shared `tools/shared/gaps.mjs`; per-BC `stats` and `signoffs[]` (business sign-offs in `property-signoffs/`). Live-pet copy: 5 HGW001 warnings (G11–G13, G15, G16). Tests 179/180 |
 | 2026-11-21 | T6b | Done | `tools/project-status/generate.mjs` → `.hgate/status.json` (steps with commit/sharedCommit/changes; sinceLastTransition, sincePreviousCommit, uncommitted; optional `--bdd` coverage). No-git/shallow fallbacks exit 0 with a warning. Limitation: blame credits a row to the commit that last edited it (`git log -S` fallback not built). 31 tests pass |
 | 2026-11-21 | T7a | Done | Board tab (swimlanes, cards, gap ledger, diagnostics), non-dismissible `#warningBanner` on every tab, amber badges (also via gap→BC), v1/v2/legacy support; viewer loads optional `.hgate/status.json` into `statusReport`; timeline slot left for T7b. Tests 190/191 |
+| 2026-11-21 | T8 | Done | `project:status` script; `npm test` and CI run all suites (F8); `.hgate/` gitignored; GitHub template uploads status artifact (non-failing); new Bitbucket template; pre-commit runs verify:spec on map changes; verify-spec prints HGW001/HGW002 drift (project-wide, ignores `--bc`). Tests 223/224 |

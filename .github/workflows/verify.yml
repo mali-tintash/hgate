@@ -20,5 +20,8 @@ jobs:
       - name: Whitespace check
         if: github.event_name == 'pull_request'
         run: git diff --check "origin/${{ github.base_ref }}...HEAD"
+      # All suites from package.json "test" (projection, verify-spec,
+      # project-status, bdd-traceability, business-verification, viewer).
+      # Keep fetch-depth: 0 above (base-branch diff; project:status needs full history).
       - name: Tooling tests
-        run: node --test tools/bdd-traceability/tests/*.test.mjs tools/business-verification/tests/*.test.mjs tools/gherkin-viewer/project-viewer.test.js
+        run: npm test

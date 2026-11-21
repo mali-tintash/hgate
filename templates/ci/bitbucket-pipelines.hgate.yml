@@ -1,0 +1,39 @@
+# hGATE adopter CI gate for Bitbucket Pipelines. Merge into the adopting
+# project's bitbucket-pipelines.yml; hGATE never installs this for you.
+# GitHub Actions equivalent (and required package.json scripts):
+# templates/ci/hgate-verify.yml.
+#
+# clone depth: full is required: project:status walks git history to attribute
+# lifecycle transitions. Warnings (HGS006, HGW001/HGW002) are printed last and
+# never fail the build. .hgate/status.json is derived output: gitignore .hgate/.
+image: node:20
+
+clone:
+  depth: full
+
+definitions:
+  steps:
+    - step: &hgate-verify
+        name: hGATE verify
+        caches:
+          - node
+        script:
+          - npm ci
+          - if [ -f docs/domain-map.md ]; then npm run --silent project:check; else echo "No docs/domain-map.md; projection not adopted."; fi
+          - if [ -f tools/verify-spec/verify.mjs ]; then npm run --silent verify:spec -- --phase implementation; fi
+          - npm run --silent verify:bdd
+          - if ls .github/skills/*/properties.md >/dev/null 2>&1; then npm run --silent verify:properties; else echo "No properties.md found; Goal 3 not adopted."; fi
+          # Optional status report (uploaded as an artifact); never fails the build.
+          - if [ -f tools/project-status/generate.mjs ]; then npm run --silent project:status || true; fi
+          # Keep your normal unit tests as a separate step if you prefer.
+          - npm test
+        artifacts:
+          - .hgate/status.json
+
+pipelines:
+  pull-requests:
+    '**':
+      - step: *hgate-verify
+  branches:
+    main:
+      - step: *hgate-verify

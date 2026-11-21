@@ -6,7 +6,15 @@
 #   "verify:spec":       "node tools/verify-spec/verify.mjs --root ."  (optional, no dependencies)
 #   "verify:bdd":        "node tools/bdd-traceability/verify.mjs --root ."
 #   "verify:properties": "node tools/business-verification/verify.mjs --root ."  (optional Goal 3)
+#   "project:status":    "node tools/project-status/generate.mjs --root ."  (optional status report)
 # and `typescript` in devDependencies (the verifiers resolve it from the project).
+#
+# fetch-depth: 0 is required: project:status walks git history to attribute
+# lifecycle transitions; a shallow clone degrades it (commits reported as null).
+# Warnings (HGS006 legacy status.md, HGW001/HGW002 gap drift) never fail the
+# job; verify-spec prints them last and, under GitHub Actions, as ::warning
+# annotations. .hgate/status.json is derived output: gitignore .hgate/.
+# Bitbucket Pipelines equivalent: templates/ci/bitbucket-pipelines.hgate.yml.
 name: hgate-verify
 
 on:
@@ -19,6 +27,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -45,5 +55,24 @@ jobs:
           else
             echo "No properties.md found; Goal 3 not adopted."
           fi
+      # Optional: git-derived status report for later hosted reports. Never
+      # fails the job; remove both steps if you do not want the artifact.
+      - name: hGATE status report (optional)
+        if: always()
+        continue-on-error: true
+        run: |
+          if [ -f tools/project-status/generate.mjs ]; then
+            npm run --silent project:status
+          else
+            echo "tools/project-status not installed; status report skipped."
+          fi
+      - name: Upload hGATE status report (optional)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: hgate-status
+          path: .hgate/status.json
+          if-no-files-found: ignore
       # Keep your normal unit tests as a separate step or job.
       - run: npm test

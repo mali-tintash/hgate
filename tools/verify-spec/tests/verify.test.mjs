@@ -600,3 +600,53 @@ test("verify-spec gate check respects --bc and reports a broken catalog", async 
   );
   assert.ok((await verifySpec({ root: broken })).diagnostics.some((d) => d.code === "HGS007"));
 });
+
+// ------------------------------------------------------------ gap drift (HGW)
+
+test("verify-spec warns HGW001 on gap disposition drift without changing the exit code", async () => {
+  const root = await brokenCopy(async (f) => {
+    await f.write(
+      "docs/domain-map.md",
+      [
+        "# Domain Map",
+        "",
+        "## Bounded Context Inventory",
+        "",
+        "| BC ID | Bounded Context | Local Status |",
+        "|---|---|---|",
+        `| cart | Cart | ${STATUS} |`,
+        "",
+        "## Open Boundary Gaps",
+        "",
+        "| ID | Gap | Affected BCs | Owner | Disposition |",
+        "|---|---|---|---|---|",
+        "| G1 | Payment retries | cart | A. Lead | Deferred to v2 |",
+        "",
+      ].join("\n"),
+    );
+    await f.edit(
+      STATUS,
+      "| OI-1 | Confirm payment retry policy | A. Reviewer | Deferred |",
+      "| OI-1 | Confirm payment retry policy | A. Reviewer | Deferred |\n| G1 | Payment retries | A. Lead | Resolved in decisions.md |\n| G9 | Not in any map | A. Lead | Open |",
+    );
+  });
+  const report = await verifySpec({ root });
+  assert.deepEqual(report.diagnostics, []);
+  assert.equal(report.exitCode, EXIT_VALID);
+  const hgw = codes(report, "warnings").filter((c) => c.startsWith("HGW"));
+  // Warnings are ordered by file:line like every other verify-spec warning.
+  assert.deepEqual(hgw, [`HGW002 ${STATUS}:45`, "HGW001 docs/domain-map.md:13"]);
+  const lines = formatTextReport(report).trimEnd().split("\n");
+  assert.equal(lines[1], `WARNINGS (${report.warnings.length})`);
+  assert.ok(lines.some((l) => /^HGW001 docs\/domain-map\.md:13 gap G1 dispositions disagree: DEFERRED .* RESOLVED /.test(l)));
+});
+
+test("verify-spec gap warnings match the projection generator on its drift fixture", async () => {
+  const { buildProjection } = await import("../../project-projection/generate.mjs");
+  const example = fileURLToPath(new URL("../../project-projection/tests/fixtures/example", import.meta.url));
+  const expected = (await buildProjection(example)).diagnostics.map((d) => `${d.code} ${d.file}:${d.line} ${d.message}`);
+  const report = await verifySpec({ root: example });
+  const actual = report.warnings.filter((w) => w.code.startsWith("HGW")).map((w) => `${w.code} ${w.file}:${w.line} ${w.message}`);
+  assert.ok(expected.length > 0);
+  assert.deepEqual(actual, expected);
+});
