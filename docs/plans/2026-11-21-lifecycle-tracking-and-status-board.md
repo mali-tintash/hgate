@@ -178,7 +178,7 @@ acceptance boxes here.
     - [ ] v1 projects still generate (or a clear upgrade message), per D4
     - [ ] Malformed gate rows fail with an `HGP` code listing every problem
 
-- [ ] **T4b — Merged gap ledger with drift diagnostics**
+- [x] **T4b — Merged gap ledger with drift diagnostics**
   - Depends on: T4a
   - Joins gaps by ID across `domain-map.md` Open Boundary Gaps, `context-map.md` gaps, each `status.md` Open Items
   - Acceptance:
@@ -187,7 +187,7 @@ acceptance boxes here.
     - [ ] CLI prints the trailing `WARNINGS (n)` block per §3.1
     - [ ] Fixture reproduces the live-pet G11–G13 drift case
 
-- [ ] **T4c — Artifact stats and sign-off index**
+- [x] **T4c — Artifact stats and sign-off index**
   - Depends on: T4a
   - Adds per BC: `stats` (rules, scenarios, features, decisions, properties, ACLs, ports) and `signoffs[]` (files under `docs/verification/**/<bc>/`)
   - Acceptance:
@@ -308,3 +308,4 @@ Parallel-safe after T2: T3a, T3b, T4a. After T4a: T4b, T4c, T5, T6a.
 | 2026-11-21 | T4a | Done | Schema v2: per BC `nextSkill, blockers, transitions, gates, openItems`; legacy status.md generates (empty arrays, `id: null`); malformed gate rows HGP002; v1 local schema → HGP003 upgrade message (document in T9). Schema rejects unknown fields, so T4b/T4c must add theirs. Viewer rejects v2 until T7a. Tests 139/140 |
 | 2026-11-21 | T6a | Done | `tools/project-status/snapshot.mjs`: `snapshotBc(files)`, `diffSnapshots(before, after)` over features, scenarios, rules, skill, model, ports, decisions, acls, aclSections, properties, gates, openItems; rules renumbering → `moved`. 19 tests pass |
 | 2026-11-21 | T5 | Done | `tools/verify-spec/gates.mjs`; codes HGS001–HGS007 (HGS006 legacy = warning); trailing WARNINGS block + GitHub annotations; strict HGS004 signer/role rules. Gap drift in verify-spec still to wire (T8, via `tools/shared/gaps.mjs`). 51/51 verify-spec tests |
+| 2026-11-21 | T4b, T4c | Done | Top-level `gaps[]` (state RESOLVED/DEFERRED/OPEN/MIXED) + `diagnostics[]` (HGW001 drift, HGW002 gap missing from maps), shared `tools/shared/gaps.mjs`; per-BC `stats` and `signoffs[]` (business sign-offs in `property-signoffs/`). Live-pet copy: 5 HGW001 warnings (G11–G13, G15, G16). Tests 179/180 |

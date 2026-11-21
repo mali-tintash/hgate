@@ -5,6 +5,14 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import {
+  GAP_ID_PATTERN,
+  classifyDisposition,
+  formatWarnings,
+  gapIdFromText,
+  mergeGaps,
+} from "../shared/gaps.mjs";
+
 export const EXIT_OK = 0;
 export const EXIT_INVALID = 1;
 export const EXIT_USAGE = 2;
@@ -203,6 +211,7 @@ export async function buildProjection(root) {
 
   const boundedContexts = [];
   const bcByKey = new Map();
+  const gapRows = new Map();
   for (const row of table(domainMap, "Bounded Context Inventory")) {
     const id = row["bc id"];
     const domain = domainByKey.get(row["domain/subdomain"].toLowerCase());
@@ -211,7 +220,7 @@ export async function buildProjection(root) {
     }
     const statusPath = row["local status"];
     const dir = statusPath ? path.posix.dirname(statusPath) : `.github/skills/${id}`;
-    const bc = await buildBoundedContext({ root, id, row, dir, domainId: domain?.id ?? "", problems });
+    const bc = await buildBoundedContext({ root, id, row, dir, domainId: domain?.id ?? "", problems, gapRows });
     boundedContexts.push(bc);
     bcByKey.set(id.toLowerCase(), bc);
     bcByKey.set(row["bounded context"].toLowerCase(), bc);
@@ -271,18 +280,28 @@ export async function buildProjection(root) {
   };
 
   sortProjection(projection);
+  const ledger = buildGapLedger({ domainMap, contextMap, projection, gapRows });
+  projection.gaps = ledger.gaps;
+  projection.diagnostics = ledger.diagnostics;
+  for (const bc of projection.boundedContexts) {
+    bc.stats.openGaps = ledger.gaps.filter(
+      (gap) => gap.state !== "RESOLVED" && gap.sources.some((source) => source.bc === bc.id),
+    ).length;
+  }
   checkReferences(projection, problems);
   if (problems.length) throw new ProjectionError(problems);
   return projection;
 }
 
-async function buildBoundedContext({ root, id, row, dir, domainId, problems }) {
+async function buildBoundedContext({ root, id, row, dir, domainId, problems, gapRows }) {
   const file = (name) => `${dir}/${name}`;
   const read = (name) => readOptional(path.join(root, file(name)));
   const skill = await read("SKILL.md");
   const domainModel = await read("domain-model.md");
   const status = await read("status.md");
   const bdd = await read("bdd-scenarios.md");
+  const decisions = await read("decisions.md");
+  const properties = await read("properties.md");
 
   let lifecycle = "";
   if (status === null) {
@@ -307,6 +326,12 @@ async function buildBoundedContext({ root, id, row, dir, domainId, problems }) {
   bc.ports = domainModel === null ? [] : readPorts(domainModel, id, problems);
   bc.acls = await readAcls(root, dir, id, problems);
   Object.assign(bc, readLifecycleRecord(status ?? "", `BC ${id}: ${file("status.md")}`, problems));
+  bc.stats = readStats({ skill, bdd, decisions, properties, bc });
+  bc.signoffs = await readSignoffs(root, [path.posix.basename(dir), id]);
+  gapRows.set(id, {
+    file: file("status.md"),
+    rows: status === null ? [] : table(status, "Open Items", { strict: true }),
+  });
   bc.sources = {};
   if (skill !== null) bc.sources.skill = file("SKILL.md");
   if (domainModel !== null) bc.sources.domainModel = file("domain-model.md");
@@ -422,6 +447,124 @@ function readOpenItems(status) {
     owner: row.owner ?? "",
     disposition: row.disposition ?? "",
   }));
+}
+
+// ---------------------------------------------------------------- gap ledger
+
+// Joins gaps by ID across domain-map "Open Boundary Gaps", context-map
+// "Open Relationship Gaps" and each BC status.md "Open Items". Status rows join
+// when their ID is a gap ID (G<n>) or appears in a map; legacy tables without
+// an ID column use a leading "G<n>" in the item text.
+function buildGapLedger({ domainMap, contextMap, projection, gapRows }) {
+  const sources = [];
+  const mapIds = new Set();
+  const mapRows = [
+    ["docs/domain-map.md", table(domainMap, "Open Boundary Gaps", { strict: true }), "affected bcs"],
+    ["docs/context-map.md", table(contextMap, "Open Relationship Gaps", { strict: true }), "relationship"],
+  ];
+  for (const [file, rows, affectedKey] of mapRows) {
+    for (const row of rows) {
+      const id = row.id ?? "";
+      if (!id) continue;
+      mapIds.add(id);
+      sources.push({
+        id,
+        gap: row.gap ?? "",
+        affected: row[affectedKey] ?? "",
+        file,
+        line: row.line,
+        bc: null,
+        owner: row.owner ?? "",
+        disposition: row.disposition ?? "",
+      });
+    }
+  }
+  for (const bc of projection.boundedContexts) {
+    const entry = gapRows.get(bc.id);
+    if (!entry) continue;
+    for (const row of entry.rows) {
+      const item = row.item ?? row["open item"] ?? "";
+      const declared = "id" in row ? orNull(row.id) : null;
+      const id = declared ?? gapIdFromText(item);
+      if (!id || !(GAP_ID_PATTERN.test(id) || mapIds.has(id))) continue;
+      sources.push({
+        id,
+        gap: item,
+        affected: "",
+        file: entry.file,
+        line: row.line,
+        bc: bc.id,
+        owner: row.owner ?? "",
+        disposition: row.disposition ?? "",
+      });
+    }
+  }
+  return mergeGaps(sources);
+}
+
+// ---------------------------------------------------------------- stats
+
+const countMatches = (text, pattern) => (text === null ? 0 : (text.match(pattern) ?? []).length);
+const countUnique = (text, pattern) =>
+  text === null ? 0 : new Set([...text.matchAll(pattern)].map((match) => match[1])).size;
+
+// Markdown-only artifact counts (no git, no test runs).
+function readStats({ skill, bdd, decisions, properties, bc }) {
+  const rules = skill === null ? null : section(skill, "Core Business Rules");
+  return {
+    rules: rules === null ? 0 : rules.filter((line) => /^\d+[.)]\s+\S/.test(line)).length,
+    features: countMatches(bdd, /^\s*Feature:/gm),
+    scenarios: countUnique(bdd, /@scenario:([A-Za-z0-9_.-]+)/g),
+    decisions:
+      decisions === null
+        ? 0
+        : decisions
+            .split(/\r?\n/)
+            .filter((line) => /^##\s+\S/.test(line) && !/^##\s+Related\b/i.test(line)).length,
+    properties: countUnique(properties, /@property:([^\s@]+)/g),
+    acls: bc.acls.length,
+    ports: bc.ports.length,
+    openItems: bc.openItems.filter((item) => classifyDisposition(item.disposition) !== "RESOLVED")
+      .length,
+    openGaps: 0,
+  };
+}
+
+const SIGNOFF_DIRS = [
+  ["bdd", "docs/verification/bdd-signoffs"],
+  ["business", "docs/verification/property-signoffs"],
+  ["review", "docs/verification/bc-reviews"],
+];
+
+// Lists *.md records under each sign-off directory for the BC's folder name
+// (and its ID when different), ordered by file path.
+async function readSignoffs(root, slugs) {
+  const signoffs = [];
+  const seen = new Set();
+  for (const [kind, base] of SIGNOFF_DIRS) {
+    for (const slug of new Set(slugs)) {
+      const dir = `${base}/${slug}`;
+      let entries = [];
+      try {
+        entries = await readdir(path.join(root, dir));
+      } catch (error) {
+        if (!error || (error.code !== "ENOENT" && error.code !== "ENOTDIR")) throw error;
+      }
+      for (const entry of entries.filter((name) => name.endsWith(".md"))) {
+        const file = `${dir}/${entry}`;
+        if (seen.has(file)) continue;
+        seen.add(file);
+        const meta = frontmatter(await readFile(path.join(root, file), "utf8"));
+        const record = { kind, file, date: /^(\d{4}-\d{2}-\d{2})/.exec(entry)?.[1] ?? null };
+        for (const key of ["status", "outcome"]) {
+          const value = meta[key];
+          if (value && !isUnfilledCell(value)) record[key] = value;
+        }
+        signoffs.push(record);
+      }
+    }
+  }
+  return signoffs.sort(byText("file"));
 }
 
 function readPorts(domainModel, bcId, problems) {
@@ -612,17 +755,18 @@ export async function generate({ root, output = DEFAULT_OUTPUT, check = false })
   if (schemaErrors.length) throw new ProjectionError(schemaErrors.map((e) => `schema: ${e}`));
 
   const expected = renderProjection(projection);
+  const diagnostics = projection.diagnostics;
   const target = path.resolve(root, output);
   const current = await readOptional(target);
 
   if (check) {
-    if (current === expected) return { status: "in-sync", output };
-    return { status: "drift", output, diff: lineDiff(current ?? "", expected) };
+    if (current === expected) return { status: "in-sync", output, diagnostics };
+    return { status: "drift", output, diagnostics, diff: lineDiff(current ?? "", expected) };
   }
-  if (current === expected) return { status: "unchanged", output };
+  if (current === expected) return { status: "unchanged", output, diagnostics };
   await mkdir(path.dirname(target), { recursive: true });
   await writeFile(target, expected);
-  return { status: "written", output };
+  return { status: "written", output, diagnostics };
 }
 
 function lineDiff(current, expected, limit = 20) {
@@ -686,13 +830,18 @@ async function main() {
   }
   try {
     const result = await generate(parsed.options);
+    // Warnings never change the exit code; they are always the last lines (§3.1).
+    const warnings = formatWarnings(result.diagnostics, {
+      github: process.env.GITHUB_ACTIONS === "true",
+    });
+    const tail = warnings.length ? `${warnings.join("\n")}\n` : "";
     if (result.status === "drift") {
       process.stderr.write(
-        `HGP001 ${result.output} is out of sync with its Markdown sources. Run: node tools/project-projection/generate.mjs\n${result.diff.join("\n")}\n`,
+        `HGP001 ${result.output} is out of sync with its Markdown sources. Run: node tools/project-projection/generate.mjs\n${result.diff.join("\n")}\n${tail}`,
       );
       process.exitCode = EXIT_INVALID;
     } else {
-      process.stdout.write(`${result.output}: ${result.status}\n`);
+      process.stdout.write(`${result.output}: ${result.status}\n${tail}`);
     }
   } catch (error) {
     if (error instanceof ProjectionError) {

@@ -177,16 +177,66 @@
           "disposition": "Deferred"
         },
         {
+          "id": "G11",
+          "item": "Product taxonomy",
+          "owner": "Product owner",
+          "disposition": "Resolved for Catalog (four top-level categories); starter assortment is Ordering's"
+        },
+        {
+          "id": "G12",
+          "item": "Cache size and eviction",
+          "owner": "Product owner",
+          "disposition": "Resolved (no eviction, 500-entry cache)"
+        },
+        {
+          "id": "G13",
+          "item": "Search provider and cost controls",
+          "owner": "Product owner",
+          "disposition": "Resolved by ADR-0001 plus caps in `decisions.md`"
+        },
+        {
           "id": "OI-1",
           "item": "Cache invalidation on channel token rotation",
           "owner": "Catalog team",
           "disposition": "Open"
         }
       ],
+      "stats": {
+        "rules": 3,
+        "features": 2,
+        "scenarios": 3,
+        "decisions": 2,
+        "properties": 1,
+        "acls": 1,
+        "ports": 1,
+        "openItems": 2,
+        "openGaps": 4
+      },
+      "signoffs": [
+        {
+          "kind": "review",
+          "file": "docs/verification/bc-reviews/catalog/2026-11-12-spec-only.md",
+          "date": "2026-11-12",
+          "outcome": "FAIL"
+        },
+        {
+          "kind": "review",
+          "file": "docs/verification/bc-reviews/catalog/2026-11-20-full.md",
+          "date": "2026-11-20",
+          "outcome": "PASS"
+        },
+        {
+          "kind": "bdd",
+          "file": "docs/verification/bdd-signoffs/catalog/2026-11-18-initial-implementation.md",
+          "date": "2026-11-18",
+          "status": "SIGNED_OFF"
+        }
+      ],
       "sources": {
         "skill": ".github/skills/catalog/SKILL.md",
         "domainModel": ".github/skills/catalog/domain-model.md",
-        "status": ".github/skills/catalog/status.md"
+        "status": ".github/skills/catalog/status.md",
+        "bddScenarios": ".github/skills/catalog/bdd-scenarios.md"
       }
     },
     {
@@ -243,6 +293,18 @@
           "disposition": "Open"
         }
       ],
+      "stats": {
+        "rules": 0,
+        "features": 0,
+        "scenarios": 0,
+        "decisions": 0,
+        "properties": 0,
+        "acls": 0,
+        "ports": 1,
+        "openItems": 1,
+        "openGaps": 0
+      },
+      "signoffs": [],
       "sources": {
         "skill": ".github/skills/orders/SKILL.md",
         "domainModel": ".github/skills/orders/domain-model.md",
@@ -271,6 +333,155 @@
       "entryPoint": "Customer browses the catalog",
       "outcome": "An order is accepted",
       "validationArtifact": "docs/features/place-order/validation.md"
+    }
+  ],
+  "gaps": [
+    {
+      "id": "G3",
+      "gap": "Channel fallback when the tenant channel is missing",
+      "affected": "Catalog",
+      "state": "DEFERRED",
+      "sources": [
+        {
+          "file": "docs/domain-map.md",
+          "line": 30,
+          "bc": null,
+          "owner": "Tech lead",
+          "disposition": "Deferred"
+        },
+        {
+          "file": ".github/skills/catalog/status.md",
+          "line": 53,
+          "bc": "catalog",
+          "owner": "Tech lead",
+          "disposition": "Deferred"
+        }
+      ]
+    },
+    {
+      "id": "G11",
+      "gap": "Product taxonomy and starter assortment",
+      "affected": "Both",
+      "state": "MIXED",
+      "sources": [
+        {
+          "file": "docs/domain-map.md",
+          "line": 31,
+          "bc": null,
+          "owner": "Product owner",
+          "disposition": "Deferred to bc-refinement"
+        },
+        {
+          "file": ".github/skills/catalog/status.md",
+          "line": 54,
+          "bc": "catalog",
+          "owner": "Product owner",
+          "disposition": "Resolved for Catalog (four top-level categories); starter assortment is Ordering's"
+        }
+      ]
+    },
+    {
+      "id": "G12",
+      "gap": "Catalog cache size and eviction limits",
+      "affected": "Catalog",
+      "state": "MIXED",
+      "sources": [
+        {
+          "file": "docs/domain-map.md",
+          "line": 32,
+          "bc": null,
+          "owner": "Product owner",
+          "disposition": "Deferred to bc-refinement"
+        },
+        {
+          "file": ".github/skills/catalog/status.md",
+          "line": 55,
+          "bc": "catalog",
+          "owner": "Product owner",
+          "disposition": "Resolved (no eviction, 500-entry cache)"
+        }
+      ]
+    },
+    {
+      "id": "G13",
+      "gap": "Search provider and cost controls",
+      "affected": "Catalog",
+      "state": "MIXED",
+      "sources": [
+        {
+          "file": "docs/domain-map.md",
+          "line": 33,
+          "bc": null,
+          "owner": "Product owner",
+          "disposition": "Deferred to architecture-decision-exploration"
+        },
+        {
+          "file": ".github/skills/catalog/status.md",
+          "line": 56,
+          "bc": "catalog",
+          "owner": "Product owner",
+          "disposition": "Resolved by ADR-0001 plus caps in `decisions.md`"
+        }
+      ]
+    },
+    {
+      "id": "G14",
+      "gap": "Price snapshot at selection time",
+      "affected": "catalog-to-ordering-product-selection",
+      "state": "OPEN",
+      "sources": [
+        {
+          "file": "docs/context-map.md",
+          "line": 19,
+          "bc": null,
+          "owner": "Product owner",
+          "disposition": "Open"
+        }
+      ]
+    },
+    {
+      "id": "G15",
+      "gap": "Sync vs async product lookup",
+      "affected": "Both",
+      "state": "RESOLVED",
+      "sources": [
+        {
+          "file": "docs/context-map.md",
+          "line": 20,
+          "bc": null,
+          "owner": "Product owner",
+          "disposition": "Resolved for Catalog (synchronous); Ordering to confirm"
+        }
+      ]
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "HGW001",
+      "severity": "warning",
+      "message": "gap G11 dispositions disagree: DEFERRED at docs/domain-map.md:31, RESOLVED at .github/skills/catalog/status.md:54",
+      "file": "docs/domain-map.md",
+      "line": 31,
+      "bcId": null,
+      "gapId": "G11"
+    },
+    {
+      "code": "HGW001",
+      "severity": "warning",
+      "message": "gap G12 dispositions disagree: DEFERRED at docs/domain-map.md:32, RESOLVED at .github/skills/catalog/status.md:55",
+      "file": "docs/domain-map.md",
+      "line": 32,
+      "bcId": null,
+      "gapId": "G12"
+    },
+    {
+      "code": "HGW001",
+      "severity": "warning",
+      "message": "gap G13 dispositions disagree: DEFERRED at docs/domain-map.md:33, RESOLVED at .github/skills/catalog/status.md:56",
+      "file": "docs/domain-map.md",
+      "line": 33,
+      "bcId": null,
+      "gapId": "G13"
     }
   ]
 }

@@ -22,3 +22,16 @@
 |---|---|---|---|---|
 | Browse products | `catalog` | Customer opens the catalog | Available products are returned | Confirmed |
 | Create order | `ordering` | Customer submits an approved cart | OMS accepts the order | Confirmed |
+
+## Open Boundary Gaps
+
+| ID | Gap | Affected BCs | Owner | Disposition |
+|---|---|---|---|---|
+| G3 | Channel fallback when the tenant channel is missing | Catalog | Tech lead | Deferred |
+| G11 | Product taxonomy and starter assortment | Both | Product owner | Deferred to bc-refinement |
+| G12 | Catalog cache size and eviction limits | Catalog | Product owner | Deferred to bc-refinement |
+| G13 | Search provider and cost controls | Catalog | Product owner | Deferred to architecture-decision-exploration |
+
+## Related Artifacts
+
+- Context map: `docs/context-map.md`

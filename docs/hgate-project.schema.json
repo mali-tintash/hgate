@@ -43,6 +43,14 @@
     "journeys": {
       "type": "array",
       "items": { "$ref": "#/$defs/journey" }
+    },
+    "gaps": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/gap" }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/diagnostic" }
     }
   },
   "$defs": {
@@ -155,6 +163,44 @@
         "disposition": { "type": "string" }
       }
     },
+    "stats": {
+      "type": "object",
+      "required": [
+        "rules",
+        "features",
+        "scenarios",
+        "decisions",
+        "properties",
+        "acls",
+        "ports",
+        "openItems",
+        "openGaps"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "rules": { "type": "number" },
+        "features": { "type": "number" },
+        "scenarios": { "type": "number" },
+        "decisions": { "type": "number" },
+        "properties": { "type": "number" },
+        "acls": { "type": "number" },
+        "ports": { "type": "number" },
+        "openItems": { "type": "number" },
+        "openGaps": { "type": "number" }
+      }
+    },
+    "signoff": {
+      "type": "object",
+      "required": ["kind", "file", "date"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["bdd", "business", "review"] },
+        "file": { "type": "string", "minLength": 1 },
+        "date": { "type": ["string", "null"] },
+        "status": { "type": "string" },
+        "outcome": { "type": "string" }
+      }
+    },
     "boundedContext": {
       "type": "object",
       "required": [
@@ -174,6 +220,8 @@
         "transitions",
         "gates",
         "openItems",
+        "stats",
+        "signoffs",
         "sources"
       ],
       "additionalProperties": false,
@@ -217,6 +265,11 @@
           "type": "array",
           "items": { "$ref": "#/$defs/openItem" }
         },
+        "stats": { "$ref": "#/$defs/stats" },
+        "signoffs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/signoff" }
+        },
         "sources": {
           "type": "object",
           "additionalProperties": { "type": "string" }
@@ -253,6 +306,47 @@
         "entryPoint": { "type": "string" },
         "outcome": { "type": "string" },
         "validationArtifact": { "type": "string" }
+      }
+    },
+    "gapSource": {
+      "type": "object",
+      "required": ["file", "line", "bc", "owner", "disposition"],
+      "additionalProperties": false,
+      "properties": {
+        "file": { "type": "string", "minLength": 1 },
+        "line": { "type": "number" },
+        "bc": { "type": ["string", "null"] },
+        "owner": { "type": "string" },
+        "disposition": { "type": "string" }
+      }
+    },
+    "gap": {
+      "type": "object",
+      "required": ["id", "gap", "affected", "state", "sources"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "gap": { "type": "string" },
+        "affected": { "type": ["string", "null"] },
+        "state": { "enum": ["RESOLVED", "DEFERRED", "OPEN", "MIXED"] },
+        "sources": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/gapSource" }
+        }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "required": ["code", "severity", "message", "file", "line", "bcId", "gapId"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "type": "string", "pattern": "^HGW\\d{3}$" },
+        "severity": { "const": "warning" },
+        "message": { "type": "string", "minLength": 1 },
+        "file": { "type": "string", "minLength": 1 },
+        "line": { "type": "number" },
+        "bcId": { "type": ["string", "null"] },
+        "gapId": { "type": ["string", "null"] }
       }
     }
   }

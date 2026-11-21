@@ -51,4 +51,7 @@ Gate catalog and rules: `skills/hgate-guide/references/lifecycle-gates.md`.
 | ID | Item | Owner | Disposition |
 |---|---|---|---|
 | G3 | Channel fallback when the tenant channel is missing | Tech lead | Deferred |
+| G11 | Product taxonomy | Product owner | Resolved for Catalog (four top-level categories); starter assortment is Ordering's |
+| G12 | Cache size and eviction | Product owner | Resolved (no eviction, 500-entry cache) |
+| G13 | Search provider and cost controls | Product owner | Resolved by ADR-0001 plus caps in `decisions.md` |
 | OI-1 | Cache invalidation on channel token rotation | Catalog team | Open |

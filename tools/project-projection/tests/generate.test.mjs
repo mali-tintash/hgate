@@ -143,7 +143,7 @@ test("buildProjection should emit schemaVersion 2 with gates, transitions and op
   assert.equal(catalog.gates[1].signedBy, null);
   assert.deepEqual(
     catalog.openItems.map((item) => item.id),
-    ["G3", "OI-1"],
+    ["G3", "G11", "G12", "G13", "OI-1"],
   );
 });
 
