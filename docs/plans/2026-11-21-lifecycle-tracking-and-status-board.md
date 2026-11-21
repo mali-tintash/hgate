@@ -139,14 +139,14 @@ acceptance boxes here.
 
 ### Phase 1 — Model and rules
 
-- [ ] **T1 — ADR: lifecycle gate evidence and two-output split**
+- [x] **T1 — ADR: lifecycle gate evidence and two-output split**
   - Depends on: T0
   - Output: `docs/adr/2026-11-xx-lifecycle-gate-evidence-and-status-report.md`
   - Acceptance:
     - [ ] Records the gate model, `status.md` as authority, projection vs status-report split, git derivation method, schema v2 (D4)
     - [ ] Lists consequences: `fetch-depth: 0`, squash-merge limitation, gitignored output
 
-- [ ] **T2 — Gate catalog and status template**
+- [x] **T2 — Gate catalog and status template**
   - Depends on: T1
   - Files: new `skills/hgate-guide/references/lifecycle-gates.md` (catalog table, parseable); `skills/bc-refinement/assets/status-template.md` (Gate Evidence section, Open Items `ID` column); `skills/hgate-guide/references/lifecycle-status.md` (update rules point to gates)
   - Acceptance:
@@ -302,3 +302,4 @@ Parallel-safe after T2: T3a, T3b, T4a. After T4a: T4b, T4c, T5, T6a.
 | Date | Task | Result | Notes |
 |---|---|---|---|
 | 2026-11-21 | T0 | Done | D1 both, D2 gitignored, D3 warning-not-missable, D4 v2, D5 hash, D6 accepted. T6b method changed to row blame after finding live-pet commits transitions together |
+| 2026-11-21 | T1, T2 | Done | ADR-009 (two ADRs share 008); `lifecycle-gates.md` catalog + Gate Evidence format + validity rules; template gains Gate Evidence (DISC-BOUNDARY + PROJ-SYNC rows) and Open Items `ID`. Five transitions only require GATE-PROJ-SYNC. Parsers must treat `[...]` cells and `YYYY-MM-DD` as unfilled. Tests 129/130 (pre-existing BDD009 env failure) |
