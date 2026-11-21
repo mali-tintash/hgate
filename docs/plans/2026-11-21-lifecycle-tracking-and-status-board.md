@@ -273,6 +273,15 @@ acceptance boxes here.
 
 ---
 
+### Phase 7 — Viewer help (added 2026-11-21)
+
+- [x] **T12 — Board legends, tooltips and guide**
+  - Acceptance:
+    - [x] Hover tooltips on every abbreviation and badge (Kind H/D/R, Result, gap state, badges, "n/m gates")
+    - [x] Legends under the gate evidence table and the gap ledger
+    - [x] "?" help button in the viewer header opens a guide panel
+    - [x] Guide also lives at `docs/viewer-guide.md`; a test keeps the embedded copy identical
+
 ## 6. Dependency order
 
 ```text
@@ -323,3 +332,4 @@ Parallel-safe after T2: T3a, T3b, T4a. After T4a: T4b, T4c, T5, T6a.
 | 2026-11-21 | T10 | Done (test bed, uncommitted) | Live-pet: tools/skills/schema copied, both status.md migrated (backfilled gates signed `Product owner (Technical PM)`), gaps aligned, projection in-sync, verify-spec OK, no drift. Status report from a reconstructed history in VM scratch (labelled in `.hgate/README.md`). Bugs found → T10.5: (1) newest-first Transition History breaks project-status ordering; (2) verify-spec skips BCs without model/scenarios, so DISCOVERED gates are unchecked; (3) "Resolved for X; Y to confirm" classified RESOLVED, partial gaps invisible |
 | 2026-11-21 | T10.5 | Done | `tools/shared/transitions.mjs` `orderTransitions` used by generator, verify-spec, project-status, viewer; project-status uses `git blame -M`; verify-spec gate-checks every BC with status.md (`N BC(s) (spec X, gates Y)`); `PARTIAL` gap state + blue badge. Live-pet: 0 diagnostics, G11/G15/G16 PARTIAL, `OK: 2 BC(s) (spec 1, gates 2)`, status steps e2fd0aa → 408e714 (shared). Tests 244/245 |
 | 2026-11-21 | T11 | Done | Independent verifier: all boxes PASS except T7a gate summary (N/A counted as met, missing gates not counted). Fixed: shared `tools/shared/gate-rules.mjs` used by verify-spec and generator; projection per-BC `gateStatus`; cards show n/m with unmet list; catalog rows with dated evidence paths no longer skipped; ADR §6/§8 corrected; fixture catalogs synced (byte-equality test); clearer HGS001; one warnings format. Live-pet signers now `Unrecorded product owner (Technical PM)`. Tests 255/256 (BDD009 fails only in this VM: a global typescript under `/opt/cowork-node-tools` lacks `ScriptTarget`) |
+| 2026-11-21 | T12 | Done | `GLOSSARY` drives tooltips and legends; "?" help panel (Esc/Close, focus return); `docs/viewer-guide.md` embedded as generated `viewer-guide.js` (`node tools/gherkin-viewer/sync-guide.mjs`), byte-equality test. Tests 261/262. Not checked in a real browser |

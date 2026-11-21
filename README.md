@@ -215,6 +215,9 @@ BC, `transitions`, `gates`, `blockers`, `nextSkill`, `openItems`, `stats`
 and `signoffs`, plus top-level `gaps` (the merged gap ledger) and
 `diagnostics` (warnings).
 
+Reading guide for tech leads and PMs: [`docs/viewer-guide.md`](docs/viewer-guide.md)
+(also behind the viewer's **?** button).
+
 Open `tools/gherkin-viewer/index.html`, click **Load project** and pick the
 project root folder. Besides the Scenarios and Project tabs:
 

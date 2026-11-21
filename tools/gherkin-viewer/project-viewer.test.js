@@ -901,3 +901,71 @@ test("formatCoverage summarizes the optional verify:bdd result", () => {
     "BDD coverage (project): unavailable — tools/bdd-traceability/verify.mjs not found",
   );
 });
+
+// T12: glossary, legends and the embedded viewer guide.
+test("embedded viewer guide is byte-identical to docs/viewer-guide.md", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const source = fs.readFileSync(path.join(__dirname, "..", "..", "docs", "viewer-guide.md"), "utf8");
+  const { GUIDE_MARKDOWN } = require("./viewer-guide.js");
+  assert.ok(
+    GUIDE_MARKDOWN === source,
+    "tools/gherkin-viewer/viewer-guide.js is out of sync with docs/viewer-guide.md. " +
+      "Resync with: node tools/gherkin-viewer/sync-guide.mjs",
+  );
+  assert.equal(viewer.guideMarkdown(), source);
+});
+
+test("GLOSSARY covers every Kind, Result, gap state, lifecycle and change kind the board uses", () => {
+  for (const kind of ["H", "D", "R"]) assert.ok(viewer.glossaryText("kind", kind), `kind ${kind}`);
+  for (const result of ["PASS", "FAIL", "WAIVED", "N/A"]) assert.ok(viewer.glossaryText("result", result), `result ${result}`);
+  for (const state of ["RESOLVED", "PARTIAL", "MIXED", "DEFERRED", "OPEN"]) {
+    assert.ok(viewer.glossaryText("gapState", state), `gap state ${state}`);
+  }
+  for (const state of viewer.MAIN_LIFECYCLES.concat(viewer.OPTIONAL_LIFECYCLES)) {
+    assert.ok(viewer.glossaryText("lifecycle", state), `lifecycle ${state}`);
+  }
+  for (const kind of ["added", "removed", "modified", "moved"]) assert.ok(viewer.glossaryText("changeKind", kind));
+  for (const key of ["uncommitted", "unknown", "sharedCommit"]) assert.ok(viewer.glossaryText("commit", key));
+  for (const key of ["drift", "partial", "gates"]) assert.ok(viewer.glossaryText("badge", key));
+  assert.equal(viewer.glossaryText("kind", "H"), "Human approval — a named person signs it off");
+  assert.equal(viewer.glossaryText("kind", "toString"), "");
+});
+
+test("GLOSSARY gap states match the shared gap ledger states", async () => {
+  const { GAP_STATES } = await import("../shared/gaps.mjs");
+  assert.deepEqual(Object.keys(viewer.GLOSSARY.gapState).sort(), [...GAP_STATES].sort());
+});
+
+test("legendText renders the gate and gap legends from GLOSSARY", () => {
+  const gates = viewer.legendText("gates");
+  assert.match(gates, /^Kind: H Human approval · D Deterministic check · R Record only \| Result: PASS/);
+  assert.match(gates, /N\/A Does not apply/);
+  const gaps = viewer.legendText("gaps");
+  for (const state of Object.keys(viewer.GLOSSARY.gapState)) assert.match(gaps, new RegExp(state));
+  assert.match(gaps, /Badges: Amber: drift warnings · Blue: partly resolved/);
+});
+
+test("renderMarkdown escapes HTML in text, code, headings and tables", () => {
+  const html = viewer.renderMarkdown(
+    "# T <img src=x onerror=alert(1)>\n\nHi <script>alert(1)</script> **b<i>** `<b>&`\n\n| A | B |\n|---|---|\n| <u>x</u> | \"q\" |\n\n- <a href=\"javascript:x\">l</a>\n",
+  );
+  assert.doesNotMatch(html, /<script|<img|<u>|<a |<i>|<b>/);
+  assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.match(html, /<strong>b&lt;i&gt;<\/strong>/);
+  assert.match(html, /<code>&lt;b&gt;&amp;<\/code>/);
+  assert.match(html, /<td>&lt;u&gt;x&lt;\/u&gt;<\/td><td>&quot;q&quot;<\/td>/);
+});
+
+test("renderMarkdown renders headings, nested lists, tables and paragraphs", () => {
+  const html = viewer.renderMarkdown("# Title\n\n## Part\n\nText\nmore.\n\n1. One\n   - Sub\n2. Two\n\n| K | V |\n|---|---|\n| `H` | Human |\n", {
+    headingOffset: 1,
+    firstHeadingId: "helpPanelTitle",
+  });
+  assert.match(html, /<h2 id="helpPanelTitle">Title<\/h2>/);
+  assert.match(html, /<h3>Part<\/h3>/);
+  assert.match(html, /<p>Text more\.<\/p>/);
+  assert.match(html, /<ol><li>One<ul><li>Sub<\/li><\/ul><\/li><li>Two<\/li><\/ol>/);
+  assert.match(html, /<th scope="col">K<\/th>/);
+  assert.match(html, /<td><code>H<\/code><\/td><td>Human<\/td>/);
+});

@@ -853,10 +853,133 @@
           grid-template-columns: 1fr;
         }
       }
+
+      /* T12: header help button, guide drawer, tooltips and legends. */
+      .viewer-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .viewer-header h1 {
+        margin-bottom: 12px;
+      }
+
+      .help-button {
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        border-radius: 999px;
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .help-button[aria-expanded="true"] {
+        background: #0284c7;
+        color: #ffffff;
+      }
+
+      .help-panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 20;
+        width: min(560px, 100vw);
+        overflow-y: auto;
+        padding: 16px 22px 28px;
+        border-left: 1px solid #bae6fd;
+        background: #ffffff;
+        box-shadow: -8px 0 24px rgba(15, 23, 42, 0.18);
+        color: #0f172a;
+      }
+
+      .help-panel-head {
+        position: sticky;
+        top: -16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin: -16px -22px 8px;
+        padding: 12px 22px;
+        border-bottom: 1px solid #e0f2fe;
+        background: #ffffff;
+        font-size: 13px;
+      }
+
+      .help-panel-body table {
+        border-collapse: collapse;
+        margin: 8px 0 14px;
+        font-size: 13px;
+      }
+
+      .help-panel-body th,
+      .help-panel-body td {
+        padding: 4px 8px;
+        border: 1px solid #e2e8f0;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      .help-panel-body h2 {
+        margin-top: 4px;
+      }
+
+      .help-panel-body h3 {
+        margin: 18px 0 6px;
+        color: #0c4a6e;
+      }
+
+      .has-tooltip,
+      abbr.kind-abbr {
+        cursor: help;
+      }
+
+      abbr.kind-abbr {
+        text-decoration: underline dotted;
+        font-weight: 700;
+      }
+
+      .legend {
+        margin: 6px 0 0;
+        color: #475569;
+        font-size: 12px;
+      }
+
+      .legend-item {
+        cursor: help;
+        white-space: nowrap;
+      }
+
+      .legend-separator {
+        color: #94a3b8;
+      }
     </style>
   </head>
   <body>
-    <h1>hGATE viewer</h1>
+    <header class="viewer-header">
+      <h1>hGATE viewer</h1>
+      <button
+        id="helpBtn"
+        class="help-button"
+        type="button"
+        aria-expanded="false"
+        aria-controls="helpPanel"
+        aria-label="Viewer guide"
+        title="Viewer guide: what each section, colour and badge means"
+      >
+        ?
+      </button>
+    </header>
+    <aside id="helpPanel" class="help-panel" role="dialog" aria-labelledby="helpPanelTitle" tabindex="-1" hidden>
+      <div class="help-panel-head">
+        <span class="muted">Guide · source: <code>docs/viewer-guide.md</code></span>
+        <button id="helpCloseBtn" type="button" aria-label="Close viewer guide">Close</button>
+      </div>
+      <div id="helpPanelBody" class="help-panel-body"></div>
+    </aside>
     <div id="warningBanner" class="warning-banner" role="status" aria-live="polite" hidden>
       <span id="warningBannerText"></span>
       <button id="warningBannerShow" type="button">Show</button>
@@ -1246,6 +1369,7 @@ Feature: Portal User Authentication (AdminAuthMiddleware)
       sourceInput.value = sample;
       render();
     </script>
+    <script src="./viewer-guide.js"></script>
     <script src="./project-viewer.js"></script>
   </body>
 </html>

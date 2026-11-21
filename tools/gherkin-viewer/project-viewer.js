@@ -946,6 +946,291 @@
     return Boolean(gap) && gap.state !== "RESOLVED";
   }
 
+  // Plain-language definitions shared by tooltips, legends and the guide (T12).
+  // Each entry: `label` (short, used in legends) and `text` (full tooltip).
+  const GLOSSARY = {
+    kind: {
+      H: { label: "Human approval", text: "Human approval — a named person signs it off" },
+      D: { label: "Deterministic check", text: "Deterministic check — a tool run with a pass/fail result" },
+      R: { label: "Record only", text: "Record only — written down, nothing to approve" },
+    },
+    result: {
+      PASS: { label: "Met", text: "Pass — the gate is met" },
+      FAIL: {
+        label: "Not met",
+        text: "Fail — checked and not met; the row stays as history and the transition is not valid",
+      },
+      WAIVED: {
+        label: "Skipped on purpose",
+        text: "Waived — skipped on purpose; needs a Tech lead signer and a reason in Evidence",
+      },
+      "N/A": { label: "Does not apply", text: "Not applicable — satisfies optional gates only, never a required one" },
+    },
+    gapState: {
+      RESOLVED: { label: "Resolved", text: "Resolved — every source file says the gap is resolved" },
+      PARTIAL: {
+        label: "Partly resolved",
+        text: "Partial — resolved for part of its scope; the rest is still open (counts as open, not drift)",
+      },
+      MIXED: {
+        label: "Sources disagree",
+        text: "Mixed — the source files record different dispositions for this gap (drift warning)",
+      },
+      DEFERRED: { label: "Postponed", text: "Deferred — postponed on purpose" },
+      OPEN: { label: "Not addressed", text: "Open — not addressed yet" },
+    },
+    badge: {
+      drift: {
+        label: "Amber: drift warnings",
+        text:
+          "Amber badge — drift warnings: a gap's dispositions disagree across domain-map.md, " +
+          "context-map.md and status.md, or a gap is missing from the maps; see Diagnostics",
+      },
+      partial: {
+        label: "Blue: partly resolved",
+        text: "Blue Partial badge — gap resolved for part of its scope; still open, not drift",
+      },
+      gates: {
+        label: "n/m gates",
+        text:
+          "n/m gates — n of the m gates required for the current transition are satisfied " +
+          "(PASS, or WAIVED by a Tech lead); red when any is unmet",
+      },
+    },
+    lifecycle: {
+      DISCOVERED: { label: "Discovered", text: "Boundary and purpose confirmed; detailed specification not approved" },
+      REFINING: { label: "Refining", text: "Specification is being discussed or updated" },
+      REFINED: { label: "Refined", text: "Specification is complete and user-approved" },
+      SPEC_REVIEWED: {
+        label: "Spec Reviewed",
+        text: "Independent specification review done, no unresolved blocking findings",
+      },
+      IMPLEMENTING: { label: "Implementing", text: "Initial implementation in progress from approved specifications" },
+      IMPLEMENTED: {
+        label: "Implemented",
+        text: "Implementation or enhancement complete; independent verification may be pending",
+      },
+      VERIFIED: {
+        label: "Verified",
+        text: "Independent full review found the implementation conformant, no blocking findings",
+      },
+      CHANGING: { label: "Changing", text: "Approved behaviour or implementation is being enhanced" },
+      BLOCKED: { label: "Blocked", text: "Progress cannot continue; blocker and return state are recorded" },
+      DEPRECATED: { label: "Deprecated", text: "Intentionally retired; replacement or migration is recorded" },
+    },
+    changeKind: {
+      added: { label: "Added", text: "Added — new since the baseline" },
+      removed: { label: "Removed", text: "Removed — present at the baseline, gone now" },
+      modified: { label: "Modified", text: "Modified — same item, changed content" },
+      moved: { label: "Moved", text: "Moved — renumbered or relocated, content unchanged" },
+    },
+    commit: {
+      uncommitted: {
+        label: "Uncommitted",
+        text: "Uncommitted — changes in the working tree that are not in any commit yet",
+      },
+      unknown: {
+        label: "Unknown",
+        text: "Unknown — no git history for this (no git, shallow clone or no status report); not the same as no changes",
+      },
+      sharedCommit: {
+        label: "Shared commit",
+        text: "Shared commit — several transitions were recorded in one commit; the diff is shown on the last of them",
+      },
+    },
+  };
+
+  function glossaryEntry(group, key) {
+    const entries = GLOSSARY[group];
+    if (!entries || key === null || key === undefined) return null;
+    return Object.prototype.hasOwnProperty.call(entries, key) ? entries[key] : null;
+  }
+
+  function glossaryText(group, key) {
+    const entry = glossaryEntry(group, key);
+    return entry ? entry.text : "";
+  }
+
+  // Legend groups rendered under the gate evidence table and the gap ledger.
+  const LEGENDS = {
+    gates: [
+      { group: "kind", title: "Kind" },
+      { group: "result", title: "Result" },
+    ],
+    gaps: [
+      { group: "gapState", title: "State" },
+      { group: "badge", title: "Badges", keys: ["drift", "partial"] },
+    ],
+  };
+
+  // Plain-text form of a legend: "Kind: H Human approval · D ... | Result: ...".
+  function legendItems(name) {
+    return (LEGENDS[name] || []).map((part) => ({
+      group: part.group,
+      title: part.title,
+      entries: (part.keys || Object.keys(GLOSSARY[part.group])).map((key) => ({
+        key,
+        label: GLOSSARY[part.group][key].label,
+        text: GLOSSARY[part.group][key].text,
+      })),
+    }));
+  }
+
+  function legendText(name) {
+    return legendItems(name)
+      .map((part) => `${part.title}: ${part.entries.map((entry) => `${part.group === "badge" ? "" : `${entry.key} `}${entry.label}`).join(" · ")}`)
+      .join(" | ");
+  }
+
+  function escapeHtml(value) {
+    return String(value === null || value === undefined ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  // Inline Markdown: `code` and **bold**; everything else is escaped text.
+  function renderInlineMarkdown(text) {
+    return String(text || "")
+      .split(/(`[^`]+`)/)
+      .map((part) => {
+        if (part.length > 2 && part.startsWith("`") && part.endsWith("`")) {
+          return `<code>${escapeHtml(part.slice(1, -1))}</code>`;
+        }
+        return escapeHtml(part).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+      })
+      .join("");
+  }
+
+  function renderMarkdownList(items) {
+    let index = 0;
+    const parse = () => {
+      const { indent, ordered } = items[index];
+      const tag = ordered ? "ol" : "ul";
+      let html = `<${tag}>`;
+      let openItem = false;
+      while (index < items.length && items[index].indent >= indent) {
+        const item = items[index];
+        if (item.indent > indent) {
+          html += parse();
+          continue;
+        }
+        if (item.ordered !== ordered) break;
+        if (openItem) html += "</li>";
+        html += `<li>${renderInlineMarkdown(item.text)}`;
+        openItem = true;
+        index += 1;
+      }
+      if (openItem) html += "</li>";
+      return `${html}</${tag}>`;
+    };
+    let html = "";
+    while (index < items.length) html += parse();
+    return html;
+  }
+
+  // Minimal, safe Markdown → HTML for the embedded guide: headings, paragraphs,
+  // (nested) lists, simple pipe tables, fenced code, **bold** and `code`. All
+  // source text is HTML-escaped; no raw HTML, links or images are passed through.
+  function renderMarkdown(markdown, options = {}) {
+    const offset = Number.isInteger(options.headingOffset) ? options.headingOffset : 0;
+    const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+    const out = [];
+    let paragraph = [];
+    let firstHeading = true;
+    const flush = () => {
+      if (paragraph.length) out.push(`<p>${renderInlineMarkdown(paragraph.join(" "))}</p>`);
+      paragraph = [];
+    };
+    const listItem = /^(\s*)([-*]|\d+\.)\s+(.*)$/;
+    const tableRow = (line) => /^\s*\|.*\|\s*$/.test(line);
+    const tableSeparator = (line) => /^\s*\|(\s*:?-+:?\s*\|)+\s*$/.test(line);
+    const cells = (line) =>
+      line
+        .trim()
+        .replace(/^\|/, "")
+        .replace(/\|$/, "")
+        .split("|")
+        .map((cell) => cell.trim());
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      if (/^\s*$/.test(line)) {
+        flush();
+        i += 1;
+        continue;
+      }
+      if (/^\s*```/.test(line)) {
+        flush();
+        const body = [];
+        i += 1;
+        while (i < lines.length && !/^\s*```/.test(lines[i])) body.push(lines[i++]);
+        i += 1;
+        out.push(`<pre><code>${escapeHtml(body.join("\n"))}</code></pre>`);
+        continue;
+      }
+      const heading = /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
+      if (heading) {
+        flush();
+        const level = Math.min(6, heading[1].length + offset);
+        const id = firstHeading && options.firstHeadingId ? ` id="${escapeHtml(options.firstHeadingId)}"` : "";
+        firstHeading = false;
+        out.push(`<h${level}${id}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+        i += 1;
+        continue;
+      }
+      if (tableRow(line) && i + 1 < lines.length && tableSeparator(lines[i + 1])) {
+        flush();
+        const head = cells(line);
+        i += 2;
+        const rows = [];
+        while (i < lines.length && tableRow(lines[i])) rows.push(cells(lines[i++]));
+        const th = head.map((cell) => `<th scope="col">${renderInlineMarkdown(cell)}</th>`).join("");
+        const body = rows
+          .map((row) => `<tr>${head.map((_, c) => `<td>${renderInlineMarkdown(row[c] || "")}</td>`).join("")}</tr>`)
+          .join("");
+        out.push(`<table><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table>`);
+        continue;
+      }
+      if (listItem.test(line)) {
+        flush();
+        const items = [];
+        while (i < lines.length) {
+          const match = listItem.exec(lines[i]);
+          if (match) {
+            items.push({ indent: match[1].length, ordered: /\d/.test(match[2]), text: match[3] });
+          } else if (/^\s+\S/.test(lines[i]) && items.length) {
+            items[items.length - 1].text += ` ${lines[i].trim()}`;
+          } else {
+            break;
+          }
+          i += 1;
+        }
+        out.push(renderMarkdownList(items));
+        continue;
+      }
+      paragraph.push(line.trim());
+      i += 1;
+    }
+    flush();
+    return out.join("\n");
+  }
+
+  // Embedded copy of docs/viewer-guide.md (viewer-guide.js, generated).
+  function guideMarkdown() {
+    if (typeof window !== "undefined" && window.HgateViewerGuide) return window.HgateViewerGuide.GUIDE_MARKDOWN;
+    if (typeof require === "function") {
+      try {
+        return require("./viewer-guide.js").GUIDE_MARKDOWN;
+      } catch (error) {
+        return "";
+      }
+    }
+    return "";
+  }
+
   function buildBoardModel(project) {
     const source = project || {};
     const contexts = source.boundedContexts || [];
@@ -1779,13 +2064,56 @@
     return sectionElement;
   }
 
-  function resultBadge(result) {
-    const value = result || "–";
-    return createElement("span", `result-badge result-${slug(value) || "none"}`, value);
+  // Hover text (title) plus screen-reader text. `hidden: false` keeps only the
+  // title, for elements inside buttons whose accessible name must stay short.
+  function withTooltip(element, group, key, options = {}) {
+    const text = glossaryText(group, key);
+    if (!text) return element;
+    element.title = options.prefix ? `${options.prefix} — ${text}` : text;
+    element.classList.add("has-tooltip");
+    if (options.hidden !== false) element.append(createElement("span", "visually-hidden", ` (${text})`));
+    return element;
   }
 
-  function warningBadge(count) {
-    return createElement("span", "warning-badge", `${count} warning${count === 1 ? "" : "s"}`);
+  function kindAbbr(kind) {
+    const entry = glossaryEntry("kind", kind);
+    if (!entry) return createElement("span", "", kind || "–");
+    const abbr = createElement("abbr", "kind-abbr", kind);
+    abbr.title = entry.text;
+    abbr.append(createElement("span", "visually-hidden", ` (${entry.label})`));
+    return abbr;
+  }
+
+  function renderLegend(name) {
+    const legend = createElement("p", `legend legend-${name}`);
+    legend.setAttribute("role", "note");
+    legend.setAttribute("aria-label", "Legend");
+    legendItems(name).forEach((part, partIndex) => {
+      if (partIndex) legend.append(createElement("span", "legend-separator", " | "));
+      legend.append(createElement("strong", "", `${part.title}: `));
+      part.entries.forEach((entry, entryIndex) => {
+        if (entryIndex) legend.append(document.createTextNode(" · "));
+        const item = createElement("span", "legend-item");
+        item.title = entry.text;
+        if (part.group === "kind") item.append(createElement("code", "", entry.key), document.createTextNode(" "));
+        else if (part.group === "result") item.append(createElement("span", `result-badge result-${slug(entry.key)}`, entry.key), document.createTextNode(" "));
+        else if (part.group === "gapState") item.append(createElement("span", `gap-state gap-state-${slug(entry.key)}`, gapStateLabel(entry.key)), document.createTextNode(" "));
+        else if (entry.key === "drift") item.append(createElement("span", "warning-badge", "n warnings"), document.createTextNode(" "));
+        else if (entry.key === "partial") item.append(createElement("span", "gap-state gap-state-partial", "Partial"), document.createTextNode(" "));
+        item.append(document.createTextNode(entry.label.replace(/^(Amber|Blue): /, "")));
+        legend.append(item);
+      });
+    });
+    return legend;
+  }
+
+  function resultBadge(result) {
+    const value = result || "–";
+    return withTooltip(createElement("span", `result-badge result-${slug(value) || "none"}`, value), "result", result);
+  }
+
+  function warningBadge(count, options = {}) {
+    return withTooltip(createElement("span", "warning-badge", `${count} warning${count === 1 ? "" : "s"}`), "badge", "drift", options);
   }
 
   function renderWarningBanner(board, banner, textElement) {
@@ -1804,7 +2132,7 @@
 
     const header = createElement("span", "board-card-header");
     header.append(createElement("span", "board-card-title", card.name));
-    if (card.warningCount) header.append(warningBadge(card.warningCount));
+    if (card.warningCount) header.append(warningBadge(card.warningCount, { hidden: false }));
     button.append(header);
     button.append(
       createElement("span", "board-card-meta", `${card.classification} · ${card.role}${card.inferred ? " · inferred" : ""}`),
@@ -1837,7 +2165,8 @@
       `gate-summary${card.gateSummary.invalid ? " has-fail" : ""}`,
       card.gateSummary.label,
     );
-    if (card.gateSummary.transition) gates.title = card.gateSummary.transition;
+    gates.title = `${glossaryText("badge", "gates")}${card.gateSummary.transition ? ` (current transition: ${card.gateSummary.transition})` : ""}`;
+    gates.classList.add("has-tooltip");
     footer.append(gates);
     if (card.gateSummary.unmetGates.length) {
       footer.append(createElement("span", "gate-fail", `Unmet: ${card.gateSummary.unmetGates.join(", ")}`));
@@ -1858,6 +2187,10 @@
       columnElement.setAttribute("aria-labelledby", headingId);
       const heading = createElement("h3", "board-column-title");
       heading.id = headingId;
+      if (glossaryText("lifecycle", column.state)) {
+        heading.title = glossaryText("lifecycle", column.state);
+        heading.classList.add("has-tooltip");
+      }
       heading.append(
         createElement("span", "", column.label),
         createElement("span", "board-column-count", String(column.cards.length)),
@@ -1878,7 +2211,11 @@
       "",
       ["ID", "Gap", "State", "Dispositions by source", "Warnings"],
       board.gaps.map((gap) => {
-        const state = createElement("span", `gap-state gap-state-${slug(gap.state)}`, gap.stateLabel || gap.state);
+        const state = withTooltip(
+          createElement("span", `gap-state gap-state-${slug(gap.state)}`, gap.stateLabel || gap.state),
+          "gapState",
+          gap.state,
+        );
         const sources = createElement("ul", "gap-sources");
         for (const item of gap.sources) {
           const li = createElement("li");
@@ -1893,6 +2230,7 @@
       }),
       { empty: "No gaps in the projection (schema v1 and legacy projects carry none)." },
     );
+    container.append(renderLegend("gaps"));
   }
 
   function renderBoardDiagnostics(board, details, list, countElement) {
@@ -1934,7 +2272,7 @@
       for (const kind of CHANGE_KINDS) {
         for (const item of category[kind]) {
           const li = createElement("li", `change-${kind}`);
-          li.append(createElement("span", `change-kind change-kind-${kind}`, kind));
+          li.append(withTooltip(createElement("span", `change-kind change-kind-${kind}`, kind), "changeKind", kind));
           li.append(document.createTextNode(" "));
           li.append(createElement("span", "change-text", item.text));
           list.append(li);
@@ -1950,8 +2288,14 @@
     const hasBody = summary.known && (!summary.empty || (extra && extra.files && extra.files.length));
     const wrapper = createElement(hasBody ? "details" : "div", "change-summary");
     const head = createElement(hasBody ? "summary" : "p", "change-summary-head");
-    if (title) head.append(createElement("strong", "", `${title}: `));
-    head.append(createElement("span", summary.empty ? "muted" : summary.known ? "" : "muted", summary.text));
+    if (title) {
+      const titleElement = createElement("strong", "", `${title}: `);
+      if (extra && extra.id === "uncommitted") withTooltip(titleElement, "commit", "uncommitted", { hidden: false });
+      head.append(titleElement);
+    }
+    const text = createElement("span", summary.empty ? "muted" : summary.known ? "" : "muted", summary.text);
+    if (!summary.known) withTooltip(text, "commit", "unknown");
+    head.append(text);
     if (extra && extra.base) head.append(createElement("span", "change-base", ` (${extra.base})`));
     wrapper.append(head);
     if (!hasBody) return wrapper;
@@ -1980,7 +2324,8 @@
       const li = createElement("li", gate.result === "FAIL" ? "gate-row-fail" : "");
       li.append(resultBadge(gate.result), document.createTextNode(" "));
       li.append(createElement("strong", "", gate.gate));
-      const meta = [gate.kind, gate.date, gate.signedBy ? `signed by ${gate.signedBy}` : "unsigned"].filter(Boolean);
+      const meta = [gate.date, gate.signedBy ? `signed by ${gate.signedBy}` : "unsigned"].filter(Boolean);
+      if (gate.kind) li.append(createElement("span", "muted", " · "), kindAbbr(gate.kind));
       li.append(createElement("span", "muted", ` · ${meta.join(" · ")}`));
       if (gate.transition) li.append(createElement("span", "muted", ` · ${gate.transition}`));
       if (gate.evidence) {
@@ -2010,7 +2355,9 @@
     if (model.baselines.length) {
       const summaries = createElement("div", "change-summaries");
       for (const baseline of model.baselines) {
-        summaries.append(renderChangeSummary(baseline.title, baseline.summary, { base: baseline.base, files: baseline.files }));
+        summaries.append(
+          renderChangeSummary(baseline.title, baseline.summary, { id: baseline.id, base: baseline.base, files: baseline.files }),
+        );
       }
       slot.append(summaries);
     }
@@ -2031,12 +2378,15 @@
             if (step.commit.subject) commit.append(document.createTextNode(` ${step.commit.subject}`));
           } else {
             commit.textContent = step.commit.text;
+            withTooltip(commit, "commit", step.commit.kind);
           }
           item.append(commit);
         }
         if (step.evidence) item.append(appendRichText(createElement("div", "timeline-evidence"), step.evidence));
         if (step.gates.length) item.append(renderGateList(step.gates));
-        if (step.sharedNote) item.append(createElement("p", "timeline-shared muted", step.sharedNote));
+        if (step.sharedNote) {
+          item.append(withTooltip(createElement("p", "timeline-shared muted", step.sharedNote), "commit", "sharedCommit", { hidden: false }));
+        }
         if (step.changes) {
           const title = step.sharedGroupSize > 1 ? `Changes (${step.sharedGroupSize} transitions in this commit)` : "Changes";
           item.append(renderChangeSummary(title, step.changes));
@@ -2066,9 +2416,9 @@
     heading.append(createElement("h2", "", bc.name));
     if (card.warningCount) heading.append(warningBadge(card.warningCount));
     container.append(heading);
-    container.append(
-      createElement("p", "project-meta", `${card.classification} · ${card.role} · ${card.lifecycle}`),
-    );
+    const meta = createElement("p", "project-meta", `${card.classification} · ${card.role} · `);
+    meta.append(withTooltip(createElement("span", "", card.lifecycle), "lifecycle", card.lifecycle));
+    container.append(meta);
     container.append(
       createElement(
         "p",
@@ -2089,7 +2439,7 @@
     timelineSlot.hidden = true;
     container.append(timelineSlot);
     if (timeline) renderTimeline(timeline, timelineSlot);
-    appendTable(
+    const gateEvidence = appendTable(
       container,
       "All gate evidence",
       ["Transition", "Gate", "Kind", "Result", "Evidence", "Signed by", "Date"],
@@ -2098,7 +2448,7 @@
         cells: [
           transitionKey(item.transition),
           item.gate,
-          item.kind,
+          kindAbbr(item.kind),
           resultBadge(item.result),
           item.evidence,
           item.signedBy,
@@ -2106,6 +2456,7 @@
         ],
       })),
     );
+    gateEvidence.append(renderLegend("gates"));
     appendTable(
       container,
       "Open items",
@@ -2180,6 +2531,41 @@
       }
     }
     return buildLegacyProject(fileMap);
+  }
+
+  // "?" header button → side panel with the embedded viewer guide. Non-modal
+  // drawer: Esc or Close hides it and focus returns to the button.
+  function initHelpPanel() {
+    const button = document.getElementById("helpBtn");
+    const panel = document.getElementById("helpPanel");
+    const body = document.getElementById("helpPanelBody");
+    const close = document.getElementById("helpCloseBtn");
+    if (!button || !panel || !body) return;
+    let rendered = false;
+    const isOpen = () => !panel.hidden;
+    const hide = (restoreFocus = true) => {
+      panel.hidden = true;
+      button.setAttribute("aria-expanded", "false");
+      if (restoreFocus) button.focus();
+    };
+    const show = () => {
+      if (!rendered) {
+        // Safe: renderMarkdown escapes all source text.
+        body.innerHTML = renderMarkdown(guideMarkdown(), { headingOffset: 1, firstHeadingId: "helpPanelTitle" });
+        rendered = true;
+      }
+      panel.hidden = false;
+      button.setAttribute("aria-expanded", "true");
+      (close || panel).focus();
+    };
+    button.addEventListener("click", () => (isOpen() ? hide() : show()));
+    if (close) close.addEventListener("click", () => hide());
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && isOpen()) {
+        event.preventDefault();
+        hide();
+      }
+    });
   }
 
   function init() {
@@ -2404,6 +2790,7 @@
         if (summaryElement) summaryElement.focus();
       });
     }
+    initHelpPanel();
     selectButton.addEventListener("click", pickProject);
     if (scenarioLoadButton) scenarioLoadButton.addEventListener("click", pickProject);
     viewScenariosButton.addEventListener("click", () =>
@@ -2433,6 +2820,19 @@
 
   return {
     SCHEMA_VERSION,
+    GLOSSARY,
+    LEGENDS,
+    glossaryEntry,
+    glossaryText,
+    legendItems,
+    legendText,
+    escapeHtml,
+    renderMarkdown,
+    guideMarkdown,
+    renderLegend,
+    renderGapLedger,
+    renderBoardDetails,
+    renderBoardLanes,
     slug,
     parseTable,
     parseDomainMap,
