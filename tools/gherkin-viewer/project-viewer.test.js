@@ -490,11 +490,76 @@ test("summarizeGates keeps the latest row per gate and highlights failures", () 
     ],
   };
   const summary = viewer.summarizeGates(bc);
+  assert.equal(summary.source, "gates");
   assert.equal(summary.total, 3);
-  assert.equal(summary.satisfied, 2);
-  assert.equal(summary.label, "2/3 gates");
+  assert.equal(summary.satisfied, 1, "N/A on a gate is unmet in the fallback");
+  assert.equal(summary.label, "1/3 gates");
   assert.equal(summary.hasFail, true);
+  assert.equal(summary.invalid, true);
   assert.deepEqual(summary.failedGates, ["GATE-REF-APPROVAL"]);
+  assert.deepEqual(summary.unmetGates, ["GATE-REF-APPROVAL (FAIL)", "GATE-PROJ-SYNC (N/A)"]);
+});
+
+test("summarizeGates fallback ignores rows dated before the current transition and the optional GATE-IMPL-PROPS", () => {
+  const summary = viewer.summarizeGates({
+    lifecycle: "IMPLEMENTED",
+    transitions: [
+      { date: "2026-10-01", from: "IMPLEMENTING", to: "IMPLEMENTED" },
+      { date: "2026-10-05", from: "IMPLEMENTED", to: "CHANGING" },
+      { date: "2026-11-01", from: "CHANGING", to: "IMPLEMENTED" },
+    ],
+    gates: [
+      { transition: "CHANGING -> IMPLEMENTED", gate: "GATE-IMPL-BDD", result: "PASS", date: "2026-10-30" },
+      { transition: "IMPLEMENTING -> IMPLEMENTED", gate: "GATE-IMPL-SIGNOFF", result: "PASS", date: "2026-10-01" },
+      { transition: "CHANGING -> IMPLEMENTED", gate: "GATE-IMPL-SIGNOFF", result: "PASS", date: "2026-11-01" },
+      { transition: "CHANGING -> IMPLEMENTED", gate: "GATE-IMPL-PROPS", result: "N/A", date: "2026-11-01" },
+    ],
+  });
+  assert.equal(summary.label, "1/1 gates");
+  assert.equal(summary.valid, true);
+  assert.equal(summary.invalid, false);
+});
+
+test("summarizeGates uses projection gateStatus: missing required gates and N/A are unmet", () => {
+  const summary = viewer.summarizeGates({
+    lifecycle: "REFINED",
+    gates: [
+      { transition: "REFINING -> REFINED", gate: "GATE-REF-SPEC", result: "PASS", date: "2026-11-10" },
+      { transition: "REFINING -> REFINED", gate: "GATE-PROJ-SYNC", result: "N/A", date: "2026-11-10" },
+    ],
+    gateStatus: {
+      transition: "REFINING -> REFINED",
+      required: [
+        { gate: "GATE-REF-SPEC", kind: "D", result: "PASS", date: "2026-11-10", satisfied: true },
+        { gate: "GATE-REF-APPROVAL", kind: "H", result: null, date: null, satisfied: false },
+        { gate: "GATE-PROJ-SYNC", kind: "D", result: "N/A", date: "2026-11-10", satisfied: false },
+      ],
+      optional: [],
+      satisfied: 1,
+      total: 3,
+      valid: false,
+    },
+  });
+  assert.equal(summary.source, "gateStatus");
+  assert.equal(summary.label, "1/3 gates");
+  assert.equal(summary.invalid, true);
+  assert.equal(summary.transition, "REFINING -> REFINED");
+  assert.deepEqual(summary.unmetGates, ["GATE-REF-APPROVAL (no row)", "GATE-PROJ-SYNC (N/A)"]);
+});
+
+test("buildBoardModel reads gateStatus from the example projection", () => {
+  const board = viewer.buildBoardModel(viewer.normalizeProject(exampleV2, "canonical"));
+  const catalog = board.cards.find((card) => card.id === "catalog");
+  assert.equal(catalog.gateSummary.source, "gateStatus");
+  assert.equal(catalog.gateSummary.valid, true);
+  const ordering = board.cards.find((card) => card.id === "ordering");
+  assert.equal(ordering.gateSummary.label, "0/3 gates");
+  assert.equal(ordering.gateSummary.invalid, true);
+  assert.deepEqual(ordering.gateSummary.unmetGates, [
+    "GATE-IMPL-BDD (no row)",
+    "GATE-IMPL-SIGNOFF (no row)",
+    "GATE-PROJ-SYNC (no row)",
+  ]);
 });
 
 test("buildBoardModel badges MIXED gaps and drift warnings on gap rows and BC cards", () => {

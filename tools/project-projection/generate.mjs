@@ -14,6 +14,7 @@ import {
   mergeGaps,
 } from "../shared/gaps.mjs";
 import { orderTransitions } from "../shared/transitions.mjs";
+import { GATE_CATALOG_PATHS, evaluateGateStatus, parseGateCatalog } from "../shared/gate-rules.mjs";
 
 export const EXIT_OK = 0;
 export const EXIT_INVALID = 1;
@@ -211,6 +212,7 @@ export async function buildProjection(root) {
     domainByKey.set(domain.name.toLowerCase(), domain);
   }
 
+  const catalog = await loadGateCatalog(root, problems);
   const boundedContexts = [];
   const bcByKey = new Map();
   const gapRows = new Map();
@@ -222,7 +224,16 @@ export async function buildProjection(root) {
     }
     const statusPath = row["local status"];
     const dir = statusPath ? path.posix.dirname(statusPath) : `.github/skills/${id}`;
-    const bc = await buildBoundedContext({ root, id, row, dir, domainId: domain?.id ?? "", problems, gapRows });
+    const bc = await buildBoundedContext({
+      root,
+      id,
+      row,
+      dir,
+      domainId: domain?.id ?? "",
+      problems,
+      gapRows,
+      catalog,
+    });
     boundedContexts.push(bc);
     bcByKey.set(id.toLowerCase(), bc);
     bcByKey.set(row["bounded context"].toLowerCase(), bc);
@@ -295,7 +306,7 @@ export async function buildProjection(root) {
   return projection;
 }
 
-async function buildBoundedContext({ root, id, row, dir, domainId, problems, gapRows }) {
+async function buildBoundedContext({ root, id, row, dir, domainId, problems, gapRows, catalog }) {
   const file = (name) => `${dir}/${name}`;
   const read = (name) => readOptional(path.join(root, file(name)));
   const skill = await read("SKILL.md");
@@ -328,6 +339,7 @@ async function buildBoundedContext({ root, id, row, dir, domainId, problems, gap
   bc.ports = domainModel === null ? [] : readPorts(domainModel, id, problems);
   bc.acls = await readAcls(root, dir, id, problems);
   Object.assign(bc, readLifecycleRecord(status ?? "", `BC ${id}: ${file("status.md")}`, problems));
+  bc.gateStatus = catalog === null ? null : evaluateGateStatus({ status, catalog, file: file("status.md") });
   bc.stats = readStats({ skill, bdd, decisions, properties, bc });
   bc.signoffs = await readSignoffs(root, [path.posix.basename(dir), id]);
   gapRows.set(id, {
@@ -340,6 +352,21 @@ async function buildBoundedContext({ root, id, row, dir, domainId, problems, gap
   if (status !== null) bc.sources.status = file("status.md");
   if (bdd !== null) bc.sources.bddScenarios = file("bdd-scenarios.md");
   return bc;
+}
+
+// ---------------------------------------------------------------- gates
+
+// Same catalog lookup as tools/verify-spec (default skills path). Returns the
+// parsed entries, or null when no catalog exists (gateStatus is then null).
+async function loadGateCatalog(root, problems) {
+  for (const candidate of GATE_CATALOG_PATHS) {
+    const source = await readOptional(path.join(root, candidate));
+    if (source === null) continue;
+    const parsed = parseGateCatalog(source, candidate);
+    for (const d of parsed.diagnostics) problems.push(`${d.file}:${d.line}: ${d.code} ${d.message}`);
+    return parsed.entries;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------- status.md

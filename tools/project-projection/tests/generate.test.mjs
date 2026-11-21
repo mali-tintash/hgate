@@ -318,3 +318,103 @@ test("validateSchema should accept type arrays when value matches one of them", 
   assert.deepEqual(validateSchema({ a: "x" }, schema), []);
   assert.equal(validateSchema({ a: 1 }, schema).length, 1);
 });
+
+// ------------------------------------------------------------ gateStatus
+// Per-BC gateStatus applies the Validity Rules of lifecycle-gates.md through
+// tools/shared/gate-rules.mjs (the same code verify-spec uses).
+
+const VER_REPORT_ROW =
+  "| IMPLEMENTED -> VERIFIED | GATE-VER-REPORT | H | PASS | `docs/verification/bc-reviews/catalog/2026-11-20-full.md` | A. Reviewer (Tech lead) | 2026-11-20 |";
+const VER_SYNC_ROW = "| IMPLEMENTED -> VERIFIED | GATE-PROJ-SYNC | D | PASS | `npm run project:check` in-sync | - | 2026-11-20 |";
+
+async function catalogGateStatus(edit) {
+  const root = await workspace();
+  try {
+    const file = path.join(root, ".github/skills/catalog/status.md");
+    const text = await readFile(file, "utf8");
+    const edited = edit(text);
+    assert.notEqual(edited, text, "edit must change status.md");
+    await writeFile(file, edited);
+    const projection = await buildProjection(root);
+    return projection.boundedContexts.find((bc) => bc.id === "catalog").gateStatus;
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+const gateOf = (status, gate) => status.required.find((item) => item.gate === gate);
+
+test("gateStatus should be valid with every required gate satisfied for the current transition", async () => {
+  const projection = await buildProjection(fixture);
+  const catalog = projection.boundedContexts.find((bc) => bc.id === "catalog").gateStatus;
+  assert.equal(catalog.transition, "IMPLEMENTED -> VERIFIED");
+  assert.deepEqual(
+    catalog.required.map((item) => item.gate),
+    ["GATE-VER-REPORT", "GATE-PROJ-SYNC"],
+  );
+  assert.equal(catalog.satisfied, 2);
+  assert.equal(catalog.total, 2);
+  assert.equal(catalog.valid, true);
+  const ordering = projection.boundedContexts.find((bc) => bc.id === "ordering").gateStatus;
+  assert.equal(ordering.total, 3, "legacy status.md: required gates still counted");
+  assert.equal(ordering.satisfied, 0);
+  assert.equal(ordering.valid, false);
+  assert.deepEqual(ordering.optional.map((item) => item.gate), ["GATE-IMPL-PROPS"]);
+});
+
+test("gateStatus should count a missing required gate row as unmet", async () => {
+  const status = await catalogGateStatus((text) => text.replace(`${VER_REPORT_ROW}\n`, ""));
+  assert.equal(status.total, 2);
+  assert.equal(status.satisfied, 1);
+  assert.equal(status.valid, false);
+  assert.deepEqual(gateOf(status, "GATE-VER-REPORT"), {
+    gate: "GATE-VER-REPORT",
+    kind: "H",
+    result: null,
+    date: null,
+    satisfied: false,
+  });
+});
+
+test("gateStatus should treat N/A on a required gate as unmet", async () => {
+  const status = await catalogGateStatus((text) =>
+    text.replace(VER_SYNC_ROW, VER_SYNC_ROW.replace("| PASS |", "| N/A |")),
+  );
+  assert.equal(gateOf(status, "GATE-PROJ-SYNC").result, "N/A");
+  assert.equal(gateOf(status, "GATE-PROJ-SYNC").satisfied, false);
+  assert.equal(status.satisfied, 1);
+  assert.equal(status.valid, false);
+});
+
+test("gateStatus should let a later PASS supersede an earlier FAIL", async () => {
+  const fail = VER_REPORT_ROW.replace("| PASS |", "| FAIL |").replace("A. Reviewer (Tech lead)", "-");
+  const status = await catalogGateStatus((text) => text.replace(VER_REPORT_ROW, `${fail}\n${VER_REPORT_ROW}`));
+  assert.equal(gateOf(status, "GATE-VER-REPORT").result, "PASS");
+  assert.equal(status.satisfied, 2);
+  assert.equal(status.valid, true);
+});
+
+test("gateStatus should ignore a row dated before the current transition", async () => {
+  const status = await catalogGateStatus((text) =>
+    text.replace(VER_REPORT_ROW, VER_REPORT_ROW.replace("| 2026-11-20 |", "| 2026-11-19 |")),
+  );
+  assert.deepEqual(gateOf(status, "GATE-VER-REPORT"), {
+    gate: "GATE-VER-REPORT",
+    kind: "H",
+    result: null,
+    date: null,
+    satisfied: false,
+  });
+  assert.equal(status.valid, false);
+});
+
+test("gateStatus should be null when the project has no gate catalog", async () => {
+  const root = await workspace();
+  try {
+    await rm(path.join(root, ".github/skills/hgate-guide"), { recursive: true, force: true });
+    const projection = await buildProjection(root);
+    for (const bc of projection.boundedContexts) assert.equal(bc.gateStatus, null, bc.id);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

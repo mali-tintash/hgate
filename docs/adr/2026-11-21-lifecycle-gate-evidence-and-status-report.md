@@ -93,8 +93,11 @@ ordered and timestamp-free, so the same repository state yields the same file.
 
 The status report emits, per BC:
 
-- **Since last transition** (default view): last transition commit -> working
-  tree, split into committed and uncommitted parts.
+- **Since last transition** (default view): last transition commit -> `HEAD`
+  (committed changes only). Uncommitted work is reported separately in the
+  **Uncommitted** baseline, never folded into this one. When the last
+  transition is itself uncommitted, the baseline is marked `uncommitted` and
+  has no committed changes.
 - **Since `HEAD~1`**: the latest commit's effect on the BC.
 - **Uncommitted**: `HEAD` -> working tree.
 - **Step-to-step**: each transition commit against the previous one, shown in
@@ -112,8 +115,11 @@ diagnostics panel. Promoting drift to a failure requires revisiting this ADR.
 ### 8. Business-rule identity by content hash (plan D5)
 
 Business rules are identified by a hash of their normalized text; the list
-number is a display label only. Renumbering therefore shows as modified rather
-than as removal plus addition. Stable `BR-<BC>-NNN` IDs remain in the backlog.
+number is a display label only. A renumbered rule with unchanged text therefore
+shows as `moved` (counted separately from added, removed and modified, and
+not a content change), not as modified and not as removal plus addition. A rule
+whose text changed while keeping its number is modified; other text changes are
+removal plus addition. Stable `BR-<BC>-NNN` IDs remain in the backlog.
 
 ### 9. Persisted `bc-review` reports
 

@@ -201,6 +201,29 @@
           "disposition": "Open"
         }
       ],
+      "gateStatus": {
+        "transition": "IMPLEMENTED -> VERIFIED",
+        "required": [
+          {
+            "gate": "GATE-VER-REPORT",
+            "kind": "H",
+            "result": "PASS",
+            "date": "2026-11-20",
+            "satisfied": true
+          },
+          {
+            "gate": "GATE-PROJ-SYNC",
+            "kind": "D",
+            "result": "PASS",
+            "date": "2026-11-20",
+            "satisfied": true
+          }
+        ],
+        "optional": [],
+        "satisfied": 2,
+        "total": 2,
+        "valid": true
+      },
       "stats": {
         "rules": 3,
         "features": 2,
@@ -293,6 +316,44 @@
           "disposition": "Open"
         }
       ],
+      "gateStatus": {
+        "transition": "IMPLEMENTING -> IMPLEMENTED",
+        "required": [
+          {
+            "gate": "GATE-IMPL-BDD",
+            "kind": "D",
+            "result": null,
+            "date": null,
+            "satisfied": false
+          },
+          {
+            "gate": "GATE-IMPL-SIGNOFF",
+            "kind": "H",
+            "result": null,
+            "date": null,
+            "satisfied": false
+          },
+          {
+            "gate": "GATE-PROJ-SYNC",
+            "kind": "D",
+            "result": null,
+            "date": null,
+            "satisfied": false
+          }
+        ],
+        "optional": [
+          {
+            "gate": "GATE-IMPL-PROPS",
+            "kind": "H",
+            "result": null,
+            "date": null,
+            "satisfied": true
+          }
+        ],
+        "satisfied": 0,
+        "total": 3,
+        "valid": false
+      },
       "stats": {
         "rules": 0,
         "features": 0,

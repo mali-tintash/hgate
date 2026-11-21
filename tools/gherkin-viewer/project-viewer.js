@@ -595,6 +595,9 @@
         if (bc[field] !== undefined && !Array.isArray(bc[field])) error(`${bc.id}.${field} must be an array.`);
       }
       if (bc.stats !== undefined && !isObject(bc.stats)) error(`${bc.id}.stats must be an object.`);
+      if (bc.gateStatus !== undefined && bc.gateStatus !== null && !isObject(bc.gateStatus)) {
+        error(`${bc.id}.gateStatus must be an object or null.`);
+      }
     }
     const relationshipIds = new Set();
     for (const relation of Array.isArray(raw.relationships) ? raw.relationships : []) {
@@ -748,7 +751,9 @@
   ];
   // Shown only when at least one BC is in the state.
   const OPTIONAL_LIFECYCLES = ["CHANGING", "BLOCKED", "DEPRECATED"];
-  const SATISFIED_GATE_RESULTS = new Set(["PASS", "N/A"]);
+  const isPlainObject = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  // Optional in lifecycle-gates.md (Rule 5); the fallback summary skips it.
+  const FALLBACK_OPTIONAL_GATES = new Set(["GATE-IMPL-PROPS"]);
 
   function lifecycleLabel(state) {
     return String(state || "")
@@ -824,15 +829,31 @@
     return ordered.length ? ordered[ordered.length - 1] : null;
   }
 
-  // Summarizes the gates recorded for the transition into the BC's current lifecycle.
-  // A gate re-run keeps only its latest row (by date, then order), so FAIL → PASS counts as PASS.
+  // Summarizes the gates of the transition into the BC's current lifecycle.
+  // Projections carry bc.gateStatus, computed by tools/shared/gate-rules.mjs
+  // with the Validity Rules of lifecycle-gates.md (required gates from the
+  // catalog, N/A unmet on required gates, rows dated before the transition
+  // ignored); the card shows it as-is. Without gateStatus (older projections,
+  // legacy Markdown) a best-effort fallback reads bc.gates: only the latest
+  // row per gate counts (FAIL → PASS counts as PASS), N/A is unmet, rows dated
+  // before the current transition are ignored, and the optional
+  // GATE-IMPL-PROPS is left out. The fallback cannot see required gates that
+  // have no row, so it never reports a missing gate.
   function summarizeGates(bc) {
+    if (bc && isPlainObject(bc.gateStatus)) return summarizeGateStatus(bc.gateStatus);
     const target = bc && bc.lifecycle;
+    const current = latestTransitionInto(bc, target);
+    const currentKey = current ? transitionKey(`${cleanCell(current.from)} -> ${cleanCell(current.to)}`) : null;
+    const currentDate = current && TRANSITION_DATE.test(cleanCell(current.date)) ? cleanCell(current.date) : null;
     const latest = new Map();
     ((bc && bc.gates) || []).forEach((row, index) => {
       if (!row || transitionTarget(row.transition) !== target) return;
+      if (FALLBACK_OPTIONAL_GATES.has(row.gate)) return;
+      if (currentKey && transitionKey(row.transition) !== currentKey) return;
+      const date = String(row.date || "");
+      if (currentDate && TRANSITION_DATE.test(date) && date < currentDate) return;
       const previous = latest.get(row.gate);
-      if (!previous || String(row.date || "") >= String(previous.row.date || "")) {
+      if (!previous || date >= String(previous.row.date || "")) {
         latest.set(row.gate, { row, index });
       }
     });
@@ -841,19 +862,69 @@
       .map((entry) => entry.row);
     const count = (predicate) => rows.filter(predicate).length;
     const failedGates = rows.filter((row) => row.result === "FAIL").map((row) => row.gate);
-    const satisfied = count((row) => SATISFIED_GATE_RESULTS.has(row.result));
+    const unmet = rows.filter((row) => !fallbackSatisfied(row));
+    const satisfied = rows.length - unmet.length;
+    const invalid = unmet.length > 0;
     return {
+      source: "gates",
       transition: rows.length ? transitionKey(rows[rows.length - 1].transition) : null,
       total: rows.length,
       satisfied,
       passed: count((row) => row.result === "PASS"),
       notApplicable: count((row) => row.result === "N/A"),
       failed: failedGates.length,
-      pending: rows.length - satisfied - failedGates.length,
+      pending: Math.max(0, unmet.length - failedGates.length),
       failedGates,
+      unmetGates: unmet.map((row) => `${row.gate} (${row.result || "no result"})`),
       hasFail: failedGates.length > 0,
+      valid: rows.length > 0 && !invalid,
+      invalid,
       label: rows.length ? `${satisfied}/${rows.length} gates` : "No gates recorded",
     };
+  }
+
+  // Projection gateStatus (schema v2, optional field) → card summary.
+  function summarizeGateStatus(status) {
+    const required = Array.isArray(status.required) ? status.required.filter(isPlainObject) : [];
+    const optional = Array.isArray(status.optional) ? status.optional.filter(isPlainObject) : [];
+    const all = required.concat(optional);
+    const total = numberOrNull(status.total) !== null ? status.total : required.length;
+    const satisfied =
+      numberOrNull(status.satisfied) !== null ? status.satisfied : required.filter((g) => g.satisfied).length;
+    const failedGates = all.filter((g) => g.result === "FAIL").map((g) => g.gate);
+    const unmet = all.filter((g) => !g.satisfied);
+    const valid = status.valid === true;
+    return {
+      source: "gateStatus",
+      transition: typeof status.transition === "string" ? status.transition : null,
+      total,
+      satisfied,
+      passed: required.filter((g) => g.result === "PASS").length,
+      notApplicable: required.filter((g) => g.result === "N/A").length,
+      failed: failedGates.length,
+      pending: Math.max(0, total - satisfied - required.filter((g) => g.result === "FAIL").length),
+      failedGates,
+      unmetGates: unmet.map((g) => `${g.gate} (${g.result || "no row"})`),
+      hasFail: failedGates.length > 0,
+      valid,
+      invalid: !valid,
+      label: total ? `${satisfied}/${total} gates` : "No gates required",
+    };
+  }
+
+  function latestTransitionInto(bc, target) {
+    const ordered = orderTransitions((bc && bc.transitions) || []).filter((row) => cleanCell(row.to) === target);
+    return ordered.length ? ordered[ordered.length - 1] : null;
+  }
+
+  // Fallback: PASS, or WAIVED signed by a Tech lead with a reason (Rule 3).
+  function fallbackSatisfied(row) {
+    if (row.result === "PASS") return true;
+    return (
+      row.result === "WAIVED" &&
+      /\(\s*tech lead\s*\)\s*$/i.test(String(row.signedBy || "")) &&
+      String(row.evidence || "").trim() !== ""
+    );
   }
 
   function numberOrNull(value) {
@@ -1763,13 +1834,13 @@
     const footer = createElement("span", "board-card-footer");
     const gates = createElement(
       "span",
-      `gate-summary${card.gateSummary.hasFail ? " has-fail" : ""}`,
+      `gate-summary${card.gateSummary.invalid ? " has-fail" : ""}`,
       card.gateSummary.label,
     );
     if (card.gateSummary.transition) gates.title = card.gateSummary.transition;
     footer.append(gates);
-    if (card.gateSummary.hasFail) {
-      footer.append(createElement("span", "gate-fail", `FAIL: ${card.gateSummary.failedGates.join(", ")}`));
+    if (card.gateSummary.unmetGates.length) {
+      footer.append(createElement("span", "gate-fail", `Unmet: ${card.gateSummary.unmetGates.join(", ")}`));
     }
     footer.append(
       createElement("span", "", `${card.signoffCount} sign-off${card.signoffCount === 1 ? "" : "s"}`),

@@ -73,7 +73,10 @@ newest-first or oldest-first; it is normalised by
 pattern (`-`, `*`, concrete states) matches it is required except the optional
 `GATE-IMPL-PROPS`; the latest row for that transition dated on or after it
 must be `PASS`, or `WAIVED` signed by a `Tech lead` with a reason. Earlier
-transitions' rows are history and are only format-checked.
+transitions' rows are history and are only format-checked. The catalog parsing
+and rule evaluation live in `tools/shared/gate-rules.mjs`, which
+`project:sync` also uses to project each BC's `gateStatus`, so the status board
+and verify-spec always agree.
 
 The catalog is read from `--gates <path>` (relative to `--root`), else
 `<skills-path>/hgate-guide/references/lifecycle-gates.md` (adopting projects),
@@ -82,7 +85,7 @@ no catalog the gate checks are skipped and one `INFO` line says so.
 
 | Code | Severity | Check |
 |---|---|---|
-| HGS001 | error | Required gate has no Gate Evidence row for the current transition |
+| HGS001 | error | Required gate has no Gate Evidence row for the current transition (the message says when a row exists but is dated before the transition) |
 | HGS002 | error | Required gate's latest row is `FAIL` or `N/A` (or optional `GATE-IMPL-PROPS` is not `PASS`/`N/A`) |
 | HGS003 | error | `WAIVED` without a `Tech lead` signer or without a reason |
 | HGS004 | error | Malformed Gate Evidence row (transition, unknown or inapplicable gate, kind differs from catalog, result, empty evidence, signer, date) or no table |
@@ -91,17 +94,21 @@ no catalog the gate checks are skipped and one `INFO` line says so.
 | HGS007 | error | Gate catalog cannot be parsed |
 
 Template rows still holding placeholders (`[...]`, `<...>`, `YYYY-MM-DD`) are
-ignored, as in `project:sync`. Warnings never change the exit code; they are
+ignored, as in `project:sync`; in the catalog only a blank row or an unfilled
+Gate ID cell counts as a template row, because Required evidence legitimately
+names paths such as `YYYY-MM-DD-full.md`. Warnings never change the exit code; they are
 printed after the summary line as the last lines of output:
 
 ```text
 verify-spec OK (refinement): 2 BC(s) (spec 1, gates 2)
 WARNINGS (1)
-HGS006 .github/skills/cart/status.md:1 status.md has no "## Gate Evidence" section; migrate it ...
+  HGS006 .github/skills/cart/status.md:1 status.md has no "## Gate Evidence" section; migrate it ...
 ```
 
 Under GitHub Actions (`GITHUB_ACTIONS=true`) the text format also emits a
-`::warning file=…,line=…::` annotation per warning. `--format json` adds
+`::warning file=…,line=…,title=<code>::<message>` annotation per warning,
+before the report. The block and annotations come from `formatWarnings` in
+`tools/shared/gaps.mjs`, identical to `project:sync` / `project:check`. `--format json` adds
 `warnings` and `notes` arrays, and `specChecked` / `gateChecked` BC lists
 (the summary line counts both).
 

@@ -352,7 +352,7 @@ const GATE_DEFECTS = [
     name: "missing GATE-PROJ-SYNC required by the * -> * pattern",
     code: "HGS001",
     at: `${STATUS}:26`,
-    message: /GATE-PROJ-SYNC/,
+    message: /GATE-PROJ-SYNC has no Gate Evidence row for current transition/,
     mutate: (f) =>
       f.edit(STATUS, "| REFINING -> REFINED | GATE-PROJ-SYNC | D | PASS | `npm run project:check` in-sync | - | 2026-10-14 |\n", ""),
   },
@@ -373,7 +373,7 @@ const GATE_DEFECTS = [
     name: "gate row dated before the current transition does not count",
     code: "HGS001",
     at: `${STATUS}:26`,
-    message: /GATE-REF-SPEC/,
+    message: /GATE-REF-SPEC has only a row dated before the current transition .* dated 2026-10-13, before 2026-10-14/,
     mutate: (f) =>
       f.edit(STATUS, "| `verify-spec` OK (refinement) | - | 2026-10-14 |", "| `verify-spec` OK (refinement) | - | 2026-10-13 |"),
   },
@@ -475,6 +475,16 @@ for (const defect of GATE_DEFECTS) {
   });
 }
 
+test("gate catalog fixture copies match skills/hgate-guide/references/lifecycle-gates.md byte-for-byte", async () => {
+  const canonical = await readFile(REPO_CATALOG, "utf8");
+  for (const copy of [
+    "fixtures/good/.github/skills/hgate-guide/references/lifecycle-gates.md",
+    "../../project-projection/tests/fixtures/example/.github/skills/hgate-guide/references/lifecycle-gates.md",
+  ]) {
+    assert.equal(await readFile(fileURLToPath(new URL(copy, import.meta.url)), "utf8"), canonical, copy);
+  }
+});
+
 test("verify-spec gate check passes the good fixture with no warnings, also against the repo catalog", async () => {
   for (const gates of [undefined, REPO_CATALOG]) {
     const report = await verifySpec({ root: goodFixture, gates });
@@ -525,6 +535,19 @@ test("verify-spec gate check treats GATE-IMPL-PROPS as optional (absent or N/A)"
     f.write(STATUS, statusFile("IMPLEMENTED", IMPLEMENTED_HISTORY, IMPLEMENTED_GATES.slice(0, 1).concat(IMPLEMENTED_GATES.slice(2)))),
   );
   assert.ok(codes(await verifySpec({ root: missingSignoff })).includes(`HGS001 ${STATUS}:14`));
+});
+
+test("verify-spec gate check recognises catalog gates whose evidence names YYYY-MM-DD paths (GATE-VER-REPORT)", async () => {
+  const history = [...IMPLEMENTED_HISTORY, ["2026-11-05", "IMPLEMENTED", "VERIFIED"]];
+  const gates = [
+    ...IMPLEMENTED_GATES,
+    ["IMPLEMENTED -> VERIFIED", "GATE-VER-REPORT", "H", "PASS", "`docs/verification/bc-reviews/cart/2026-11-05-full.md`", "A. Lead (Tech lead)", "2026-11-05"],
+    ["IMPLEMENTED -> VERIFIED", "GATE-PROJ-SYNC", "D", "PASS", "`npm run project:check` in-sync", "-", "2026-11-05"],
+  ];
+  const root = await brokenCopy((f) => f.write(STATUS, statusFile("VERIFIED", history, gates)));
+  assert.deepEqual((await verifySpec({ root })).diagnostics, []);
+  const missing = await brokenCopy((f) => f.write(STATUS, statusFile("VERIFIED", history, gates.filter((g) => g[1] !== "GATE-VER-REPORT"))));
+  assert.ok((await verifySpec({ root: missing })).diagnostics.some((d) => d.code === "HGS001" && /GATE-VER-REPORT/.test(d.message)));
 });
 
 test("verify-spec gate check: leaving BLOCKED needs only GATE-PROJ-SYNC (* -> * pattern)", async () => {
@@ -612,9 +635,9 @@ test("verify-spec gate check warns once per legacy status.md without failing", a
   const lines = text.trimEnd().split("\n");
   assert.equal(lines[0], "verify-spec OK (implementation): 1 BC(s) (spec 1, gates 1)");
   assert.equal(lines[1], "WARNINGS (1)");
-  assert.match(lines[2], /^HGS006 \.github\/skills\/cart\/status\.md:1 .*Gate Evidence/);
+  assert.match(lines[2], /^  HGS006 \.github\/skills\/cart\/status\.md:1 .*Gate Evidence/);
   assert.equal(lines.length, 3);
-  assert.match(formatGithubAnnotations(report), /^::warning file=\.github\/skills\/cart\/status\.md,line=1::HGS006 /);
+  assert.match(formatGithubAnnotations(report), /^::warning file=\.github\/skills\/cart\/status\.md,line=1,title=HGS006::status\.md has no /);
   const cli = await execFileAsync(process.execPath, [fileURLToPath(new URL("../verify.mjs", import.meta.url)), "--root", root], {
     env: { ...process.env, GITHUB_ACTIONS: "true" },
   });
@@ -691,7 +714,7 @@ test("verify-spec warns HGW001 on gap disposition drift without changing the exi
   assert.deepEqual(hgw, [`HGW002 ${STATUS}:45`, "HGW001 docs/domain-map.md:13"]);
   const lines = formatTextReport(report).trimEnd().split("\n");
   assert.equal(lines[1], `WARNINGS (${report.warnings.length})`);
-  assert.ok(lines.some((l) => /^HGW001 docs\/domain-map\.md:13 gap G1 dispositions disagree: DEFERRED .* RESOLVED /.test(l)));
+  assert.ok(lines.some((l) => /^  HGW001 docs\/domain-map\.md:13 gap G1 dispositions disagree: DEFERRED .* RESOLVED /.test(l)));
 });
 
 test("verify-spec gap warnings match the projection generator on its drift fixture", async () => {

@@ -54,6 +54,7 @@ report (see [`tools/project-status/README.md`](../project-status/README.md)).
 | `blockers` | bullets (or inline value) after `**Blockers:**` in `status.md` `## Current State`, excluding `None` |
 | `transitions` | `## Transition History` table in `status.md` (`date`, `from`, `to`, `evidence`, `actor`), chronological order (newest-first or oldest-first tables are normalised by `tools/shared/transitions.mjs`) |
 | `gates` | `## Gate Evidence` table in `status.md` (`transition` as `FROM -> TO`, `gate`, `kind` H/D/R, `result` PASS/FAIL/WAIVED/N/A, `evidence`, `signedBy` or `null`, `date`), file order; malformed rows fail with `HGP002` |
+| `gateStatus` | Validity Rules of `lifecycle-gates.md` for the current transition, evaluated by `tools/shared/gate-rules.mjs` (the same code as verify-spec): `transition`, `required` / `optional` gates (`gate`, `kind`, latest `result` and `date` dated on or after the transition, or `null`, `satisfied`), `satisfied`, `total`, `valid`. `null` when no catalog exists at `.github/skills/hgate-guide/references/lifecycle-gates.md` or `skills/hgate-guide/references/lifecycle-gates.md`; a catalog that cannot be parsed fails with `HGP002` |
 | `openItems` | `## Open Items` table in `status.md` (`id` or `null` when the table has no ID column, `item`, `owner`, `disposition`), file order |
 | `purpose` | first paragraph of `## Purpose` in the BC `SKILL.md` |
 | `ports` | `## Ports` table in `domain-model.md` |

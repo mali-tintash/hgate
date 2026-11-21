@@ -12,8 +12,13 @@ import {
   stripMarkup,
   toKebab,
 } from "./markdown.mjs";
-import { checkGates, parseGateCatalog } from "./gates.mjs";
-import { GAP_ID_PATTERN, gapIdFromText, mergeGaps } from "../shared/gaps.mjs";
+import {
+  GATE_CATALOG_PATHS,
+  GATE_CATALOG_SUFFIX,
+  checkGates,
+  parseGateCatalog,
+} from "../shared/gate-rules.mjs";
+import { GAP_ID_PATTERN, formatWarnings, gapIdFromText, mergeGaps } from "../shared/gaps.mjs";
 
 export const EXIT_VALID = 0;
 export const EXIT_INVALID = 1;
@@ -21,11 +26,6 @@ export const EXIT_DISCOVERY = 2;
 
 const DEFAULT_SKILLS_PATH = ".github/skills";
 const DEFAULT_SRC_PATH = "src";
-const GATE_CATALOG_SUFFIX = "hgate-guide/references/lifecycle-gates.md";
-const GATE_CATALOG_FALLBACKS = [
-  `.github/skills/${GATE_CATALOG_SUFFIX}`,
-  `skills/${GATE_CATALOG_SUFFIX}`,
-];
 const ID_PATTERN = /^[A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)+-[0-9]{3}$/;
 const PORT_DIRECTIONS = new Set(["INBOUND", "OUTBOUND", "BIDIRECTIONAL", "UNKNOWN"]);
 const READY_LIFECYCLES = new Set(["REFINED", "SPEC_REVIEWED", "IMPLEMENTING"]);
@@ -420,7 +420,7 @@ function checkReadiness(ctx, out) {
 async function loadGateCatalog(root, skillsPath, explicit) {
   const candidates = explicit
     ? [explicit]
-    : [...new Set([`${skillsPath}/${GATE_CATALOG_SUFFIX}`, ...GATE_CATALOG_FALLBACKS])];
+    : [...new Set([`${skillsPath}/${GATE_CATALOG_SUFFIX}`, ...GATE_CATALOG_PATHS])];
   for (const candidate of candidates) {
     const file = path.resolve(root, candidate);
     const source = await readOptional(file);
@@ -720,20 +720,17 @@ export function formatTextReport(report) {
       ? `verify-spec OK (${report.phase}): ${report.checked.length} BC(s) (spec ${(report.specChecked ?? report.checked).length}, gates ${(report.gateChecked ?? []).length})`
       : `verify-spec FAILED (${report.phase}): ${report.diagnostics.length} issue(s)`,
   );
-  const warnings = report.warnings ?? [];
-  if (warnings.length > 0) {
-    lines.push(`WARNINGS (${warnings.length})`, ...warnings.map(formatDiagnostic));
-  }
+  // Same trailing block as tools/project-projection (tools/shared/gaps.mjs).
+  lines.push(...formatWarnings(report.warnings ?? []));
   return `${lines.join("\n")}\n`;
 }
 
-const escapeData = (value) => String(value).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
-const escapeProperty = (value) => escapeData(value).replace(/:/g, "%3A").replace(/,/g, "%2C");
-
-// GitHub Actions workflow-command annotations for warnings.
+// GitHub Actions workflow-command annotations for warnings, in the same
+// format as tools/project-projection (formatWarnings with github: true).
 export function formatGithubAnnotations(report) {
-  return (report.warnings ?? [])
-    .map((w) => `::warning file=${escapeProperty(w.file)},line=${w.line}::${escapeData(`${w.code} ${w.message}`)}\n`)
+  return formatWarnings(report.warnings ?? [], { github: true })
+    .filter((line) => line.startsWith("::warning "))
+    .map((line) => `${line}\n`)
     .join("");
 }
 

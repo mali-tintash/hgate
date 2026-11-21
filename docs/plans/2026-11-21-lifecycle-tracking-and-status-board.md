@@ -1,6 +1,6 @@
 # Plan: Lifecycle Tracking, Gate Evidence and Status Board
 
-**Status:** APPROVED 2026-11-21 (decisions D1–D6 resolved, see §3)
+**Status:** IMPLEMENTED 2026-11-21 on `enhanced-reviewability` (local commits, not pushed); decisions D1–D6 in §3
 **Branch:** `enhanced-reviewability`
 **Date:** 2026-11-21
 **Scope:** Track A (project lifecycle data into the projection + status board) and
@@ -143,29 +143,29 @@ acceptance boxes here.
   - Depends on: T0
   - Output: `docs/adr/2026-11-xx-lifecycle-gate-evidence-and-status-report.md`
   - Acceptance:
-    - [ ] Records the gate model, `status.md` as authority, projection vs status-report split, git derivation method, schema v2 (D4)
-    - [ ] Lists consequences: `fetch-depth: 0`, squash-merge limitation, gitignored output
+    - [x] Records the gate model, `status.md` as authority, projection vs status-report split, git derivation method, schema v2 (D4)
+    - [x] Lists consequences: `fetch-depth: 0`, squash-merge limitation, gitignored output
 
 - [x] **T2 — Gate catalog and status template**
   - Depends on: T1
   - Files: new `skills/hgate-guide/references/lifecycle-gates.md` (catalog table, parseable); `skills/bc-refinement/assets/status-template.md` (Gate Evidence section, Open Items `ID` column); `skills/hgate-guide/references/lifecycle-status.md` (update rules point to gates)
   - Acceptance:
-    - [ ] Catalog matches the D6 outcome; every transition in lifecycle-status.md maps to at least one gate
-    - [ ] Template contains no ambiguous placeholders the generator would mis-parse
+    - [x] Catalog matches the D6 outcome; every transition in lifecycle-status.md maps to at least one gate
+    - [x] Template contains no ambiguous placeholders the generator would mis-parse
 
 - [x] **T3a — Specialist skills write gate evidence (refinement, exploration)**
   - Depends on: T2
   - Files: `skills/domain-exploration/SKILL.md`, `skills/bc-refinement/SKILL.md` (+ phase-6/7 references)
   - Acceptance:
-    - [ ] Each skill's close phase writes Gate Evidence rows for its transition before changing `lifecycle:`
-    - [ ] Existing phase numbering unchanged
+    - [x] Each skill's close phase writes Gate Evidence rows for its transition before changing `lifecycle:`
+    - [x] Existing phase numbering unchanged
 
 - [x] **T3b — Specialist skills write gate evidence (review, implementation, enhancement)**
   - Depends on: T2
   - Files: `skills/bc-review/SKILL.md` + `references/report-template.md` (persist report at `docs/verification/bc-reviews/<bc>/YYYY-MM-DD-<mode>.md`), `skills/bc-implementation/SKILL.md`, `skills/bc-enhancement/SKILL.md`, `skills/hgate-guide/SKILL.md` (reads gates when diagnosing)
   - Acceptance:
-    - [ ] `bc-review` persists its report (closes F4) and records `GATE-SREV-REPORT` / `GATE-VER-REPORT`
-    - [ ] Implementation and enhancement link the BDD sign-off file in `GATE-IMPL-SIGNOFF`
+    - [x] `bc-review` persists its report (closes F4) and records `GATE-SREV-REPORT` / `GATE-VER-REPORT`
+    - [x] Implementation and enhancement link the BDD sign-off file in `GATE-IMPL-SIGNOFF`
 
 ### Phase 2 — Projection (Track A)
 
@@ -174,32 +174,32 @@ acceptance boxes here.
   - Files: `docs/hgate-project.schema.json`, `tools/project-projection/generate.mjs`, tests and fixtures, `docs/hgate-project.example.json`
   - Adds per BC: `transitions[]`, `gates[]`, `blockers[]`, `nextSkill`, `openItems[]`
   - Acceptance:
-    - [ ] Example regenerates byte-for-byte; idempotent; `--check` still detects drift
-    - [ ] v1 projects still generate (or a clear upgrade message), per D4
-    - [ ] Malformed gate rows fail with an `HGP` code listing every problem
+    - [x] Example regenerates byte-for-byte; idempotent; `--check` still detects drift
+    - [x] v1 projects still generate (or a clear upgrade message), per D4
+    - [x] Malformed gate rows fail with an `HGP` code listing every problem
 
 - [x] **T4b — Merged gap ledger with drift diagnostics**
   - Depends on: T4a
   - Joins gaps by ID across `domain-map.md` Open Boundary Gaps, `context-map.md` gaps, each `status.md` Open Items
   - Acceptance:
-    - [ ] Top-level `gaps[]` with sources and dispositions per file
-    - [ ] Drift (differing dispositions) emitted as `diagnostics[]` warnings, non-failing per D3
-    - [ ] CLI prints the trailing `WARNINGS (n)` block per §3.1
-    - [ ] Fixture reproduces the live-pet G11–G13 drift case
+    - [x] Top-level `gaps[]` with sources and dispositions per file
+    - [x] Drift (differing dispositions) emitted as `diagnostics[]` warnings, non-failing per D3
+    - [x] CLI prints the trailing `WARNINGS (n)` block per §3.1
+    - [x] Fixture reproduces the live-pet G11–G13 drift case
 
 - [x] **T4c — Artifact stats and sign-off index**
   - Depends on: T4a
   - Adds per BC: `stats` (rules, scenarios, features, decisions, properties, ACLs, ports) and `signoffs[]` (files under `docs/verification/**/<bc>/`)
   - Acceptance:
-    - [ ] Counts are derived only from Markdown, no git or test run
-    - [ ] Unit tests cover zero, one and many cases
+    - [x] Counts are derived only from Markdown, no git or test run
+    - [x] Unit tests cover zero, one and many cases
 
 - [x] **T5 — Gate validation in `verify-spec`**
   - Depends on: T4a
   - Acceptance:
-    - [ ] Current `lifecycle` requires PASS rows for the gates of the transition into it (new `HGS` codes)
-    - [ ] Gap drift reported as warning with the trailing `WARNINGS (n)` block per §3.1
-    - [ ] Tests for pass, missing gate, failed gate
+    - [x] Current `lifecycle` requires PASS rows for the gates of the transition into it (new `HGS` codes)
+    - [x] Gap drift reported as warning with the trailing `WARNINGS (n)` block per §3.1
+    - [x] Tests for pass, missing gate, failed gate
 
 ### Phase 3 — Git-derived status report (Track B)
 
@@ -207,49 +207,49 @@ acceptance boxes here.
   - Depends on: T4a
   - Files: new `tools/project-status/snapshot.mjs` + tests
   - Acceptance:
-    - [ ] Given BC file contents, returns ordered items with content hashes: scenarios, rules (D5), decision headings, model sections, ports, ACLs, gates, open items
-    - [ ] Diff function returns added / removed / modified per category; deterministic
+    - [x] Given BC file contents, returns ordered items with content hashes: scenarios, rules (D5), decision headings, model sections, ports, ACLs, gates, open items
+    - [x] Diff function returns added / removed / modified per category; deterministic
 
 - [x] **T6b — Git walker and status report CLI**
   - Depends on: T6a
   - Files: `tools/project-status/generate.mjs`, README, tests that build temporary git repos
   - Acceptance:
-    - [ ] Attributes each Transition History row to its introducing commit (blame), including rows committed together and uncommitted rows
-    - [ ] Emits step-to-step diffs, last-transition→HEAD, `HEAD~1`→HEAD, HEAD→worktree (per D1)
-    - [ ] Optionally embeds `verify:bdd --format json` coverage when tests exist
-    - [ ] Clear message on shallow clone or missing git; no timestamps; idempotent
+    - [x] Attributes each Transition History row to its introducing commit (blame), including rows committed together and uncommitted rows
+    - [x] Emits step-to-step diffs, last-transition→HEAD, `HEAD~1`→HEAD, HEAD→worktree (per D1)
+    - [x] Optionally embeds `verify:bdd --format json` coverage when tests exist
+    - [x] Clear message on shallow clone or missing git; no timestamps; idempotent
 
 ### Phase 4 — Viewer
 
 - [x] **T7a — Board tab (projection only)**
   - Depends on: T4b, T4c
   - Acceptance:
-    - [ ] Lifecycle swimlanes with BC cards (classification, next skill, blockers, stats)
-    - [ ] Gap ledger with drift warnings; diagnostics panel
-    - [ ] Persistent, non-dismissible warning banner and amber badges per §3.1
-    - [ ] Works on v1 and v2 projections; tests in `project-viewer.test.js`
+    - [x] Lifecycle swimlanes with BC cards (classification, next skill, blockers, stats)
+    - [x] Gap ledger with drift warnings; diagnostics panel
+    - [x] Persistent, non-dismissible warning banner and amber badges per §3.1
+    - [x] Works on v1 and v2 projections; tests in `project-viewer.test.js`
 
 - [x] **T7b — Per-BC timeline and change view (status report)**
   - Depends on: T6b, T7a
   - Acceptance:
-    - [ ] Timeline of transitions with gates, signer, evidence links
-    - [ ] Each step expands to its semantic diff; "since last transition", "since previous commit" and "uncommitted" shown at top
-    - [ ] Degrades gracefully when `.hgate/status.json` is absent
+    - [x] Timeline of transitions with gates, signer, evidence links
+    - [x] Each step expands to its semantic diff; "since last transition", "since previous commit" and "uncommitted" shown at top
+    - [x] Degrades gracefully when `.hgate/status.json` is absent
 
 ### Phase 5 — Wiring and docs
 
 - [x] **T8 — Scripts, CI, hooks**
   - Depends on: T5, T6b
   - Acceptance:
-    - [ ] `package.json`: `project:status`; `test` includes new suites
-    - [ ] `.github/workflows/verify.yml` runs all test suites (closes F8)
-    - [ ] `templates/ci/hgate-verify.yml` and hooks updated; `.hgate/` gitignored; `fetch-depth: 0` documented
+    - [x] `package.json`: `project:status`; `test` includes new suites
+    - [x] `.github/workflows/verify.yml` runs all test suites (closes F8)
+    - [x] `templates/ci/hgate-verify.yml` and hooks updated; `.hgate/` gitignored; `fetch-depth: 0` documented
 
 - [x] **T9 — Documentation**
   - Depends on: T8
   - Files: `README.md`, `docs/adoption-guide.md`, tool READMEs, `templates/CLAUDE.hgate.md`
   - Acceptance:
-    - [ ] Describes the gate model, both outputs, board, timeline, limitations
+    - [x] Describes the gate model, both outputs, board, timeline, limitations
 
 ### Phase 6 — Proof on live-pet and verification
 
@@ -258,8 +258,8 @@ acceptance boxes here.
   - Steps: copy updated `tools/` and skills; migrate both BCs' `status.md` (Gate Evidence backfill, Open Items IDs); fix stale gaps in `domain-map.md`; run `project:sync`, `verify-spec`, `project:status`; open the viewer
   - Note: the connected live-pet folder is a git worktree whose git directory (`/Users/muhammadali/Codes/live-pet/.git`) is outside the connected folder, so git fails from the agent shell. `github.com/mali-tintash/live-pet` `main` has only the 3 setup commits; the Pet Mind work is not pushed. Before T10: push the worktree branch, or grant folder access to `/Users/muhammadali/Codes/live-pet`.
   - Acceptance:
-    - [ ] Board shows Pet Mind `REFINED`, Pet Companion `DISCOVERED`, gap ledger, drift cleared after the fix
-    - [ ] Pet Mind timeline shows three transitions with changes
+    - [x] Board shows Pet Mind `REFINED`, Pet Companion `DISCOVERED`, gap ledger, drift cleared after the fix
+    - [x] Pet Mind timeline shows three transitions with changes
 
 - [x] **T10.5 — Fix bugs found in T10**
   - Acceptance:
@@ -267,7 +267,7 @@ acceptance boxes here.
     - [x] verify-spec gate-checks every BC with a `status.md`, including DISCOVERED
     - [x] Partially resolved gaps get a distinct `PARTIAL` state, visible on the board (not a drift warning)
 
-- [ ] **T11 — Independent verification**
+- [x] **T11 — Independent verification**
   - Depends on: T10
   - A sub-agent that did not build the work checks every acceptance box against the repo, runs all tests, and reports findings.
 
@@ -322,3 +322,4 @@ Parallel-safe after T2: T3a, T3b, T4a. After T4a: T4b, T4c, T5, T6a.
 | 2026-11-21 | T9 | Done | README (Gates, Status Report, viewer v2, warning codes), adoption guide (scripts, Bitbucket, migration), CLAUDE.hgate.md gate rule, projection schema-version notes, map templates state shared `G<n>` IDs. Timeline wording aligned to T7b by orchestrator |
 | 2026-11-21 | T10 | Done (test bed, uncommitted) | Live-pet: tools/skills/schema copied, both status.md migrated (backfilled gates signed `Product owner (Technical PM)`), gaps aligned, projection in-sync, verify-spec OK, no drift. Status report from a reconstructed history in VM scratch (labelled in `.hgate/README.md`). Bugs found → T10.5: (1) newest-first Transition History breaks project-status ordering; (2) verify-spec skips BCs without model/scenarios, so DISCOVERED gates are unchecked; (3) "Resolved for X; Y to confirm" classified RESOLVED, partial gaps invisible |
 | 2026-11-21 | T10.5 | Done | `tools/shared/transitions.mjs` `orderTransitions` used by generator, verify-spec, project-status, viewer; project-status uses `git blame -M`; verify-spec gate-checks every BC with status.md (`N BC(s) (spec X, gates Y)`); `PARTIAL` gap state + blue badge. Live-pet: 0 diagnostics, G11/G15/G16 PARTIAL, `OK: 2 BC(s) (spec 1, gates 2)`, status steps e2fd0aa → 408e714 (shared). Tests 244/245 |
+| 2026-11-21 | T11 | Done | Independent verifier: all boxes PASS except T7a gate summary (N/A counted as met, missing gates not counted). Fixed: shared `tools/shared/gate-rules.mjs` used by verify-spec and generator; projection per-BC `gateStatus`; cards show n/m with unmet list; catalog rows with dated evidence paths no longer skipped; ADR §6/§8 corrected; fixture catalogs synced (byte-equality test); clearer HGS001; one warnings format. Live-pet signers now `Unrecorded product owner (Technical PM)`. Tests 255/256 (BDD009 fails only in this VM: a global typescript under `/opt/cowork-node-tools` lacks `ScriptTarget`) |
