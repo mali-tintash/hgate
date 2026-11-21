@@ -194,7 +194,7 @@ acceptance boxes here.
     - [ ] Counts are derived only from Markdown, no git or test run
     - [ ] Unit tests cover zero, one and many cases
 
-- [ ] **T5 — Gate validation in `verify-spec`**
+- [x] **T5 — Gate validation in `verify-spec`**
   - Depends on: T4a
   - Acceptance:
     - [ ] Current `lifecycle` requires PASS rows for the gates of the transition into it (new `HGS` codes)
@@ -307,3 +307,4 @@ Parallel-safe after T2: T3a, T3b, T4a. After T4a: T4b, T4c, T5, T6a.
 | 2026-11-21 | T3b | Done | bc-review persists reports to `docs/verification/bc-reviews/` with frontmatter and records SREV/VER gates (failing review = FAIL row, no transition; code-verification mode records no gate); implementation/enhancement gate tables; hgate-guide treats unmet gates as not reached |
 | 2026-11-21 | T4a | Done | Schema v2: per BC `nextSkill, blockers, transitions, gates, openItems`; legacy status.md generates (empty arrays, `id: null`); malformed gate rows HGP002; v1 local schema → HGP003 upgrade message (document in T9). Schema rejects unknown fields, so T4b/T4c must add theirs. Viewer rejects v2 until T7a. Tests 139/140 |
 | 2026-11-21 | T6a | Done | `tools/project-status/snapshot.mjs`: `snapshotBc(files)`, `diffSnapshots(before, after)` over features, scenarios, rules, skill, model, ports, decisions, acls, aclSections, properties, gates, openItems; rules renumbering → `moved`. 19 tests pass |
+| 2026-11-21 | T5 | Done | `tools/verify-spec/gates.mjs`; codes HGS001–HGS007 (HGS006 legacy = warning); trailing WARNINGS block + GitHub annotations; strict HGS004 signer/role rules. Gap drift in verify-spec still to wire (T8, via `tools/shared/gaps.mjs`). 51/51 verify-spec tests |

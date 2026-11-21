@@ -12,6 +12,7 @@ import {
   stripMarkup,
   toKebab,
 } from "./markdown.mjs";
+import { checkGates, parseGateCatalog } from "./gates.mjs";
 
 export const EXIT_VALID = 0;
 export const EXIT_INVALID = 1;
@@ -19,6 +20,11 @@ export const EXIT_DISCOVERY = 2;
 
 const DEFAULT_SKILLS_PATH = ".github/skills";
 const DEFAULT_SRC_PATH = "src";
+const GATE_CATALOG_SUFFIX = "hgate-guide/references/lifecycle-gates.md";
+const GATE_CATALOG_FALLBACKS = [
+  `.github/skills/${GATE_CATALOG_SUFFIX}`,
+  `skills/${GATE_CATALOG_SUFFIX}`,
+];
 const ID_PATTERN = /^[A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)+-[0-9]{3}$/;
 const PORT_DIRECTIONS = new Set(["INBOUND", "OUTBOUND", "BIDIRECTIONAL", "UNKNOWN"]);
 const READY_LIFECYCLES = new Set(["REFINED", "SPEC_REVIEWED", "IMPLEMENTING"]);
@@ -405,6 +411,25 @@ function checkReadiness(ctx, out) {
   }
 }
 
+// Finds the project's gate catalog: --gates, else <skills-path>/hgate-guide,
+// .github/skills/hgate-guide (adopting projects) or skills/hgate-guide (hGATE).
+async function loadGateCatalog(root, skillsPath, explicit) {
+  const candidates = explicit
+    ? [explicit]
+    : [...new Set([`${skillsPath}/${GATE_CATALOG_SUFFIX}`, ...GATE_CATALOG_FALLBACKS])];
+  for (const candidate of candidates) {
+    const file = path.resolve(root, candidate);
+    const source = await readOptional(file);
+    if (source !== null) {
+      return { file, source };
+    }
+  }
+  if (explicit) {
+    throw new Error(`gate catalog not found: ${explicit}`);
+  }
+  return null;
+}
+
 export async function verifySpec(options = {}) {
   const root = path.resolve(options.root ?? ".");
   const skillsPath = options.skillsPath ?? DEFAULT_SKILLS_PATH;
@@ -434,6 +459,18 @@ export async function verifySpec(options = {}) {
   const rel = (file) => path.relative(root, file).split(path.sep).join("/");
   const readiness = phase === "implementation";
   const diagnostics = [];
+  const warnings = [];
+  const notes = [];
+
+  const catalogFile = await loadGateCatalog(root, skillsPath, options.gates);
+  let catalog = null;
+  if (catalogFile === null) {
+    notes.push("gate catalog (hgate-guide/references/lifecycle-gates.md) not found; gate checks skipped");
+  } else {
+    const parsed = parseGateCatalog(catalogFile.source, rel(catalogFile.file));
+    diagnostics.push(...parsed.diagnostics);
+    catalog = parsed.entries;
+  }
 
   // Scenario IDs are unique across every BC, even when only one is selected.
   const selectedFiles = new Set(selected.map((c) => rel(path.join(c.dir, "bdd-scenarios.md"))));
@@ -479,6 +516,12 @@ export async function verifySpec(options = {}) {
         diagnostics.push(diagnostic("VSP014", `${bcRel}/${name}`, 1, `required file ${name} is missing`));
       }
     }
+    const status = await readOptional(path.join(context.dir, "status.md"));
+    if (catalog !== null) {
+      const gates = checkGates({ status, file: `${bcRel}/status.md`, catalog });
+      diagnostics.push(...gates.errors);
+      warnings.push(...gates.warnings);
+    }
     if (!skill) {
       continue;
     }
@@ -501,7 +544,7 @@ export async function verifySpec(options = {}) {
       aclFiles,
       aclSources,
       aclDocs,
-      status: await readOptional(path.join(context.dir, "status.md")),
+      status,
       sourceEventFiles: eventFiles,
       requireSource: options.requireSource === true,
       srcPath,
@@ -516,25 +559,49 @@ export async function verifySpec(options = {}) {
     }
   }
 
-  diagnostics.sort(
-    (a, b) =>
-      compareText(a.file, b.file) || a.line - b.line || compareText(a.code, b.code) || compareText(a.message, b.message),
-  );
+  const byLocation = (a, b) =>
+    compareText(a.file, b.file) || a.line - b.line || compareText(a.code, b.code) || compareText(a.message, b.message);
+  diagnostics.sort(byLocation);
+  warnings.sort(byLocation);
   return {
     phase,
     checked: selected.map((c) => c.name),
     diagnostics,
+    warnings,
+    notes,
     exitCode: diagnostics.length > 0 ? EXIT_INVALID : EXIT_VALID,
   };
 }
 
+const formatDiagnostic = (d) => `${d.code} ${d.file}:${d.line} ${d.message}`;
+
+// Failures, then informational notes, then the summary line; warnings never
+// change the exit code and are printed last as a "WARNINGS (n)" block.
 export function formatTextReport(report) {
-  if (report.diagnostics.length === 0) {
-    return `verify-spec OK (${report.phase}): ${report.checked.length} BC(s)\n`;
+  const lines = report.diagnostics.map(formatDiagnostic);
+  for (const note of report.notes ?? []) {
+    lines.push(`INFO ${note}`);
   }
-  const lines = report.diagnostics.map((d) => `${d.code} ${d.file}:${d.line} ${d.message}`);
-  lines.push(`verify-spec FAILED (${report.phase}): ${report.diagnostics.length} issue(s)`);
+  lines.push(
+    report.diagnostics.length === 0
+      ? `verify-spec OK (${report.phase}): ${report.checked.length} BC(s)`
+      : `verify-spec FAILED (${report.phase}): ${report.diagnostics.length} issue(s)`,
+  );
+  const warnings = report.warnings ?? [];
+  if (warnings.length > 0) {
+    lines.push(`WARNINGS (${warnings.length})`, ...warnings.map(formatDiagnostic));
+  }
   return `${lines.join("\n")}\n`;
+}
+
+const escapeData = (value) => String(value).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+const escapeProperty = (value) => escapeData(value).replace(/:/g, "%3A").replace(/,/g, "%2C");
+
+// GitHub Actions workflow-command annotations for warnings.
+export function formatGithubAnnotations(report) {
+  return (report.warnings ?? [])
+    .map((w) => `::warning file=${escapeProperty(w.file)},line=${w.line}::${escapeData(`${w.code} ${w.message}`)}\n`)
+    .join("");
 }
 
 export function formatJsonReport(report) {
@@ -550,6 +617,8 @@ Options:
   --src-path <path>      Source tree searched for *.event.ts (default: ${DEFAULT_SRC_PATH})
   --bc <name>            Only check this bounded context; repeatable
   --phase <name>         refinement (default) or implementation (adds readiness checks)
+  --gates <path>         Gate catalog (default: <skills-path>/${GATE_CATALOG_SUFFIX},
+                         then skills/${GATE_CATALOG_SUFFIX}; skipped if none)
   --require-source       Event files must exist under --src-path, not just in the module tree
   --format <text|json>   Report format (default: text)
   --help                 Show this help
@@ -569,7 +638,7 @@ function parseArguments(args) {
       continue;
     }
     const value = args[i + 1];
-    if (!["--root", "--skills-path", "--src-path", "--bc", "--phase", "--format"].includes(arg)) {
+    if (!["--root", "--skills-path", "--src-path", "--bc", "--phase", "--gates", "--format"].includes(arg)) {
       throw new Error(`unknown option: ${arg}`);
     }
     if (value === undefined) {
@@ -579,6 +648,7 @@ function parseArguments(args) {
     else if (arg === "--skills-path") options.skillsPath = value;
     else if (arg === "--src-path") options.srcPath = value;
     else if (arg === "--phase") options.phase = value;
+    else if (arg === "--gates") options.gates = value;
     else if (arg === "--bc") (options.bcs ??= []).push(value);
     else {
       if (!["text", "json"].includes(value)) {
@@ -606,7 +676,14 @@ async function main() {
   }
   try {
     const report = await verifySpec(parsed.options);
-    process.stdout.write(parsed.format === "json" ? formatJsonReport(report) : formatTextReport(report));
+    if (parsed.format === "json") {
+      process.stdout.write(formatJsonReport(report));
+    } else {
+      if (process.env.GITHUB_ACTIONS === "true") {
+        process.stdout.write(formatGithubAnnotations(report));
+      }
+      process.stdout.write(formatTextReport(report));
+    }
     process.exitCode = report.exitCode;
   } catch (error) {
     process.stderr.write(`VSP900 verifier failure: ${error.message}\n`);
