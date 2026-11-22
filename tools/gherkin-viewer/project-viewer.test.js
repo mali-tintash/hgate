@@ -1207,3 +1207,152 @@ test("collapseDispositions lists only the sources that differ from the common di
   assert.equal(empty.common, null);
   assert.equal(empty.count, 0);
 });
+
+// --- Project diagram and Scenarios helpers (T14c) -----------------------------
+
+function diagramProject() {
+  return {
+    domains: [
+      { id: "commerce", name: "Commerce" },
+      { id: "identity", name: "Identity" },
+    ],
+    boundedContexts: [
+      { id: "cart", name: "Cart", domainId: "commerce" },
+      { id: "ordering", name: "Ordering", domainId: "commerce" },
+      { id: "catalog", name: "Catalog", domainId: "commerce" },
+      { id: "auth", name: "Auth", domainId: "identity" },
+    ],
+    relationships: [
+      { id: "r1", from: "cart", to: "ordering" },
+      { id: "r2", from: "ordering", to: "cart" },
+      { id: "r3", from: "auth", to: "ordering" },
+      { id: "r4", from: "auth", to: "ghost" },
+      { id: "r5", from: "cart", to: "cart" },
+    ],
+  };
+}
+
+test("layoutProject places every BC inside its domain box and boxes never overlap", () => {
+  const layout = viewer.layoutProject(diagramProject());
+  assert.deepEqual(layout.domains.map((box) => box.id), ["commerce", "identity"]);
+  for (const [id, position] of layout.positions) {
+    const box = layout.domains.find((item) => item.id === position.domainId);
+    assert.ok(position.x >= box.x && position.x + layout.nodeWidth <= box.x + box.width, `${id} x inside`);
+    assert.ok(position.y >= box.y && position.y + layout.nodeHeight <= box.y + box.height, `${id} y inside`);
+  }
+  const [a, b] = layout.domains;
+  assert.ok(a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y);
+  assert.ok(layout.width >= Math.max(...layout.domains.map((box) => box.x + box.width)));
+});
+
+test("layoutProject wraps domain rows at maxRowWidth and domainBoxes reproduces the boxes", () => {
+  const project = diagramProject();
+  const wide = viewer.layoutProject(project, { maxRowWidth: 100000 });
+  assert.equal(wide.domains[0].y, wide.domains[1].y);
+  const narrow = viewer.layoutProject(project, { maxRowWidth: wide.domains[0].x + wide.domains[0].width + 1 });
+  assert.ok(narrow.domains[1].y > narrow.domains[0].y + narrow.domains[0].height - 1);
+  assert.equal(narrow.domains[1].x, narrow.domains[0].x);
+  assert.deepEqual(viewer.domainBoxes(wide.columns, wide.positions), wide.domains);
+});
+
+test("chooseRowWidth wraps for a tall panel and keeps one row for a wide one", () => {
+  const project = diagramProject();
+  const single = viewer.layoutProject(project, { maxRowWidth: 100000 });
+  assert.equal(viewer.chooseRowWidth(project, 20), single.width);
+  const tall = viewer.layoutProject(project, { maxRowWidth: viewer.chooseRowWidth(project, 0.5) });
+  assert.ok(tall.domains[1].y > tall.domains[0].y);
+});
+
+test("contentBounds and fitZoom size the diagram to the panel within bounds", () => {
+  assert.deepEqual(
+    viewer.contentBounds([
+      { x: 10, y: 20, width: 100, height: 50 },
+      { x: 200, y: 0, width: 10, height: 10 },
+    ]),
+    { x: 10, y: 0, width: 200, height: 70 },
+  );
+  assert.deepEqual(viewer.contentBounds([]), { x: 0, y: 0, width: 0, height: 0 });
+  assert.equal(viewer.fitZoom({ visibleWidth: 1032, visibleHeight: 1000, contentWidth: 1000, contentHeight: 200 }), 100);
+  assert.equal(viewer.fitZoom({ visibleWidth: 4000, visibleHeight: 4000, contentWidth: 100, contentHeight: 100 }), 125);
+  assert.equal(viewer.fitZoom({ visibleWidth: 100, visibleHeight: 100, contentWidth: 5000, contentHeight: 5000 }), 35);
+  assert.equal(viewer.fitZoom({ visibleWidth: 0, visibleHeight: 500, contentWidth: 100, contentHeight: 100 }), 100);
+});
+
+test("numberRelationships numbers only drawable relationships in projection order", () => {
+  const numbered = viewer.numberRelationships(diagramProject());
+  assert.deepEqual(
+    numbered.map((relation) => [relation.id, relation.number]),
+    [
+      ["r1", 1],
+      ["r2", 2],
+      ["r3", 3],
+    ],
+  );
+  assert.deepEqual(viewer.numberRelationships(null), []);
+});
+
+test("assignEdgeBends fans out edges between the same pair and keeps single edges straight", () => {
+  const bends = viewer.assignEdgeBends(viewer.numberRelationships(diagramProject()), 56);
+  assert.equal(bends[2], 0);
+  assert.equal(Math.abs(bends[0]), 28);
+  assert.equal(Math.abs(bends[1]), 28);
+  // cart->ordering and ordering->cart: their normals point opposite ways, so
+  // equal signed bends put the two curves on opposite sides of the line.
+  assert.equal(bends[0], bends[1]);
+});
+
+test("edgeGeometry draws straight between nodes and detours around an obstacle", () => {
+  const from = { x: 0, y: 0, width: 100, height: 50 };
+  const to = { x: 400, y: 0, width: 100, height: 50 };
+  const straight = viewer.edgeGeometry(from, to);
+  assert.equal(straight.offset, 0);
+  assert.equal(straight.mid.y, 25);
+  assert.ok(Math.abs(straight.mid.x - 250) < 1);
+  assert.ok(straight.start.x > 100 && straight.end.x < 400);
+  const obstacle = { x: 200, y: -10, width: 100, height: 70 };
+  const routed = viewer.edgeGeometry(from, to, 0, [obstacle]);
+  assert.notEqual(routed.offset, 0);
+  assert.equal(viewer.curveHitsRects(routed.start, routed.control, routed.end, [obstacle]), false);
+  assert.match(routed.d, /^M [\d.-]+ [\d.-]+ Q [\d.-]+ [\d.-]+ [\d.-]+ [\d.-]+$/);
+});
+
+test("lifecycleTone matches the Board drawer pill tones", () => {
+  assert.equal(viewer.lifecycleTone("VERIFIED"), "pill-success");
+  assert.equal(viewer.lifecycleTone("BLOCKED"), "pill-danger");
+  assert.equal(viewer.lifecycleTone("DEPRECATED"), "pill-neutral");
+  assert.equal(viewer.lifecycleTone("REFINED"), "pill-info");
+});
+
+test("countScenarios counts scenarios and outlines inside gherkin blocks only", () => {
+  const markdown = [
+    "# Scenarios",
+    "Scenario: outside a block is ignored",
+    "```gherkin",
+    "Feature: Ordering",
+    "  @scenario:ORD-SUBMIT-001",
+    "  Scenario: Submit",
+    "  Scenario Outline: Totals",
+    "```",
+    "```text",
+    "Scenario: not gherkin",
+    "```",
+    "\\`\\`\\`gherkin",
+    "Scenario Template: escaped fence",
+    "\\`\\`\\`",
+  ].join("\n");
+  assert.equal(viewer.countScenarios(markdown), 3);
+  assert.equal(viewer.countScenarios(""), 0);
+});
+
+test("filterScenarioSources matches BC names, ids and group labels", () => {
+  const groups = [
+    { label: "Commerce", items: [{ id: "ordering", name: "Ordering" }, { id: "catalog", name: "Catalog" }] },
+    { label: "Identity", items: [{ id: "auth", name: "Auth" }] },
+  ];
+  assert.equal(viewer.filterScenarioSources(groups, ""), groups);
+  assert.deepEqual(viewer.filterScenarioSources(groups, "ORDER"), [
+    { label: "Commerce", items: [{ id: "ordering", name: "Ordering" }] },
+  ]);
+  assert.deepEqual(viewer.filterScenarioSources(groups, "ident"), [groups[1]]);
+  assert.deepEqual(viewer.filterScenarioSources(groups, "zzz"), []);
+});

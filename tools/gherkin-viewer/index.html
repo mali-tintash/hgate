@@ -347,7 +347,8 @@
         box-shadow: var(--focus-ring);
       }
 
-      .graph-node:focus-visible {
+      .graph-node:focus-visible,
+      .graph-edge-badge:focus-visible {
         box-shadow: none;
       }
 
@@ -1106,7 +1107,206 @@
         }
       }
 
-      /* ---------- Scenarios tab ---------- */
+      /* ---------- Scenarios tab (T14c) ----------
+         Left: BC picker. Main: header (source, summary chips, filter) and
+         features as collapsible cards with scenario cards inside. */
+      .scenario-layout {
+        display: grid;
+        grid-template-columns: 272px minmax(0, 1fr);
+        gap: var(--space-4);
+        align-items: start;
+      }
+
+      .scenario-picker {
+        position: sticky;
+        top: calc(var(--appbar-height) + var(--space-4));
+        display: flex;
+        max-height: calc(100vh - var(--appbar-height) - var(--space-8));
+        flex-direction: column;
+        gap: var(--space-3);
+        padding: var(--space-4);
+      }
+
+      .picker-head h2 {
+        margin: 0;
+        font-size: var(--text-lg);
+      }
+
+      .picker-head .status-text {
+        display: block;
+        margin-top: 2px;
+        font-size: var(--text-xs);
+      }
+
+      .scenario-picker input[type="search"] {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .picker-list {
+        display: grid;
+        min-height: 0;
+        gap: var(--space-4);
+        margin: 0 calc(var(--space-2) * -1);
+        padding: 0 var(--space-2);
+        overflow-y: auto;
+      }
+
+      .picker-list[hidden] {
+        display: none;
+      }
+
+      .picker-group-label {
+        margin: 0 0 var(--space-1);
+        padding: 0 var(--space-2);
+        color: var(--color-text-muted);
+        font-family: var(--font-ui);
+        font-size: var(--text-2xs);
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .picker-items {
+        display: grid;
+        gap: 2px;
+      }
+
+      .picker-item {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 4px var(--space-2);
+        width: 100%;
+        padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+        border: 1px solid transparent;
+        border-radius: var(--radius-md);
+        background: transparent;
+        color: var(--color-text);
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+        transition: background-color var(--transition), border-color var(--transition);
+      }
+
+      .picker-item:hover:not(:disabled) {
+        background: var(--color-surface-hover);
+      }
+
+      .picker-item[aria-pressed="true"] {
+        border-color: var(--color-border-strong);
+        background: var(--color-accent-soft);
+        box-shadow: inset 3px 0 0 var(--color-accent);
+      }
+
+      .picker-item:disabled {
+        cursor: default;
+        color: var(--color-text-muted);
+      }
+
+      .picker-name {
+        font-weight: 600;
+      }
+
+      .picker-meta {
+        display: flex;
+        grid-column: 1 / -1;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--space-2);
+        font-size: var(--text-xs);
+      }
+
+      .picker-meta:empty {
+        display: none;
+      }
+
+      .picker-item[aria-pressed="true"] .picker-count {
+        border-color: var(--color-accent);
+        background: var(--color-accent);
+        color: var(--color-accent-contrast);
+      }
+
+      .picker-empty {
+        display: grid;
+        gap: var(--space-3);
+        justify-items: start;
+        padding: var(--space-3);
+        border: 1px dashed var(--color-border-strong);
+        border-radius: var(--radius-md);
+        background: var(--color-surface-sunken);
+        color: var(--color-text-muted);
+        font-size: var(--text-sm);
+      }
+
+      .picker-empty[hidden] {
+        display: none;
+      }
+
+      .picker-empty p,
+      .picker-none {
+        margin: 0;
+        font-size: var(--text-sm);
+      }
+
+      .scenario-main {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        gap: var(--space-3);
+      }
+
+      .scenario-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: var(--space-3) var(--space-5);
+        padding: var(--space-4) var(--space-5);
+      }
+
+      .scenario-head-text {
+        min-width: 0;
+      }
+
+      .scenario-head .eyebrow {
+        margin-bottom: 2px;
+      }
+
+      .scenario-head h2 {
+        margin: 0;
+        font-size: var(--text-xl);
+      }
+
+      .scenario-head-meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--space-2);
+        margin-top: var(--space-1);
+        font-size: var(--text-sm);
+      }
+
+      .scenario-head-meta > :empty {
+        display: none;
+      }
+
+      .scenario-head-meta .cell-path {
+        max-width: 48ch;
+        color: var(--color-text-muted);
+      }
+
+      .scenario-tools {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--space-2);
+      }
+
+      .scenario-tools input[type="search"] {
+        min-width: 240px;
+      }
+
       .summary-card {
         display: inline-flex;
         flex-wrap: wrap;
@@ -1114,241 +1314,435 @@
         gap: var(--space-1);
       }
 
-      .feature {
-        margin-top: var(--space-3);
-        padding: var(--space-4) var(--space-5);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-lg);
-        background: var(--color-surface);
-        box-shadow: var(--shadow-sm);
+      .scenario-results {
+        display: grid;
+        gap: var(--space-3);
       }
 
-      .feature summary {
-        display: list-item;
+      .scenario-empty {
+        padding: var(--space-6);
+        color: var(--color-text-muted);
+        text-align: center;
+      }
+
+      .scenario-empty p {
+        margin: 0;
+      }
+
+      .feature-card {
+        overflow: hidden;
+      }
+
+      .feature-head {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2) var(--space-3);
+        padding: var(--space-3) var(--space-5);
+        list-style: none;
         cursor: pointer;
       }
 
-      .feature summary h2 {
-        display: inline;
+      .feature-head::-webkit-details-marker {
+        display: none;
+      }
+
+      .feature-head:hover {
+        background: var(--color-surface-sunken);
+      }
+
+      .feature-chevron {
+        flex: none;
+        color: var(--color-text-muted);
+        transition: transform var(--transition);
+      }
+
+      .feature-card[open] > .feature-head {
+        border-bottom: 1px solid var(--color-border);
+      }
+
+      .feature-card[open] > .feature-head .feature-chevron {
+        transform: rotate(90deg);
+      }
+
+      .feature-kw {
+        flex: none;
+        color: var(--color-accent-text);
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .feature-head h2 {
+        min-width: 0;
         margin: 0;
         font-size: var(--text-lg);
       }
 
-      .feature > p.muted {
-        margin: var(--space-2) 0 0;
-      }
-
-      .scenario {
-        margin-top: var(--space-3);
-        padding: var(--space-3) var(--space-4);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-md);
-        background: var(--color-surface);
-        transition: border-color var(--transition), background-color var(--transition);
-      }
-
-      .scenario:hover {
-        border-color: var(--color-border-strong);
+      .feature-body {
+        display: grid;
+        gap: var(--space-3);
+        padding: var(--space-4) var(--space-5) var(--space-5);
         background: var(--color-surface-sunken);
       }
 
-      .scenario h3 {
-        margin: var(--space-2) 0;
-        font-family: var(--font-ui);
-        font-size: var(--text-md);
-        color: var(--color-text);
+      .feature-desc {
+        max-width: 80ch;
+        margin: 0;
+        color: var(--color-text-muted);
       }
 
-      .background-block {
-        margin-top: var(--space-3);
+      .sc-label {
+        margin-bottom: var(--space-2);
+        color: var(--color-text-muted);
+        font-size: var(--text-2xs);
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .sc-background {
         padding: var(--space-3) var(--space-4);
         border: 1px dashed var(--color-border-strong);
         border-radius: var(--radius-md);
-        background: var(--color-surface-sunken);
+        background: var(--color-surface);
       }
 
-      .background-block h3 {
-        margin: 0 0 var(--space-1);
-        color: var(--color-text-muted);
-        font-family: var(--font-ui);
-        font-size: var(--text-xs);
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-      }
-
-      .tags {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--space-1);
-      }
-
-      .tag {
-        display: inline-block;
-        padding: 0 var(--space-2);
+      .sc-card {
+        padding: var(--space-3) var(--space-4) var(--space-4);
         border: 1px solid var(--color-border);
-        border-radius: var(--radius-sm);
-        background: var(--color-surface-sunken);
-        color: var(--color-text-muted);
-        font-family: var(--font-mono);
-        font-size: var(--text-xs);
-        line-height: 18px;
-      }
-
-      .tag-scenario-id {
-        border-color: var(--color-success-border);
-        background: var(--color-success-soft);
-        color: var(--color-success-strong);
-      }
-
-      .step {
-        margin: 3px 0;
-        padding-left: var(--space-3);
-        border-left: 3px solid transparent;
-      }
-
-      .step strong {
-        color: var(--color-heading);
-      }
-
-      .step.Given {
-        border-left-color: var(--color-info-solid);
-      }
-
-      .step.When {
-        border-left-color: var(--color-warning-solid);
-      }
-
-      .step.Then {
-        border-left-color: var(--color-success-solid);
-      }
-
-      .step.And,
-      .step.But {
-        border-left-color: var(--color-neutral-border);
-      }
-
-      .examples {
-        margin: var(--space-2) 0 0 var(--space-4);
-        border-collapse: collapse;
-        font-size: var(--text-sm);
-      }
-
-      .examples th,
-      .examples td {
-        padding: 3px var(--space-3);
-        border: 1px solid var(--color-border);
-        text-align: left;
-      }
-
-      .examples th {
-        background: var(--color-surface-sunken);
-      }
-
-      .scenario-sources {
-        display: grid;
-        gap: var(--space-2);
-        padding: var(--space-3) var(--space-4);
-      }
-
-      .scenario-source-group {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: baseline;
-        gap: var(--space-2);
-      }
-
-      .scenario-source-label {
-        min-width: 140px;
-        color: var(--color-text-muted);
-        font-size: var(--text-xs);
-        font-weight: 700;
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
-      }
-
-      .scenario-source-pills {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--space-1);
-      }
-
-      /* BC picker buttons: toggle buttons (clickable), pressed = solid accent. */
-      .bc-pill {
-        min-height: 28px;
-        padding: 0 var(--space-3);
-        border-radius: var(--radius-pill);
-        font-size: var(--text-sm);
-      }
-
-      .bc-pill[aria-pressed="true"],
-      .bc-pill[aria-pressed="true"]:hover {
-        border-color: var(--color-accent);
-        background: var(--color-accent);
-        color: var(--color-accent-contrast);
-      }
-
-      .bc-pill:disabled {
-        border-style: dashed;
-        background: transparent;
-      }
-
-      /* ---------- Project tab ---------- */
-      .zoom-controls {
-        display: inline-flex;
-        align-items: center;
-        gap: var(--space-1);
-      }
-
-      .zoom-level {
-        min-width: 48px;
-        color: var(--color-text-muted);
-        font-size: var(--text-sm);
-        text-align: center;
-      }
-
-      .project-layout {
-        display: grid;
-        grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
-        gap: var(--space-4);
-      }
-
-      .project-graph,
-      .project-details {
-        min-height: 360px;
-        padding: var(--space-4);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-lg);
+        border-radius: var(--radius-md);
         background: var(--color-surface);
         box-shadow: var(--shadow-sm);
       }
 
-      .project-graph {
+      .sc-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: var(--space-2) var(--space-4);
+        margin-bottom: var(--space-3);
+      }
+
+      .sc-title {
+        min-width: 0;
+      }
+
+      .sc-kind {
+        color: var(--color-text-muted);
+        font-size: var(--text-2xs);
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .sc-title h3 {
+        margin: 1px 0 0;
+        color: var(--color-heading);
+        font-family: var(--font-ui);
+        font-size: var(--text-md);
+        font-weight: 700;
+      }
+
+      .sc-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-1);
+      }
+
+      .scenario-id {
+        padding: 0 7px;
+        border: 1px solid var(--color-border-strong);
+        border-radius: var(--radius-sm);
+        background: var(--color-surface-sunken);
+        color: var(--color-heading);
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        font-weight: 600;
+        line-height: 20px;
+        white-space: nowrap;
+      }
+
+      :not(pre) > code.scenario-id {
+        padding: 0 7px;
+        background: var(--color-surface-sunken);
+      }
+
+      .chip-tag {
+        font-family: var(--font-mono);
+        font-weight: 400;
+      }
+
+      .gherkin-steps {
+        display: grid;
+        gap: 4px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .gs {
+        display: grid;
+        grid-template-columns: 52px minmax(0, 1fr);
+        gap: var(--space-3);
+        line-height: 1.5;
+      }
+
+      .gs-kw {
+        padding-top: 1px;
+        color: var(--color-accent-text);
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        font-weight: 700;
+        text-align: right;
+      }
+
+      .gs-and .gs-kw,
+      .gs-but .gs-kw {
+        color: var(--color-text-subtle);
+        font-weight: 400;
+      }
+
+      .gs-str {
+        color: var(--color-info-strong);
+      }
+
+      .gs-param {
+        padding: 0 4px;
+        border-radius: var(--radius-sm);
+        background: var(--color-warning-soft);
+        color: var(--color-warning-strong);
+        font-family: var(--font-mono);
+        font-size: 0.88em;
+      }
+
+      .sc-examples {
+        margin: var(--space-3) 0 0 64px;
+      }
+
+      .sc-examples .table-wrap {
+        width: fit-content;
+      }
+
+      .sc-examples .table {
+        width: auto;
+        min-width: 200px;
+      }
+
+      /* Paste Markdown: native <dialog> styled as a right-hand panel. */
+      .paste-dialog {
+        width: min(640px, 100vw);
+        max-width: 100vw;
+        height: 100vh;
+        max-height: 100vh;
+        margin: 0 0 0 auto;
+        padding: 0;
+        border: 0;
+        border-left: 1px solid var(--color-border);
+        background: var(--color-bg);
+        color: var(--color-text);
+        box-shadow: var(--shadow-lg);
+      }
+
+      .paste-dialog::backdrop {
+        background: rgba(10, 18, 13, 0.45);
+      }
+
+      .paste-dialog-inner {
+        display: flex;
+        height: 100%;
+        flex-direction: column;
+        gap: var(--space-3);
+        padding: var(--space-5) var(--space-6);
+      }
+
+      .paste-dialog-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: var(--space-3);
+      }
+
+      .paste-dialog-head .eyebrow {
+        margin-bottom: 2px;
+      }
+
+      .paste-dialog-head h2 {
+        margin: 0;
+        font-size: var(--text-2xl);
+      }
+
+      .paste-dialog-help {
+        margin: 0;
+        color: var(--color-text-muted);
+        font-size: var(--text-sm);
+      }
+
+      .paste-dialog textarea {
+        flex: 1;
+        min-height: 240px;
+        resize: none;
+      }
+
+      .paste-dialog-foot {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+      }
+
+      @media (max-width: 900px) {
+        .scenario-layout {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .scenario-picker {
+          position: static;
+          max-height: 360px;
+        }
+      }
+
+      /* ---------- Project tab (T14c) ----------
+         Diagram fills the viewport height beside the details panel at
+         >=1280px; stacked below that. Nodes are HTML in <foreignObject>. */
+      .project-layout {
+        --project-pane-height: max(520px, calc(100vh - var(--appbar-height) - 168px));
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--space-4);
+      }
+
+      .project-canvas {
         position: relative;
-        min-height: 560px;
+        height: var(--project-pane-height);
+        overflow: hidden;
+      }
+
+      .project-graph {
+        position: absolute;
+        inset: 0;
         overflow: auto;
         background:
           radial-gradient(circle, var(--color-border) 1px, transparent 1.2px) 0 0 / 18px 18px,
           var(--color-surface);
       }
 
+      .project-graph-empty {
+        margin: 0;
+        padding: var(--space-6);
+      }
+
       /* Out of flow so the canvas fills the panel without driving its size. */
-      .project-graph svg {
+      .project-graph > svg {
         position: absolute;
-        top: 12px;
-        left: 12px;
+        top: 0;
+        left: 0;
         display: block;
         max-width: none;
       }
 
-      .project-detail-heading {
-        display: flex;
-        flex-wrap: wrap;
+      .graph-controls {
+        position: absolute;
+        top: var(--space-3);
+        right: var(--space-3);
+        z-index: 2;
+        display: inline-flex;
         align-items: center;
-        gap: var(--space-2);
+        gap: 2px;
+        padding: 3px;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        background: var(--color-surface-raised);
+        box-shadow: var(--shadow-md);
       }
 
-      .project-detail-heading h2 {
+      .graph-controls-sep {
+        width: 1px;
+        height: 20px;
+        margin: 0 2px;
+        background: var(--color-border);
+      }
+
+      .zoom-level {
+        min-width: 44px;
+        color: var(--color-text-muted);
+        font-size: var(--text-xs);
+        font-weight: 700;
+        text-align: center;
+      }
+
+      .graph-hint {
+        position: absolute;
+        bottom: var(--space-3);
+        left: var(--space-3);
+        z-index: 2;
         margin: 0;
+        padding: 2px var(--space-2);
+        border-radius: var(--radius-sm);
+        background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+        color: var(--color-text-subtle);
+        font-size: var(--text-xs);
+        pointer-events: none;
+      }
+
+      .project-details {
+        position: relative;
+        min-width: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+
+      .project-details-empty {
+        margin: 0;
+        padding: var(--space-6);
+      }
+
+      @media (min-width: 1280px) {
+        .project-layout {
+          grid-template-columns: minmax(0, 1fr) 400px;
+        }
+
+        .project-details {
+          height: var(--project-pane-height);
+          overflow-y: auto;
+          overscroll-behavior: contain;
+        }
+      }
+
+      .detail-header {
+        padding: var(--space-4) var(--space-5) var(--space-3);
+        border-bottom: 1px solid var(--color-border);
+      }
+
+      .detail-header .eyebrow {
+        margin-bottom: 2px;
+      }
+
+      .detail-title {
+        margin: 0 0 var(--space-2);
+        font-size: var(--text-xl);
+      }
+
+      .detail-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        margin-top: var(--space-3);
+      }
+
+      .detail-facts {
+        margin: var(--space-3) var(--space-5) 0;
+      }
+
+      .detail-body {
+        padding: 0 var(--space-5) var(--space-5);
+      }
+
+      .detail-purpose {
+        margin: var(--space-3) 0 0;
+        font-size: var(--text-sm);
+        line-height: 1.6;
       }
 
       .project-detail-section {
@@ -1356,23 +1750,85 @@
       }
 
       .project-detail-section h3 {
-        margin-bottom: var(--space-2);
-        font-size: var(--text-md);
+        margin: 0 0 var(--space-2);
+        color: var(--color-text-muted);
+        font-family: var(--font-ui);
+        font-size: var(--text-xs);
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
       }
 
       .project-detail-section ul {
-        margin-top: var(--space-1);
+        margin: 0;
         padding-left: var(--space-5);
+        font-size: var(--text-sm);
       }
 
-      .project-meta {
+      .project-detail-section li + li {
+        margin-top: 2px;
+      }
+
+      .project-detail-section > .muted {
+        margin: 0;
+        font-size: var(--text-sm);
+      }
+
+      .detail-boundary {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: var(--space-4);
+      }
+
+      .detail-with {
+        display: inline-flex;
+        gap: var(--space-1);
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .detail-dir {
         color: var(--color-accent-text);
+      }
+
+      .detail-rel {
+        display: grid;
+        gap: 2px;
+      }
+
+      .detail-rel-meta {
+        color: var(--color-text-muted);
+        font-size: var(--text-xs);
+      }
+
+      .edge-num {
+        display: inline-flex;
+        min-width: 20px;
+        height: 20px;
+        align-items: center;
+        justify-content: center;
+        padding: 0 5px;
+        border: 1.5px solid var(--color-graph-edge);
+        border-radius: var(--radius-pill);
+        background: var(--color-surface);
+        color: var(--color-text);
+        font-family: var(--font-mono);
+        font-size: var(--text-2xs);
         font-weight: 700;
+        line-height: 1;
+      }
+
+      .detail-relationships tbody tr {
+        cursor: default;
       }
 
       .diagnostics {
         display: grid;
         gap: var(--space-2);
+      }
+
+      .diagnostics[hidden] {
+        display: none;
       }
 
       .diagnostic {
@@ -1396,83 +1852,270 @@
         background: var(--color-danger-soft);
       }
 
+      /* Diagram: domain boxes, edges, numbered edge markers, nodes, tooltip. */
+      .graph-domain-box {
+        fill: color-mix(in srgb, var(--color-surface-sunken) 70%, transparent);
+        stroke: var(--color-border-strong);
+        stroke-dasharray: 6 5;
+        stroke-width: 1.25;
+      }
+
       .graph-domain-label {
-        fill: var(--color-text-muted);
-        font-family: var(--font-mono);
-        font-size: 12px;
+        fill: var(--color-heading);
+        font-family: var(--font-display);
+        font-size: 15px;
         font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
+      }
+
+      .graph-domain-count {
+        fill: var(--color-text-muted);
+        font-family: var(--font-ui);
+        font-size: 12px;
+        font-weight: 400;
       }
 
       .graph-edge {
+        fill: none;
         stroke: var(--color-graph-edge);
         stroke-width: 1.75;
+        transition: stroke var(--transition), opacity var(--transition);
+      }
+
+      .graph-edge-hit {
+        fill: none;
+        stroke: transparent;
+        stroke-width: 14;
       }
 
       .graph-arrow {
         fill: var(--color-graph-edge);
       }
 
-      .graph-edge-label {
-        fill: var(--color-text-muted);
-        font-family: var(--font-ui);
-        font-size: 10px;
-        font-weight: 600;
-        text-anchor: middle;
+      .graph-arrow-active {
+        fill: var(--color-accent);
       }
 
-      .graph-edge-label-background {
-        fill: var(--color-surface);
-        stroke: var(--color-border);
-        stroke-width: 1;
-      }
-
-      .graph-node {
-        cursor: pointer;
-        outline: none;
-      }
-
-      .graph-node rect {
-        fill: var(--color-graph-node);
+      .graph-edge-group.is-related .graph-edge {
         stroke: var(--color-accent-text);
-        stroke-width: 1.5;
-      }
-
-      .graph-node:hover rect,
-      .graph-node:focus rect {
-        fill: var(--color-surface-hover);
-        stroke: var(--color-focus);
-        stroke-width: 2.5;
-      }
-
-      .graph-node.classification-core rect {
-        fill: var(--color-graph-node-core);
-        stroke: var(--color-heading);
         stroke-width: 2;
       }
 
-      .graph-node.classification-generic rect {
-        fill: var(--color-graph-node-generic);
-        stroke: var(--color-neutral-solid);
+      .graph-edge-group.is-active .graph-edge {
+        stroke: var(--color-accent);
+        stroke-width: 2.5;
       }
 
-      .graph-node.inferred rect {
-        stroke-dasharray: 6 4;
+      .has-active-edge .graph-edge-group:not(.is-active) .graph-edge {
+        opacity: 0.35;
       }
 
-      .graph-node-title {
+      .graph-edge-badge {
+        cursor: help;
+        outline: none;
+      }
+
+      .graph-edge-badge circle {
+        fill: var(--color-surface);
+        stroke: var(--color-graph-edge);
+        stroke-width: 1.5;
+      }
+
+      .graph-edge-badge-text {
         fill: var(--color-text);
+        font-family: var(--font-mono);
+        font-size: 11px;
+        font-weight: 700;
+        text-anchor: middle;
+        pointer-events: none;
+      }
+
+      .graph-edge-badge:hover circle,
+      .graph-edge-badge.is-active circle {
+        fill: var(--color-accent);
+        stroke: var(--color-accent);
+      }
+
+      .graph-edge-badge:hover .graph-edge-badge-text,
+      .graph-edge-badge.is-active .graph-edge-badge-text {
+        fill: var(--color-accent-contrast);
+      }
+
+      .graph-edge-badge:focus-visible circle {
+        stroke: var(--color-focus);
+        stroke-width: 3;
+      }
+
+      .graph-node {
+        cursor: grab;
+        outline: none;
+        touch-action: none;
+      }
+
+      .graph-node.is-dragging {
+        cursor: grabbing;
+      }
+
+      .graph-node-object {
+        overflow: visible;
+      }
+
+      .gnode {
+        display: flex;
+        width: 100%;
+        height: 100%;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 6px;
+        padding: 10px 12px;
+        border: 1.5px solid var(--color-border-strong);
+        border-radius: var(--radius-lg);
+        background: var(--color-graph-node);
+        box-shadow: var(--shadow-sm);
+        color: var(--color-text);
         font-family: var(--font-ui);
-        font-size: 14px;
+        font-size: var(--text-sm);
+        user-select: none;
+        transition: border-color var(--transition), box-shadow var(--transition);
+      }
+
+      .graph-node.classification-core .gnode {
+        border-color: var(--color-accent-text);
+        background: var(--color-graph-node-core);
+      }
+
+      .graph-node.classification-generic .gnode {
+        background: var(--color-graph-node-generic);
+      }
+
+      .graph-node.inferred .gnode {
+        border-style: dashed;
+      }
+
+      .graph-node:hover .gnode {
+        border-color: var(--color-focus);
+        box-shadow: var(--shadow-md);
+      }
+
+      .graph-node.is-selected .gnode {
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent), var(--shadow-md);
+      }
+
+      .graph-node:focus-visible .gnode {
+        outline: 3px solid var(--color-focus);
+        outline-offset: -3px;
+      }
+
+      .graph-node.is-gate-invalid .gnode {
+        border-left: 4px solid var(--color-danger-solid);
+      }
+
+      /* aria-hidden node content: keep screen-reader-only text out of layout. */
+      .gnode .visually-hidden {
+        display: none;
+      }
+
+      .gnode-title {
+        overflow: hidden;
+        color: var(--color-heading);
+        font-size: var(--text-md);
+        font-weight: 700;
+        line-height: 1.25;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      /* One row of pills; a pill that does not fit wraps out of sight whole
+         (never cut mid-word). The full set is in the details panel. */
+      .gnode-pills {
+        display: flex;
+        height: 18px;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px;
+        overflow: hidden;
+      }
+
+      .gnode-pills .bc-pills {
+        display: contents;
+      }
+
+      .gnode-foot {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        white-space: nowrap;
+      }
+
+      .gnode-stat {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .gnode-stat-label {
+        color: var(--color-text-muted);
+        font-size: var(--text-xs);
+      }
+
+      .gnode .pill {
+        padding: 0 6px;
+        letter-spacing: 0.02em;
+      }
+
+      .gnode .gap-count {
+        min-width: 20px;
+        line-height: 18px;
+      }
+
+      .graph-tooltip {
+        position: absolute;
+        z-index: 4;
+        width: max-content;
+        max-width: min(340px, calc(100% - 16px));
+        padding: var(--space-3);
+        border: 1px solid var(--color-border-strong);
+        border-radius: var(--radius-md);
+        background: var(--color-surface-raised);
+        box-shadow: var(--shadow-lg);
+        color: var(--color-text);
+        font-size: var(--text-sm);
+        pointer-events: none;
+      }
+
+      .graph-tooltip[hidden] {
+        display: none;
+      }
+
+      .graph-tooltip-head {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        color: var(--color-heading);
         font-weight: 700;
       }
 
-      .graph-node-meta,
-      .graph-node-lifecycle {
-        fill: var(--color-text-muted);
-        font-family: var(--font-ui);
-        font-size: 10px;
+      .graph-tooltip p {
+        margin: var(--space-1) 0 0;
+      }
+
+      .graph-tooltip dl {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 2px var(--space-3);
+        margin: var(--space-2) 0 0;
+        padding-top: var(--space-2);
+        border-top: 1px solid var(--color-border);
+        font-size: var(--text-xs);
+      }
+
+      .graph-tooltip dt {
+        color: var(--color-text-muted);
+        font-weight: 700;
+      }
+
+      .graph-tooltip dd {
+        margin: 0;
       }
 
       .board-table tr.gap-mixed td {
@@ -3228,29 +3871,38 @@
         <div class="panel-head">
           <div>
             <h1>Project</h1>
-            <p>Bounded contexts grouped by domain, and how they relate. Select a node for its details.</p>
-          </div>
-          <div class="toolbar">
-            <div class="zoom-controls" role="group" aria-label="Diagram zoom controls">
-              <button id="zoomOutBtn" class="btn btn-icon btn-sm" type="button" aria-label="Zoom out diagram" disabled>
-                −
-              </button>
-              <output id="zoomLevel" class="zoom-level" aria-live="polite">100%</output>
-              <button id="zoomInBtn" class="btn btn-icon btn-sm" type="button" aria-label="Zoom in diagram" disabled>
-                +
-              </button>
-              <button id="fitDiagramBtn" class="btn btn-sm" type="button" disabled>Fit to view</button>
-            </div>
-            <button id="viewScenariosBtn" class="btn btn-sm" type="button" disabled>View scenarios</button>
+            <p>
+              Bounded contexts grouped by domain, and how they relate. Select a node for its details; hover or
+              focus a numbered marker for the relationship.
+            </p>
           </div>
         </div>
         <div id="projectDiagnostics" class="diagnostics" aria-live="polite" hidden></div>
         <div class="project-layout">
-          <div id="projectGraph" class="project-graph">
-            <p class="muted">The bounded-context topology will appear here.</p>
+          <div id="projectCanvas" class="project-canvas card">
+            <div id="projectGraph" class="project-graph">
+              <p class="muted project-graph-empty">Load a project to see its bounded-context topology.</p>
+            </div>
+            <div class="graph-controls zoom-controls" role="group" aria-label="Diagram zoom controls">
+              <button id="zoomOutBtn" class="btn btn-icon btn-sm btn-ghost" type="button" aria-label="Zoom out diagram" disabled>
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /></svg>
+              </button>
+              <output id="zoomLevel" class="zoom-level" aria-live="polite">100%</output>
+              <button id="zoomInBtn" class="btn btn-icon btn-sm btn-ghost" type="button" aria-label="Zoom in diagram" disabled>
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+              </button>
+              <span class="graph-controls-sep" aria-hidden="true"></span>
+              <button id="fitDiagramBtn" class="btn btn-sm btn-ghost" type="button" title="Fit the diagram to the panel" disabled>
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+                </svg>
+                Fit
+              </button>
+            </div>
+            <p class="graph-hint" aria-hidden="true">Drag nodes to rearrange · numbers mark relationships</p>
           </div>
-          <aside id="projectDetails" class="project-details">
-            <p class="muted">Load a project, then choose a bounded context.</p>
+          <aside id="projectDetails" class="project-details card" aria-label="Bounded context details">
+            <p class="muted project-details-empty">Load a project, then choose a bounded context.</p>
           </aside>
         </div>
       </section>
@@ -3259,30 +3911,94 @@
         <div class="panel-head">
           <div>
             <h1>Scenarios</h1>
-            <p>
-              Pick a bounded context to read its BDD scenarios, or paste a Markdown scenario file below. All
-              processing stays in this browser.
-            </p>
+            <p>Read a bounded context's BDD scenarios. Files are read in this browser and never uploaded.</p>
           </div>
-          <span id="scenarioProjectStatus" class="status-text" aria-live="polite">No project loaded</span>
+          <div class="toolbar">
+            <button id="loadFileBtn" class="btn btn-sm" type="button" title="Open a single scenario file (.md, .feature)">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M14 3H6v18h12V7l-4-4zM14 3v4h4" />
+              </svg>
+              Open file
+            </button>
+            <button id="pasteOpenBtn" class="btn btn-sm" type="button" aria-haspopup="dialog">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M9 4h6v3H9zM7 5H5v16h14V5h-2" />
+              </svg>
+              Paste Markdown
+            </button>
+            <input id="fileInput" type="file" accept=".md,.txt,.feature" hidden />
+          </div>
         </div>
-        <div id="scenarioSources" class="scenario-sources card" aria-label="Bounded contexts" hidden></div>
 
-        <div class="toolbar">
-          <input id="filterInput" type="search" placeholder="Filter by tag, title or step…" aria-label="Filter scenarios" />
-          <button id="renderBtn" class="btn btn-sm" type="button">Render</button>
-          <button id="loadFileBtn" class="btn btn-sm btn-ghost" type="button" title="Open a single scenario file">
-            Open file
-          </button>
-          <input id="fileInput" type="file" accept=".md,.txt,.feature" hidden />
-          <span class="toolbar-spacer"></span>
-          <div id="summary" class="summary-card" aria-live="polite"></div>
-          <button id="collapseAllBtn" class="btn btn-sm btn-ghost" type="button">Collapse all features</button>
+        <div class="scenario-layout">
+          <aside class="scenario-picker card" aria-labelledby="scenarioPickerTitle">
+            <div class="picker-head">
+              <h2 id="scenarioPickerTitle">Bounded contexts</h2>
+              <span id="scenarioProjectStatus" class="status-text" aria-live="polite">No project loaded</span>
+            </div>
+            <input
+              id="scenarioBcFilter"
+              type="search"
+              placeholder="Find a bounded context…"
+              aria-label="Filter bounded contexts"
+              hidden
+            />
+            <div id="scenarioSources" class="picker-list" aria-label="Bounded contexts with scenarios" hidden></div>
+            <div id="scenarioPickerEmpty" class="picker-empty">
+              <p>Load a project to pick a bounded context. Until then a built-in sample is shown.</p>
+              <button id="scenarioLoadProjectBtn" class="btn btn-sm btn-primary" type="button">Load project</button>
+            </div>
+          </aside>
+
+          <section class="scenario-main" aria-labelledby="scenarioTitle">
+            <header class="scenario-head card">
+              <div class="scenario-head-text">
+                <p id="scenarioEyebrow" class="eyebrow">Built-in sample</p>
+                <h2 id="scenarioTitle">Library lending</h2>
+                <div class="scenario-head-meta">
+                  <span id="scenarioLifecycle"></span>
+                  <span id="scenarioSourcePath" class="cell-path" hidden></span>
+                  <span id="scenarioNote" class="muted"></span>
+                </div>
+              </div>
+              <div class="scenario-tools">
+                <div id="summary" class="summary-card" aria-live="polite"></div>
+                <input id="filterInput" type="search" placeholder="Filter by tag, title or step…" aria-label="Filter scenarios" />
+                <button id="collapseAllBtn" class="btn btn-sm btn-ghost" type="button">Collapse all</button>
+              </div>
+            </header>
+            <div id="results" class="scenario-results"></div>
+          </section>
         </div>
 
-        <textarea id="sourceInput" aria-label="BDD scenario markdown input"></textarea>
-
-        <div id="results"></div>
+        <dialog id="pasteDialog" class="paste-dialog" aria-labelledby="pasteDialogTitle">
+          <div class="paste-dialog-inner">
+            <header class="paste-dialog-head">
+              <div>
+                <p class="eyebrow">Scenarios</p>
+                <h2 id="pasteDialogTitle">Paste Markdown</h2>
+              </div>
+              <button id="pasteCloseBtn" class="btn btn-icon btn-sm btn-ghost" type="button" aria-label="Close">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+              </button>
+            </header>
+            <p class="paste-dialog-help">
+              Paste a <code>bdd-scenarios.md</code> file: scenarios inside <code>```gherkin</code> blocks, with
+              optional <code>## Feature:</code> headings. Nothing leaves this browser.
+            </p>
+            <textarea
+              id="sourceInput"
+              aria-label="BDD scenario markdown input"
+              placeholder="# Ordering BDD Scenarios&#10;&#10;```gherkin&#10;Feature: …&#10;  Scenario: …&#10;```"
+            ></textarea>
+            <footer class="paste-dialog-foot">
+              <button id="pasteClearBtn" class="btn btn-sm btn-ghost" type="button">Clear</button>
+              <span class="toolbar-spacer"></span>
+              <button id="pasteCancelBtn" class="btn btn-sm" type="button">Cancel</button>
+              <button id="renderBtn" class="btn btn-sm btn-primary" type="button">Render</button>
+            </footer>
+          </div>
+        </dialog>
       </section>
     </main>
 
@@ -3344,6 +4060,16 @@ Feature: Borrow a library book
       const fileInput = document.getElementById("fileInput");
       const summary = document.getElementById("summary");
       const results = document.getElementById("results");
+      const scenarioEyebrow = document.getElementById("scenarioEyebrow");
+      const scenarioTitle = document.getElementById("scenarioTitle");
+      const scenarioSourcePath = document.getElementById("scenarioSourcePath");
+      const scenarioNote = document.getElementById("scenarioNote");
+      const scenarioLifecycle = document.getElementById("scenarioLifecycle");
+      const pasteDialog = document.getElementById("pasteDialog");
+      const pasteOpenBtn = document.getElementById("pasteOpenBtn");
+      const pasteCancelBtn = document.getElementById("pasteCancelBtn");
+      const pasteCloseBtn = document.getElementById("pasteCloseBtn");
+      const pasteClearBtn = document.getElementById("pasteClearBtn");
 
       function escapeHtml(text) {
         return text
@@ -3480,90 +4206,150 @@ Feature: Borrow a library book
 
       let blockCount = 0;
 
+      // Step text: quoted strings and <outline parameters> get their own tokens.
+      function formatStepText(text) {
+        return escapeHtml(text)
+          .replace(/&quot;(.*?)&quot;/g, '<span class="gs-str">&quot;$1&quot;</span>')
+          .replace(/&lt;([\w .-]+)&gt;/g, '<span class="gs-param">&lt;$1&gt;</span>');
+      }
+
+      function stepsHtml(steps) {
+        let html = `<ol class="gherkin-steps">`;
+        for (const step of steps) {
+          if (step.keyword === "Background") continue;
+          html +=
+            `<li class="gs gs-${escapeHtml(step.keyword.toLowerCase())}">` +
+            `<span class="gs-kw">${escapeHtml(step.keyword)}</span>` +
+            `<span class="gs-text">${formatStepText(step.text)}</span></li>`;
+        }
+        return `${html}</ol>`;
+      }
+
+      function tagsHtml(tags) {
+        if (!tags.length) return "";
+        let html = `<div class="sc-tags">`;
+        for (const tag of tags) {
+          if (/^@scenario:/i.test(tag)) {
+            html += `<code class="scenario-id" title="${escapeHtml(tag)}">${escapeHtml(tag.slice("@scenario:".length))}</code>`;
+          } else {
+            html += `<span class="chip chip-tag">${escapeHtml(tag)}</span>`;
+          }
+        }
+        return `${html}</div>`;
+      }
+
+      function examplesHtml(rows) {
+        if (!rows.length) return "";
+        const [head, ...body] = rows;
+        return (
+          `<div class="sc-examples"><div class="sc-label">Examples</div><div class="table-wrap"><table class="table">` +
+          `<thead><tr>${head.map((value) => `<th scope="col">${escapeHtml(value)}</th>`).join("")}</tr></thead>` +
+          `<tbody>${body
+            .map((row) => `<tr>${row.map((value) => `<td>${formatStepText(value)}</td>`).join("")}</tr>`)
+            .join("")}</tbody></table></div></div>`
+        );
+      }
+
+      const chevron =
+        '<svg class="icon feature-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>';
+      const plural = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`;
+      const chip = (count, word) => `<span class="chip"><strong>${count}</strong> ${word}${count === 1 ? "" : "s"}</span>`;
+
       function render() {
         const markdown = normalizeMarkdown(sourceInput.value);
         blockCount = 0;
         const features = parseMarkdown(markdown);
-        const blocks = { length: blockCount };
         const filter = filterInput.value.trim().toLowerCase();
 
         let featureCount = 0;
         let scenarioCount = 0;
+        let totalScenarios = 0;
         let html = "";
 
         for (const feature of features) {
+          totalScenarios += feature.scenarios.length;
           const filteredScenarios = feature.scenarios.filter((scenario) => {
             if (!filter) return true;
-            const text = [
-              feature.title,
-              scenario.title,
-              scenario.tags.join(" "),
-              ...scenario.steps.map((s) => s.text),
-            ]
+            const text = [feature.title, scenario.title, scenario.tags.join(" "), ...scenario.steps.map((s) => s.text)]
               .join(" ")
               .toLowerCase();
             return text.includes(filter);
           });
-
-          if (filteredScenarios.length === 0) {
-            continue;
-          }
+          if (filteredScenarios.length === 0) continue;
 
           featureCount += 1;
           scenarioCount += filteredScenarios.length;
 
-          html += `<details class="feature" open>`;
-          html += `<summary><h2>Feature: ${escapeHtml(feature.title)}</h2></summary>`;
+          html += `<details class="feature-card card" open>`;
+          html +=
+            `<summary class="feature-head">${chevron}<span class="feature-kw">Feature</span>` +
+            `<h2>${escapeHtml(feature.title)}</h2><span class="toolbar-spacer"></span>` +
+            `<span class="chip tnum">${plural(filteredScenarios.length, "scenario")}</span></summary>`;
+          html += `<div class="feature-body">`;
           if (feature.description.length > 0) {
-            html += `<p class="muted">${escapeHtml(feature.description.join(" "))}</p>`;
+            html += `<p class="feature-desc">${escapeHtml(feature.description.join(" "))}</p>`;
           }
-          if (feature.backgroundSteps.length > 0) {
-            html += `<section class="background-block">`;
-            html += `<h3>Background</h3>`;
-            for (const step of feature.backgroundSteps) {
-              if (step.keyword === "Background") {
-                continue;
-              }
-              html += `<div class="step ${escapeHtml(step.keyword)}"><strong>${escapeHtml(step.keyword)}</strong> ${escapeHtml(step.text)}</div>`;
-            }
-            html += `</section>`;
+          if (feature.backgroundSteps.some((step) => step.keyword !== "Background")) {
+            html += `<section class="sc-background"><div class="sc-label">Background</div>${stepsHtml(feature.backgroundSteps)}</section>`;
           }
-
           for (const scenario of filteredScenarios) {
-            html += `<article class="scenario">`;
-            if (scenario.tags.length > 0) {
-              html += `<div class="tags">`;
-              for (const tag of scenario.tags) {
-                const isScenarioIdTag = tag.toLowerCase().startsWith("@scenario:");
-                const className = isScenarioIdTag ? "tag tag-scenario-id" : "tag";
-                html += `<span class="${className}">${escapeHtml(tag)}</span>`;
-              }
-              html += `</div>`;
-            }
-            html += `<h3>${escapeHtml(scenario.kind)}: ${escapeHtml(scenario.title)}</h3>`;
-            for (const step of scenario.steps) {
-              html += `<div class="step ${escapeHtml(step.keyword)}"><strong>${escapeHtml(step.keyword)}</strong> ${escapeHtml(step.text)}</div>`;
-            }
-            if (scenario.examples.length > 0) {
-              html += `<table class="examples"><tbody>`;
-              scenario.examples.forEach((row, rowIndex) => {
-                const cell = rowIndex === 0 ? "th" : "td";
-                html += `<tr>${row.map((value) => `<${cell}>${escapeHtml(value)}</${cell}>`).join("")}</tr>`;
-              });
-              html += `</tbody></table>`;
-            }
-            html += `</article>`;
+            html +=
+              `<article class="sc-card"><header class="sc-head"><div class="sc-title">` +
+              `<span class="sc-kind">${escapeHtml(scenario.kind)}</span><h3>${escapeHtml(scenario.title)}</h3></div>` +
+              `${tagsHtml(scenario.tags)}</header>${stepsHtml(scenario.steps)}${examplesHtml(scenario.examples)}</article>`;
           }
-
-          html += `</details>`;
+          html += `</div></details>`;
         }
 
         summary.innerHTML =
-          `<span class="summary-pill">${blocks.length} block${blocks.length === 1 ? "" : "s"}</span>` +
-          `<span class="summary-pill">${featureCount} feature${featureCount === 1 ? "" : "s"}</span>` +
-          `<span class="summary-pill">${scenarioCount} scenario${scenarioCount === 1 ? "" : "s"}</span>`;
-        results.innerHTML = html || `<p class="muted">No scenarios matched.</p>`;
+          chip(featureCount, "feature") +
+          (filter && scenarioCount !== totalScenarios
+            ? `<span class="chip"><strong>${scenarioCount}</strong> of ${plural(totalScenarios, "scenario")}</span>`
+            : chip(scenarioCount, "scenario"));
+        if (!html) {
+          const message = filter
+            ? `No scenarios match “${escapeHtml(filterInput.value.trim())}”.`
+            : blockCount === 0
+              ? "No <code>```gherkin</code> blocks found in this source."
+              : "No scenarios found in this source.";
+          html = `<div class="scenario-empty card"><p>${message}</p></div>`;
+        }
+        results.innerHTML = html;
+        updateCollapseLabel();
       }
+
+      function updateCollapseLabel() {
+        const sections = Array.from(results.querySelectorAll("details.feature-card"));
+        collapseAllBtn.disabled = sections.length === 0;
+        collapseAllBtn.textContent = sections.some((section) => section.open) ? "Collapse all" : "Expand all";
+      }
+
+      // Header above the rendered scenarios: where they came from.
+      function setScenarioMeta(meta) {
+        scenarioEyebrow.textContent = meta.eyebrow || "Scenarios";
+        scenarioTitle.textContent = meta.title || "Scenarios";
+        scenarioSourcePath.hidden = !meta.path;
+        scenarioSourcePath.textContent = meta.path || "";
+        scenarioSourcePath.title = meta.path || "";
+        scenarioNote.textContent = meta.note || "";
+        scenarioLifecycle.replaceChildren();
+        const viewer = window.HgateProjectViewer;
+        if (meta.lifecycle) {
+          const pillElement = document.createElement("span");
+          pillElement.className = `pill pill-lifecycle ${viewer ? viewer.lifecycleTone(meta.lifecycle) : "pill-info"}`;
+          pillElement.textContent = meta.lifecycle.replace(/_/g, " ");
+          scenarioLifecycle.append(pillElement);
+        }
+      }
+
+      // Used by project-viewer.js (BC picker) and by Paste / Open file below.
+      window.renderScenarioSource = (markdown, meta = {}) => {
+        sourceInput.value = markdown;
+        setScenarioMeta(meta);
+        render();
+      };
+
+      const announceSource = (kind) => document.dispatchEvent(new CustomEvent("hgate:scenario-source", { detail: { kind } }));
 
       loadFileBtn.addEventListener("click", () => {
         fileInput.click();
@@ -3571,25 +4357,52 @@ Feature: Borrow a library book
 
       fileInput.addEventListener("change", async () => {
         const [file] = fileInput.files || [];
-        if (!file) {
-          return;
-        }
-        const fileContent = await file.text();
-        sourceInput.value = fileContent;
-        render();
+        if (!file) return;
+        window.renderScenarioSource(await file.text(), { eyebrow: "Single file", title: file.name });
+        announceSource("file");
+        fileInput.value = "";
       });
 
-      renderBtn.addEventListener("click", render);
-      collapseAllBtn.addEventListener("click", () => {
-        const featureSections = results.querySelectorAll("details.feature");
-        for (const featureSection of featureSections) {
-          featureSection.open = false;
-        }
+      // Paste Markdown: a native modal dialog (focus trap, Esc and focus return built in).
+      pasteOpenBtn.addEventListener("click", () => {
+        pasteDialog.showModal();
+        sourceInput.focus();
+        sourceInput.setSelectionRange(0, 0);
+        sourceInput.scrollTop = 0;
       });
+      pasteCancelBtn.addEventListener("click", () => pasteDialog.close());
+      pasteCloseBtn.addEventListener("click", () => pasteDialog.close());
+      pasteClearBtn.addEventListener("click", () => {
+        sourceInput.value = "";
+        sourceInput.focus();
+      });
+      pasteDialog.addEventListener("click", (event) => {
+        if (event.target === pasteDialog) pasteDialog.close();
+      });
+      renderBtn.addEventListener("click", () => {
+        const heading = normalizeMarkdown(sourceInput.value).match(/^#\s+(.+)$/m);
+        window.renderScenarioSource(sourceInput.value, {
+          eyebrow: "Pasted Markdown",
+          title: heading ? heading[1].trim() : "Pasted scenarios",
+        });
+        announceSource("paste");
+        if (pasteDialog.open) pasteDialog.close();
+      });
+
+      collapseAllBtn.addEventListener("click", () => {
+        const sections = Array.from(results.querySelectorAll("details.feature-card"));
+        const open = !sections.some((section) => section.open);
+        for (const section of sections) section.open = open;
+        updateCollapseLabel();
+      });
+      results.addEventListener("toggle", updateCollapseLabel, true);
       filterInput.addEventListener("input", render);
 
-      sourceInput.value = sample;
-      render();
+      window.renderScenarioSource(sample, {
+        eyebrow: "Built-in sample",
+        title: "Library lending",
+        note: "Load a project, open a file or paste Markdown to read your own scenarios.",
+      });
     </script>
     <script src="./viewer-guide.js"></script>
     <script src="./project-viewer.js"></script>

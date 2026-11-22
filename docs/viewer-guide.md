@@ -10,8 +10,8 @@ visible, shows the project name and counts, the warning count, **Reload**,
 **Load project** and the **?** guide button. Below it are three tabs:
 
 - **Board**: summary strip, lifecycle matrix (or kanban), gates, the gap ledger and warnings.
-- **Project**: the BC topology diagram and per-BC details.
-- **Scenarios**: BDD scenarios per BC, filterable by tag, title or step.
+- **Project**: the BC topology diagram, grouped by domain, beside the selected BC's details.
+- **Scenarios**: a BC picker and that BC's BDD scenarios, filterable by tag, title or step.
 
 Before a project is loaded, a welcome screen shows the commands to run first
 and a **Load project folder** button. The tabs stay reachable.
@@ -47,6 +47,29 @@ transitions only, with a hint to run `npm run project:status`.
 | Change summaries | What changed in the BC spec **since the last transition**, **since the previous commit**, and **uncommitted** in the working tree. |
 | Timeline | Each transition (newest at the bottom, ringed) with its commit, gates, signers and evidence; expand a step to see its semantic diff. |
 | All gate evidence | Every row of the BC's `## Gate Evidence` table in `status.md`: gate, kind, transition and date; result; evidence and signer. |
+
+## Project tab
+
+| Part | What it shows |
+|---|---|
+| Diagram | One dashed box per domain (name and BC count) with its BCs inside. Each node shows the BC name, lifecycle pill, classification pill (boundary role only when it differs and fits; all pills are in the details), gate progress and open gaps, like a Board row. A red left edge means the current transition's gates are not valid; a dashed border means the BC was inferred from legacy Markdown. |
+| Fit and zoom | The diagram fits the panel when the project loads and when the window resizes. **−** and **+** zoom (the panel then scrolls); **Fit** fits it again. |
+| Moving nodes | Drag a node to rearrange; its domain box grows to keep it inside. Positions reset when the project is reloaded. |
+| Relationships | Arrows point from the BC that sends information to the one that receives it. Each edge has a numbered marker instead of a label: hover or focus it (**Tab**) for the full relationship (information, interaction, consistency, source of truth, translation). Two edges between the same BCs curve apart; edges bend around other nodes. Edges of the selected BC are highlighted. |
+| Details panel | Beside the diagram on screens 1280px and wider, below it otherwise. Domain, name and pills; **Open in Board** opens the Board's BC panel (gates, gaps, timeline) without leaving the tab; **View scenarios** opens the BC in the Scenarios tab. Then gates, open gaps, next skill, purpose, owns / does not own, relationships (numbers match the diagram markers; hover a row to highlight its edge), capabilities, ports, ACLs, journeys and source files. |
+
+## Scenarios tab
+
+| Part | What it shows |
+|---|---|
+| BC picker | Left column: BCs grouped by domain, each with its scenario count and lifecycle pill; **Find a bounded context** filters by name. A BC without `bdd-scenarios.md` is listed but disabled. Scenario files in the skills folder that are not in the domain map appear under **Not in domain map**. |
+| Header | Where the scenarios come from (domain and BC, or file name), the file path, **features** and **scenarios** counts, the filter box and **Collapse all / Expand all**. |
+| Features | One collapsible card per feature, with its description and background. Scenario cards show the kind (Scenario or Scenario Outline), title, scenario ID (`@scenario:` tag, shown without the prefix) and other tags. In steps, quoted values and `<parameters>` are highlighted; example tables follow the steps. |
+| Filter | Matches feature and scenario titles, tags and step text; the count shows how many of all scenarios match. |
+| Open file | Reads one Markdown or `.feature` file from your computer. |
+| Paste Markdown | Opens a panel with a text box: paste a scenario file and click **Render**. **Esc** or **Cancel** closes it. |
+
+Before a project is loaded the tab shows a small library-lending sample.
 
 ## Gate kinds and results
 

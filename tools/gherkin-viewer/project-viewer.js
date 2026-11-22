@@ -18,8 +18,7 @@
   const MIN_ZOOM = 50;
   const MAX_ZOOM = 200;
   const ZOOM_STEP = 25;
-  const NODE_WIDTH = 180;
-  const COLUMN_STEP = 390;
+  const NODE_WIDTH = 264;
   const MAX_EDGE_LABEL_LENGTH = 26;
   // Agent-specific skill folders, in lookup order: GitHub Copilot, Claude Code, Codex/agents.
   const SKILLS_ROOTS = [".github/skills", ".claude/skills", ".agents/skills", ".codex/skills"];
@@ -420,6 +419,39 @@
       });
     }
     return result;
+  }
+
+  // Scenario count of a bdd-scenarios.md: Scenario / Scenario Outline lines
+  // inside ```gherkin blocks (escaped fences from pasted Markdown included).
+  function countScenarios(markdown) {
+    let inBlock = false;
+    let count = 0;
+    for (const raw of String(markdown || "").replace(/\\`/g, "`").split(/\r?\n/)) {
+      const line = raw.trim();
+      const fence = line.match(/^```\s*(\w*)/);
+      if (fence) {
+        inBlock = inBlock ? false : fence[1].toLowerCase() === "gherkin";
+        continue;
+      }
+      if (inBlock && /^Scenario( Outline| Template)?:/.test(line)) count += 1;
+    }
+    return count;
+  }
+
+  // Filters listScenarioSources groups by BC name or id (case-insensitive);
+  // a matching group label keeps the whole group. Empty groups are dropped.
+  function filterScenarioSources(groups, query) {
+    const needle = String(query || "").trim().toLowerCase();
+    if (!needle) return groups;
+    return groups
+      .map((group) => {
+        if (String(group.label).toLowerCase().includes(needle)) return group;
+        return {
+          ...group,
+          items: group.items.filter((item) => `${item.name} ${item.id}`.toLowerCase().includes(needle)),
+        };
+      })
+      .filter((group) => group.items.length > 0);
   }
 
   async function childDirectory(handle, segments) {
@@ -1977,7 +2009,33 @@
     container.hidden = diagnostics.length === 0;
   }
 
-  function layoutProject(project) {
+  // --- Project diagram (T14c) ------------------------------------------------
+  // BC nodes sit in a small grid inside one labelled box per domain; domain
+  // boxes flow left to right and wrap. Gaps leave room for edge markers.
+  const NODE_HEIGHT = 104;
+  const NODE_GAP_X = 128;
+  const NODE_GAP_Y = 80;
+  const DOMAIN_PAD_X = 24;
+  const DOMAIN_PAD_TOP = 48;
+  const DOMAIN_PAD_BOTTOM = 24;
+  const DOMAIN_GAP = 88;
+  const LAYOUT_MARGIN = 24;
+  const MAX_ROW_WIDTH = 1600;
+  const FIT_MIN_ZOOM = 35;
+  const FIT_MAX_ZOOM = 125;
+  const EDGE_PAIR_SPACING = 56;
+  const EDGE_DETOURS = [0, 64, -64, 128, -128, 192, -192];
+
+  function domainColumnsFor(count) {
+    if (count <= 1) return 1;
+    if (count <= 4) return 2;
+    return 3;
+  }
+
+  // `options.maxRowWidth` caps a row of domain boxes before wrapping
+  // (see chooseRowWidth); the default suits a landscape panel.
+  function layoutProject(project, options = {}) {
+    const maxRowWidth = options.maxRowWidth || MAX_ROW_WIDTH;
     const groups = new Map();
     for (const bc of [...project.boundedContexts].sort((a, b) => a.name.localeCompare(b.name))) {
       const key = bc.domainId || "unassigned";
@@ -1986,21 +2044,186 @@
     }
     const columns = Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
     const positions = new Map();
-    columns.forEach(([domainId, contexts], columnIndex) => {
-      contexts.forEach((bc, rowIndex) => {
+    const domains = [];
+    let x = LAYOUT_MARGIN;
+    let y = LAYOUT_MARGIN;
+    let rowHeight = 0;
+    for (const [domainId, contexts] of columns) {
+      const cols = domainColumnsFor(contexts.length);
+      const rows = Math.ceil(contexts.length / cols);
+      const width = DOMAIN_PAD_X * 2 + cols * NODE_WIDTH + (cols - 1) * NODE_GAP_X;
+      const height = DOMAIN_PAD_TOP + DOMAIN_PAD_BOTTOM + rows * NODE_HEIGHT + (rows - 1) * NODE_GAP_Y;
+      if (x > LAYOUT_MARGIN && x + width > maxRowWidth) {
+        x = LAYOUT_MARGIN;
+        y += rowHeight + DOMAIN_GAP;
+        rowHeight = 0;
+      }
+      domains.push({ id: domainId, x, y, width, height });
+      contexts.forEach((bc, index) => {
         positions.set(bc.id, {
-          x: 40 + columnIndex * COLUMN_STEP,
-          y: 65 + rowIndex * 130,
+          x: x + DOMAIN_PAD_X + (index % cols) * (NODE_WIDTH + NODE_GAP_X),
+          y: y + DOMAIN_PAD_TOP + Math.floor(index / cols) * (NODE_HEIGHT + NODE_GAP_Y),
           domainId,
         });
       });
-    });
-    const maxRows = Math.max(1, ...columns.map(([, contexts]) => contexts.length));
+      x += width + DOMAIN_GAP;
+      rowHeight = Math.max(rowHeight, height);
+    }
+    const right = Math.max(0, ...domains.map((box) => box.x + box.width));
+    const bottom = Math.max(0, ...domains.map((box) => box.y + box.height));
     return {
       columns,
       positions,
-      width: Math.max(520, columns.length * COLUMN_STEP + 40),
-      height: Math.max(280, maxRows * 130 + 80),
+      domains,
+      nodeWidth: NODE_WIDTH,
+      nodeHeight: NODE_HEIGHT,
+      width: Math.max(320, right + LAYOUT_MARGIN),
+      height: Math.max(200, bottom + LAYOUT_MARGIN),
+    };
+  }
+
+  // Row width for layoutProject that best fits a panel with this aspect ratio
+  // (width / height): every wrap point is tried and the one whose layout can
+  // be drawn largest wins (ties keep the wider row).
+  function chooseRowWidth(project, aspect) {
+    const single = layoutProject(project, { maxRowWidth: Number.MAX_SAFE_INTEGER });
+    if (!(aspect > 0) || single.domains.length < 2) return single.width;
+    let best = { width: single.width, scale: Math.min(aspect / single.width, 1 / single.height) };
+    for (const box of single.domains) {
+      const candidate = box.x + box.width + 1;
+      const layout = layoutProject(project, { maxRowWidth: candidate });
+      const scale = Math.min(aspect / layout.width, 1 / layout.height);
+      if (scale > best.scale + 1e-9) best = { width: candidate, scale };
+    }
+    return best.width;
+  }
+
+  // Domain boxes recomputed around wherever their nodes currently sit, so a
+  // dragged node never leaves its domain box. `columns` is layoutProject's.
+  function domainBoxes(columns, positions, nodeWidth = NODE_WIDTH, nodeHeight = NODE_HEIGHT) {
+    const boxes = [];
+    for (const [domainId, contexts] of columns) {
+      const points = contexts.map((bc) => positions.get(bc.id)).filter(Boolean);
+      if (!points.length) continue;
+      const left = Math.min(...points.map((point) => point.x)) - DOMAIN_PAD_X;
+      const top = Math.min(...points.map((point) => point.y)) - DOMAIN_PAD_TOP;
+      const right = Math.max(...points.map((point) => point.x + nodeWidth)) + DOMAIN_PAD_X;
+      const bottom = Math.max(...points.map((point) => point.y + nodeHeight)) + DOMAIN_PAD_BOTTOM;
+      boxes.push({ id: domainId, x: left, y: top, width: right - left, height: bottom - top });
+    }
+    return boxes;
+  }
+
+  // Bounding box of all rectangles ({x, y, width, height}); empty input is a zero box.
+  function contentBounds(rects) {
+    if (!rects.length) return { x: 0, y: 0, width: 0, height: 0 };
+    const left = Math.min(...rects.map((rect) => rect.x));
+    const top = Math.min(...rects.map((rect) => rect.y));
+    const right = Math.max(...rects.map((rect) => rect.x + rect.width));
+    const bottom = Math.max(...rects.map((rect) => rect.y + rect.height));
+    return { x: left, y: top, width: right - left, height: bottom - top };
+  }
+
+  // Zoom (percent) that fits the content into the visible area, keeping
+  // `margin` screen pixels around it. Bounded so tiny projects do not blow up.
+  function fitZoom({ visibleWidth, visibleHeight, contentWidth, contentHeight, margin = 16 }) {
+    if (!(visibleWidth > 0 && visibleHeight > 0 && contentWidth > 0 && contentHeight > 0)) return 100;
+    const scale = Math.min(
+      Math.max(1, visibleWidth - margin * 2) / contentWidth,
+      Math.max(1, visibleHeight - margin * 2) / contentHeight,
+    );
+    return Math.min(FIT_MAX_ZOOM, Math.max(FIT_MIN_ZOOM, Math.floor(scale * 100)));
+  }
+
+  // Relationships that can be drawn (both ends known, not a self-loop), numbered
+  // 1..n in projection order. The number labels the edge and the details table.
+  function numberRelationships(project) {
+    const ids = new Set(((project && project.boundedContexts) || []).map((bc) => bc.id));
+    return ((project && project.relationships) || [])
+      .filter((relation) => ids.has(relation.from) && ids.has(relation.to) && relation.from !== relation.to)
+      .map((relation, index) => ({ ...relation, number: index + 1 }));
+  }
+
+  // Signed bend (peak offset) per relationship: edges between the same pair of
+  // BCs, in either direction, fan out symmetrically around the straight line.
+  function assignEdgeBends(relations, spacing = EDGE_PAIR_SPACING) {
+    const totals = new Map();
+    const keyOf = (relation) => [relation.from, relation.to].sort().join("|");
+    for (const relation of relations) totals.set(keyOf(relation), (totals.get(keyOf(relation)) || 0) + 1);
+    const seen = new Map();
+    return relations.map((relation) => {
+      const key = keyOf(relation);
+      const index = seen.get(key) || 0;
+      seen.set(key, index + 1);
+      // The normal is taken in canonical pair order so opposite directions agree.
+      const sign = relation.from < relation.to ? 1 : -1;
+      return (index - (totals.get(key) - 1) / 2) * spacing * sign;
+    });
+  }
+
+  function rectCenter(rect) {
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  }
+
+  // Where the ray from the rectangle's centre toward `toward` leaves it, `gap` outside.
+  function borderPointOf(rect, toward, gap = 0) {
+    const center = rectCenter(rect);
+    const dx = toward.x - center.x;
+    const dy = toward.y - center.y;
+    if (dx === 0 && dy === 0) return center;
+    const scale = 1 / Math.max(Math.abs(dx) / (rect.width / 2 + gap), Math.abs(dy) / (rect.height / 2 + gap));
+    return { x: center.x + dx * scale, y: center.y + dy * scale };
+  }
+
+  function quadPoint(start, control, end, t) {
+    const u = 1 - t;
+    return {
+      x: u * u * start.x + 2 * u * t * control.x + t * t * end.x,
+      y: u * u * start.y + 2 * u * t * control.y + t * t * end.y,
+    };
+  }
+
+  function curveHitsRects(start, control, end, rects) {
+    for (let step = 1; step < 20; step += 1) {
+      const point = quadPoint(start, control, end, step / 20);
+      if (rects.some((rect) => point.x > rect.x && point.x < rect.x + rect.width && point.y > rect.y && point.y < rect.y + rect.height)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Quadratic edge from one node rectangle to another. `bend` is the curve's
+  // peak offset from the straight line; when the curve would pass under an
+  // obstacle (another node) it detours further out, up to ±192px.
+  function edgeGeometry(fromRect, toRect, bend = 0, obstacles = []) {
+    const a = rectCenter(fromRect);
+    const b = rectCenter(toRect);
+    const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const nx = -(b.y - a.y) / length;
+    const ny = (b.x - a.x) / length;
+    const shape = (offset) => {
+      const control = { x: (a.x + b.x) / 2 + nx * offset * 2, y: (a.y + b.y) / 2 + ny * offset * 2 };
+      return { start: borderPointOf(fromRect, control, 3), control, end: borderPointOf(toRect, control, 5), offset };
+    };
+    let chosen = shape(bend);
+    for (const detour of EDGE_DETOURS) {
+      const candidate = shape(bend + (bend < 0 ? -detour : detour));
+      if (!curveHitsRects(candidate.start, candidate.control, candidate.end, obstacles)) {
+        chosen = candidate;
+        break;
+      }
+    }
+    const round = (value) => Math.round(value * 10) / 10;
+    const { start, control, end, offset } = chosen;
+    const mid = quadPoint(start, control, end, 0.5);
+    return {
+      start,
+      control,
+      end,
+      offset,
+      mid: { x: round(mid.x), y: round(mid.y) },
+      d: `M ${round(start.x)} ${round(start.y)} Q ${round(control.x)} ${round(control.y)} ${round(end.x)} ${round(end.y)}`,
     };
   }
 
@@ -2029,141 +2252,293 @@
     return element;
   }
 
-  function renderTopology(project, container, onSelect) {
+  // Pill tone for a lifecycle state; same mapping as the Board drawer.
+  function lifecycleTone(state) {
+    return { VERIFIED: "pill-success", BLOCKED: "pill-danger", DEPRECATED: "pill-neutral" }[state] || "pill-info";
+  }
+
+  function lifecyclePill(state) {
+    const element = pill(lifecycleLabel(state || "UNCONFIRMED"), `pill-lifecycle ${lifecycleTone(state)}`);
+    return withTooltip(element, "lifecycle", state, { hidden: false });
+  }
+
+  function relationshipTooltipHtml(relation, nameOf) {
+    const meta = [
+      ["Interaction", relation.interaction],
+      ["Consistency", relation.consistency],
+      ["Source of truth", relation.sourceOfTruth],
+      ["Translation", relation.translationAcl],
+    ].filter(([, value]) => value);
+    return (
+      `<div class="graph-tooltip-head"><span class="edge-num">${relation.number}</span>` +
+      `<span>${escapeHtml(nameOf(relation.from))} → ${escapeHtml(nameOf(relation.to))}</span></div>` +
+      (relation.information ? `<p>${renderInlineMarkdown(relation.information)}</p>` : "") +
+      (meta.length
+        ? `<dl>${meta.map(([label, value]) => `<dt>${label}</dt><dd>${renderInlineMarkdown(value)}</dd>`).join("")}</dl>`
+        : "")
+    );
+  }
+
+  // Renders the topology into `container` (a scrolling box). Options:
+  //   board         Board model, for gate / gap indicators on nodes
+  //   overlay       non-scrolling ancestor that hosts the edge tooltip
+  //   onZoomChange  (percent, fitted) after fit-to-view (load, resize, Fit)
+  // Returns { setZoom, fit, highlight, highlightRelation }.
+  function renderTopology(project, container, onSelect, options = {}) {
     container.replaceChildren();
-    const layout = layoutProject(project);
-    const NODE_HEIGHT = 80;
-    const view = { width: layout.width, height: layout.height, zoom: 1 };
     if (container._topologyObserver) container._topologyObserver.disconnect();
-    const svg = svgElement("svg", {
-      role: "img",
-      "aria-label": "Bounded context topology",
-    });
+    const overlay = options.overlay || container;
+    const staleTooltip = overlay.querySelector(":scope > .graph-tooltip");
+    if (staleTooltip) staleTooltip.remove();
+    // Wrap domain rows to suit the panel's shape (estimated from the window while the tab is hidden).
+    const host = options.overlay || container;
+    const aspect =
+      host.clientWidth > 0 && host.clientHeight > 0
+        ? host.clientWidth / host.clientHeight
+        : typeof window !== "undefined" && window.innerHeight > 0
+          ? Math.max(0.6, (window.innerWidth - 480) / Math.max(300, window.innerHeight - 270))
+          : 1.6;
+    const layout = layoutProject(project, { maxRowWidth: chooseRowWidth(project, aspect) });
+    const rowsById = new Map(
+      options.board ? buildLifecycleMatrix(options.board).rows.map((row) => [row.id, row]) : [],
+    );
+    const nameOf = (id) => {
+      const bc = project.boundedContexts.find((item) => item.id === id);
+      return bc ? bc.name : id;
+    };
+    const view = { width: layout.width, height: layout.height, zoom: 1, autoFit: true, minX: 0, minY: 0 };
+    const svg = svgElement("svg", { role: "group", "aria-label": "Bounded context topology", class: "graph-canvas" });
     const defs = svgElement("defs");
-    const marker = svgElement("marker", {
-      id: "project-arrow",
-      viewBox: "0 0 10 10",
-      refX: "9",
-      refY: "5",
-      markerWidth: "7",
-      markerHeight: "7",
-      orient: "auto-start-reverse",
-    });
-    marker.append(svgElement("path", { d: "M 0 0 L 10 5 L 0 10 z", class: "graph-arrow" }));
-    defs.append(marker);
+    for (const [id, className] of [
+      ["project-arrow", "graph-arrow"],
+      ["project-arrow-active", "graph-arrow graph-arrow-active"],
+    ]) {
+      const marker = svgElement("marker", {
+        id,
+        viewBox: "0 0 10 10",
+        refX: 9,
+        refY: 5,
+        markerWidth: 10,
+        markerHeight: 10,
+        markerUnits: "userSpaceOnUse",
+        orient: "auto-start-reverse",
+      });
+      marker.append(svgElement("path", { d: "M 0 0 L 10 5 L 0 10 z", class: className }));
+      defs.append(marker);
+    }
     svg.append(defs);
 
     const positions = new Map();
     for (const [id, position] of layout.positions) positions.set(id, { x: position.x, y: position.y });
+    const rectOf = (position) => ({ x: position.x, y: position.y, width: NODE_WIDTH, height: NODE_HEIGHT });
 
-    for (const [domainId] of layout.columns) {
-      const first = Array.from(layout.positions.values()).find((position) => position.domainId === domainId);
-      if (!first) continue;
-      const label = svgElement("text", { x: first.x, y: 30, class: "graph-domain-label" });
+    const domainLayer = svgElement("g", { class: "graph-domains" });
+    const edgeLayer = svgElement("g", { class: "graph-edges" });
+    const nodeLayer = svgElement("g", { class: "graph-nodes" });
+    const badgeLayer = svgElement("g", { class: "graph-badges" });
+    svg.append(domainLayer, edgeLayer, nodeLayer, badgeLayer);
+
+    // Domain boxes
+    const domainShapes = new Map();
+    for (const [domainId, contexts] of layout.columns) {
       const domain = project.domains.find((item) => item.id === domainId);
-      label.textContent = domain ? domain.name : domainId;
-      svg.append(label);
+      const group = svgElement("g", { class: "graph-domain" });
+      const rect = svgElement("rect", { class: "graph-domain-box", rx: 16 });
+      const label = svgElement("text", { class: "graph-domain-label" });
+      label.textContent = domain ? domain.name : domainId === "unassigned" ? "No domain" : domainId;
+      const count = svgElement("tspan", { class: "graph-domain-count", dx: 10 });
+      count.textContent = plural(contexts.length, "bounded context");
+      label.append(count);
+      group.append(rect, label);
+      domainLayer.append(group);
+      domainShapes.set(domainId, { rect, label });
     }
-
-    const pairCounts = new Map();
-    const edges = [];
-    const edgeLayer = svgElement("g");
-    const labelLayer = svgElement("g");
-    const nodeLayer = svgElement("g");
-    svg.append(edgeLayer, nodeLayer, labelLayer);
-
-    for (const relation of project.relationships) {
-      if (!positions.has(relation.from) || !positions.has(relation.to) || relation.from === relation.to) continue;
-      const pairKey = [relation.from, relation.to].sort().join("|");
-      const index = pairCounts.get(pairKey) || 0;
-      pairCounts.set(pairKey, index + 1);
-      const fullLabel = relation.information || relation.interaction || "";
-      const displayLabel = abbreviateEdgeLabel(fullLabel);
-      const labelWidth = Math.min(178, Math.max(54, displayLabel.length * 6.2 + 14));
-      const path = svgElement("path", { class: "graph-edge", "marker-end": "url(#project-arrow)", fill: "none" });
-      const labelBackground = svgElement("rect", {
-        width: labelWidth,
-        height: 19,
-        rx: 7,
-        class: "graph-edge-label-background",
-      });
-      const edgeLabel = svgElement("text", { class: "graph-edge-label", "text-anchor": "middle" });
-      edgeLabel.textContent = displayLabel;
-      const title = svgElement("title");
-      title.textContent = fullLabel;
-      edgeLabel.append(title);
-      edgeLayer.append(path);
-      labelLayer.append(labelBackground, edgeLabel);
-      edges.push({ relation, index, pairKey, path, labelBackground, edgeLabel, labelWidth });
-    }
-
-    const borderPoint = (position, toward) => {
-      const cx = position.x + NODE_WIDTH / 2;
-      const cy = position.y + NODE_HEIGHT / 2;
-      const dx = toward.x - cx;
-      const dy = toward.y - cy;
-      if (dx === 0 && dy === 0) return { x: cx, y: cy };
-      const scale = 1 / Math.max(Math.abs(dx) / (NODE_WIDTH / 2 + 4), Math.abs(dy) / (NODE_HEIGHT / 2 + 4));
-      return { x: cx + dx * scale, y: cy + dy * scale };
-    };
-
-    const updateEdges = () => {
-      for (const edge of edges) {
-        const from = positions.get(edge.relation.from);
-        const to = positions.get(edge.relation.to);
-        const fromCenter = { x: from.x + NODE_WIDTH / 2, y: from.y + NODE_HEIGHT / 2 };
-        const toCenter = { x: to.x + NODE_WIDTH / 2, y: to.y + NODE_HEIGHT / 2 };
-        const start = borderPoint(from, toCenter);
-        const end = borderPoint(to, fromCenter);
-        const dx = end.x - start.x;
-        const dy = end.y - start.y;
-        const length = Math.hypot(dx, dy) || 1;
-        // Normal is oriented by canonical pair order so opposite edges curve apart.
-        const sign = edge.relation.from < edge.relation.to ? 1 : -1;
-        const bend = edge.index === 0 ? 0 : (edge.index % 2 === 1 ? 1 : -1) * Math.ceil(edge.index / 2) * 36;
-        const offset = bend * sign;
-        const nx = (-dy / length) * offset;
-        const ny = (dx / length) * offset;
-        const cx = (start.x + end.x) / 2 + nx * 2;
-        const cy = (start.y + end.y) / 2 + ny * 2;
-        edge.path.setAttribute("d", `M ${start.x} ${start.y} Q ${cx} ${cy} ${end.x} ${end.y}`);
-        const mx = 0.25 * start.x + 0.5 * cx + 0.25 * end.x;
-        const my = 0.25 * start.y + 0.5 * cy + 0.25 * end.y;
-        edge.labelBackground.setAttribute("x", mx - edge.labelWidth / 2);
-        edge.labelBackground.setAttribute("y", my - 10);
-        edge.edgeLabel.setAttribute("x", mx);
-        edge.edgeLabel.setAttribute("y", my + 4);
+    const currentBoxes = () => domainBoxes(layout.columns, positions);
+    const updateDomains = () => {
+      for (const box of currentBoxes()) {
+        const shape = domainShapes.get(box.id);
+        if (!shape) continue;
+        shape.rect.setAttribute("x", box.x);
+        shape.rect.setAttribute("y", box.y);
+        shape.rect.setAttribute("width", box.width);
+        shape.rect.setAttribute("height", box.height);
+        shape.label.setAttribute("x", box.x + 18);
+        shape.label.setAttribute("y", box.y + 29);
       }
     };
 
-    // The SVG is absolutely positioned, so it never drives the container's size;
-    // the container is sized by the grid row and the canvas fills (or overflows) it.
+    // Edge tooltip (HTML, outside the scrolling canvas so it is never clipped).
+    const tooltip = createElement("div", "graph-tooltip");
+    tooltip.setAttribute("role", "tooltip");
+    tooltip.id = "graphTooltip";
+    tooltip.hidden = true;
+    overlay.append(tooltip);
+
+    // Edges: path + wide invisible hit path; numbered badge at the midpoint.
+    const relations = numberRelationships(project);
+    const bends = assignEdgeBends(relations);
+    let activeEdge = null;
+    let pinnedEdge = null;
+    const edges = relations.map((relation, index) => {
+      const group = svgElement("g", { class: "graph-edge-group" });
+      const hit = svgElement("path", { class: "graph-edge-hit" });
+      const path = svgElement("path", { class: "graph-edge", "marker-end": "url(#project-arrow)" });
+      group.append(hit, path);
+      edgeLayer.append(group);
+      const label = `Relationship ${relation.number}: ${nameOf(relation.from)} to ${nameOf(relation.to)}${
+        relation.information ? `. ${relation.information}` : ""
+      }`;
+      const badge = svgElement("g", { class: "graph-edge-badge", tabindex: 0, role: "button", "aria-label": label });
+      badge.append(svgElement("circle", { r: 11 }), svgElement("text", { class: "graph-edge-badge-text", y: 4 }));
+      badge.lastChild.textContent = String(relation.number);
+      badgeLayer.append(badge);
+      return { relation, bend: bends[index], group, hit, path, badge, mid: { x: 0, y: 0 } };
+    });
+
+    const updateEdges = () => {
+      const rects = new Map(Array.from(positions, ([id, position]) => [id, rectOf(position)]));
+      for (const edge of edges) {
+        const obstacles = [];
+        for (const [id, rect] of rects) {
+          if (id === edge.relation.from || id === edge.relation.to) continue;
+          obstacles.push({ x: rect.x - 10, y: rect.y - 10, width: rect.width + 20, height: rect.height + 20 });
+        }
+        const geometry = edgeGeometry(rects.get(edge.relation.from), rects.get(edge.relation.to), edge.bend, obstacles);
+        edge.path.setAttribute("d", geometry.d);
+        edge.hit.setAttribute("d", geometry.d);
+        edge.badge.setAttribute("transform", `translate(${geometry.mid.x} ${geometry.mid.y})`);
+        edge.mid = geometry.mid;
+      }
+    };
+
+    const placeTooltip = (edge) => {
+      const badgeBox = edge.badge.getBoundingClientRect();
+      const hostBox = overlay.getBoundingClientRect();
+      const width = tooltip.offsetWidth;
+      const height = tooltip.offsetHeight;
+      const centerX = badgeBox.left + badgeBox.width / 2 - hostBox.left;
+      let left = Math.min(Math.max(8, centerX - width / 2), Math.max(8, hostBox.width - width - 8));
+      let top = badgeBox.top - hostBox.top - height - 10;
+      if (top < 8) top = badgeBox.bottom - hostBox.top + 10;
+      tooltip.style.left = `${Math.round(left)}px`;
+      tooltip.style.top = `${Math.round(top)}px`;
+    };
+
+    const setActiveEdge = (edge) => {
+      if (activeEdge === edge) return;
+      if (activeEdge) {
+        activeEdge.group.classList.remove("is-active");
+        activeEdge.badge.classList.remove("is-active");
+        activeEdge.badge.removeAttribute("aria-describedby");
+      }
+      activeEdge = edge;
+      svg.classList.toggle("has-active-edge", Boolean(edge));
+      if (!edge) {
+        tooltip.hidden = true;
+        refreshMarkers();
+        return;
+      }
+      edge.group.classList.add("is-active");
+      edge.badge.classList.add("is-active");
+      edge.badge.setAttribute("aria-describedby", tooltip.id);
+      edgeLayer.append(edge.group);
+      tooltip.innerHTML = relationshipTooltipHtml(edge.relation, nameOf);
+      tooltip.hidden = false;
+      placeTooltip(edge);
+      refreshMarkers();
+    };
+
+    let selectedId = null;
+    const refreshMarkers = () => {
+      for (const edge of edges) {
+        const related = selectedId && (edge.relation.from === selectedId || edge.relation.to === selectedId);
+        edge.group.classList.toggle("is-related", Boolean(related));
+        edge.path.setAttribute(
+          "marker-end",
+          edge === activeEdge || related ? "url(#project-arrow-active)" : "url(#project-arrow)",
+        );
+      }
+    };
+
+    for (const edge of edges) {
+      const enter = () => {
+        if (!pinnedEdge) setActiveEdge(edge);
+      };
+      const leave = () => {
+        if (!pinnedEdge) setActiveEdge(null);
+      };
+      edge.hit.addEventListener("pointerenter", enter);
+      edge.hit.addEventListener("pointerleave", leave);
+      edge.badge.addEventListener("pointerenter", enter);
+      edge.badge.addEventListener("pointerleave", leave);
+      edge.badge.addEventListener("focus", () => {
+        pinnedEdge = edge;
+        setActiveEdge(edge);
+      });
+      edge.badge.addEventListener("blur", () => {
+        pinnedEdge = null;
+        setActiveEdge(null);
+      });
+      edge.badge.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && activeEdge) {
+          event.preventDefault();
+          event.stopPropagation();
+          edge.badge.blur();
+        }
+      });
+    }
+
+    const measure = () => ({ width: container.clientWidth, height: container.clientHeight });
+
+    // Content is centred when the canvas is larger than it; otherwise it scrolls.
+    // The viewBox origin is fixed during a drag so nodes do not jump.
     const applyView = () => {
-      const style = getComputedStyle(container);
-      const visibleWidth =
-        container.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-      const visibleHeight =
-        container.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+      const visible = measure();
       // A hidden tab reports 0; keep the last size until the ResizeObserver fires on show.
-      if (visibleWidth <= 0 || visibleHeight <= 0) return;
+      if (visible.width <= 0 || visible.height <= 0) return false;
+      const bounds = contentBounds(currentBoxes());
+      const contentWidth = bounds.width + LAYOUT_MARGIN * 2;
+      const contentHeight = bounds.height + LAYOUT_MARGIN * 2;
       const size = computeCanvasSize({
-        visibleWidth,
-        visibleHeight,
+        visibleWidth: visible.width,
+        visibleHeight: visible.height,
         zoom: view.zoom,
-        layout,
-        positions,
+        layout: { width: contentWidth, height: contentHeight },
+        positions: new Map(),
         nodeWidth: NODE_WIDTH,
         nodeHeight: NODE_HEIGHT,
       });
       view.width = size.width;
       view.height = size.height;
-      svg.setAttribute("viewBox", `0 0 ${view.width} ${view.height}`);
-      svg.style.width = `${view.width * view.zoom}px`;
-      svg.style.height = `${view.height * view.zoom}px`;
+      view.minX = bounds.x - LAYOUT_MARGIN - (size.width - contentWidth) / 2;
+      view.minY = bounds.y - LAYOUT_MARGIN - (size.height - contentHeight) / 2;
+      svg.setAttribute("viewBox", `${view.minX} ${view.minY} ${view.width} ${view.height}`);
+      // Floor so rounding never creates a 1px scrollbar.
+      svg.style.width = `${Math.floor(view.width * view.zoom)}px`;
+      svg.style.height = `${Math.floor(view.height * view.zoom)}px`;
+      if (activeEdge) placeTooltip(activeEdge);
+      return true;
     };
     const setZoom = (percent) => {
       view.zoom = percent / 100;
+      view.autoFit = false;
       applyView();
+    };
+    const fit = () => {
+      const visible = measure();
+      if (visible.width <= 0 || visible.height <= 0) return null;
+      const bounds = contentBounds(currentBoxes());
+      const percent = fitZoom({
+        visibleWidth: visible.width,
+        visibleHeight: visible.height,
+        contentWidth: bounds.width + LAYOUT_MARGIN * 2,
+        contentHeight: bounds.height + LAYOUT_MARGIN * 2,
+      });
+      view.zoom = percent / 100;
+      view.autoFit = true;
+      applyView();
+      if (options.onZoomChange) options.onZoomChange(percent, true);
+      return percent;
     };
 
     const toSvgPoint = (event) => {
@@ -2173,58 +2548,85 @@
       return { x: point.x, y: point.y };
     };
 
+    const nodeGroups = new Map();
     for (const bc of project.boundedContexts) {
       const position = positions.get(bc.id);
       if (!position) continue;
+      const row = rowsById.get(bc.id) || matrixRow(bc);
+      const gateText = row.gates.total ? `, gates ${row.gates.satisfied} of ${row.gates.total}` : "";
+      const gapText = typeof row.openGaps === "number" ? `, ${plural(row.openGaps, "open gap")}` : "";
       const group = svgElement("g", {
-        class: `graph-node classification-${bc.classification.toLowerCase()} role-${bc.role.toLowerCase()}${bc.inferred ? " inferred" : ""}`,
+        class: `graph-node classification-${slug(bc.classification)}${bc.inferred ? " inferred" : ""}${
+          row.gates.total && !row.gates.valid ? " is-gate-invalid" : ""
+        }`,
         tabindex: "0",
         role: "button",
-        "aria-label": `${bc.name}, ${bc.classification}, ${bc.role}`,
-        style: "cursor: grab; touch-action: none",
+        "aria-label": `${bc.name}: ${row.lifecycleLabel}, ${bc.classification}${row.showRole ? `, ${bc.role}` : ""}${gateText}${gapText}`,
+        "data-bc-id": bc.id,
       });
-      group.append(svgElement("rect", { x: 0, y: 0, width: NODE_WIDTH, height: NODE_HEIGHT, rx: 12 }));
-      const title = svgElement("text", { x: 12, y: 28, class: "graph-node-title" });
-      title.textContent = bc.name;
-      const meta = svgElement("text", { x: 12, y: 52, class: "graph-node-meta" });
-      meta.textContent = `${bc.classification} · ${bc.role}`;
-      const lifecycle = svgElement("text", { x: 12, y: 69, class: "graph-node-lifecycle" });
-      lifecycle.textContent = bc.lifecycle || "Unconfirmed";
-      group.append(title, meta, lifecycle);
-      const place = () => group.setAttribute("transform", `translate(${position.x} ${position.y})`);
+      // HTML inside the node so it reuses the Board's pills and indicators.
+      const object = svgElement("foreignObject", { width: NODE_WIDTH, height: NODE_HEIGHT, class: "graph-node-object" });
+      const card = createElement("div", "gnode");
+      card.setAttribute("aria-hidden", "true");
+      const title = createElement("div", "gnode-title", bc.name);
+      title.title = bc.name;
+      const pills = createElement("div", "gnode-pills");
+      pills.append(lifecyclePill(bc.lifecycle), classificationPills(row));
+      const foot = createElement("div", "gnode-foot");
+      const gates = createElement("span", "gnode-stat");
+      gates.append(gateProgress(row.gates), createElement("span", "gnode-stat-label", "gates"));
+      const gaps = createElement("span", "gnode-stat");
+      gaps.append(gapCount(row.openGaps), createElement("span", "gnode-stat-label", row.openGaps === 1 ? "gap" : "gaps"));
+      foot.append(gates, gaps);
+      if (row.warningCount) foot.append(warningBadge(row.warningCount, { hidden: false }));
+      card.append(title, pills, foot);
+      object.append(card);
+      group.append(object);
+      const place = () => {
+        object.setAttribute("x", position.x);
+        object.setAttribute("y", position.y);
+      };
       place();
 
       const select = () => onSelect(bc.id);
       let drag = null;
       group.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
         const pointer = toSvgPoint(event);
         drag = { dx: pointer.x - position.x, dy: pointer.y - position.y, startX: event.clientX, startY: event.clientY, moved: false };
         group.setPointerCapture(event.pointerId);
-        group.style.cursor = "grabbing";
-        nodeLayer.append(group);
+        group.classList.add("is-dragging");
       });
       group.addEventListener("pointermove", (event) => {
         if (!drag) return;
         if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 4) return;
+        if (!drag.moved) nodeLayer.append(group);
         drag.moved = true;
         const pointer = toSvgPoint(event);
-        position.x = Math.max(0, Math.min(Math.max(0, view.width - NODE_WIDTH), pointer.x - drag.dx));
-        position.y = Math.max(0, Math.min(Math.max(0, view.height - NODE_HEIGHT), pointer.y - drag.dy));
+        position.x = Math.max(view.minX, Math.min(view.minX + view.width - NODE_WIDTH, pointer.x - drag.dx));
+        position.y = Math.max(view.minY + DOMAIN_PAD_TOP, Math.min(view.minY + view.height - NODE_HEIGHT, pointer.y - drag.dy));
         place();
+        updateDomains();
         updateEdges();
       });
       const end = (event) => {
         if (!drag) return;
         const wasClick = !drag.moved;
         drag = null;
-        group.style.cursor = "grab";
+        group.classList.remove("is-dragging");
         if (group.hasPointerCapture(event.pointerId)) group.releasePointerCapture(event.pointerId);
         if (wasClick) select();
+        else {
+          // Keep the zoom, grow the canvas to the moved content; Fit re-fits it.
+          view.autoFit = false;
+          applyView();
+          if (options.onZoomChange) options.onZoomChange(Math.round(view.zoom * 100), false);
+        }
       };
       group.addEventListener("pointerup", end);
       group.addEventListener("pointercancel", () => {
         drag = null;
-        group.style.cursor = "grab";
+        group.classList.remove("is-dragging");
       });
       group.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -2233,75 +2635,184 @@
         }
       });
       nodeLayer.append(group);
+      nodeGroups.set(bc.id, group);
     }
+
+    const highlight = (bcId) => {
+      selectedId = bcId || null;
+      for (const [id, group] of nodeGroups) {
+        group.classList.toggle("is-selected", id === selectedId);
+        group.setAttribute("aria-pressed", String(id === selectedId));
+      }
+      refreshMarkers();
+    };
+    const highlightRelation = (relationNumber) => {
+      if (pinnedEdge) return;
+      setActiveEdge(edges.find((edge) => edge.relation.number === relationNumber) || null);
+    };
+
+    updateDomains();
     updateEdges();
     container.append(svg);
-    applyView();
+    if (!fit()) applyView();
     if (typeof ResizeObserver === "function") {
-      // Re-fit when the tab is shown, the window resizes, or the details panel changes height.
-      container._topologyObserver = new ResizeObserver(() => applyView());
+      // Re-fit when the tab is shown or the window resizes, unless the user zoomed.
+      container._topologyObserver = new ResizeObserver(() => (view.autoFit ? fit() : applyView()));
       container._topologyObserver.observe(container);
     }
-    return { setZoom };
+    return { setZoom, fit, highlight, highlightRelation };
   }
 
-  function renderDetails(project, bcId, container) {
+  // Details panel beside the diagram. Options: board (gate/gap facts),
+  // scenarioPath, onOpenBoard(bcId, button), onViewScenarios(bcId),
+  // onRelationHover(number | null) to highlight the matching edge.
+  function renderDetails(project, bcId, container, options = {}) {
     container.replaceChildren();
-    const bc = project.boundedContexts.find((item) => item.id === bcId);
+    const bc = project && project.boundedContexts.find((item) => item.id === bcId);
     if (!bc) {
-      container.append(createElement("p", "muted", "Select a bounded context to inspect it."));
+      container.append(createElement("p", "muted project-details-empty", "Select a bounded context in the diagram to see its details."));
       return;
     }
-    const heading = createElement("div", "project-detail-heading");
-    heading.append(createElement("h2", "", bc.name));
-    if (bc.inferred) heading.append(createElement("span", "inferred-badge", "Inferred"));
-    container.append(heading);
-    container.append(
-      createElement(
-        "p",
-        "project-meta",
-        `${bc.classification} · ${bc.role} · ${bc.lifecycle || "UNCONFIRMED"}`,
-      ),
+    const card = options.board && options.board.cards.find((item) => item.id === bcId);
+    const row = matrixRow(card || bc);
+    const domain = project.domains.find((item) => item.id === bc.domainId);
+    const nameOf = (id) => {
+      const other = project.boundedContexts.find((item) => item.id === id);
+      return other ? other.name : id;
+    };
+
+    const header = createElement("header", "detail-header");
+    header.append(createElement("p", "eyebrow", domain ? domain.name : "Bounded context"));
+    header.append(createElement("h2", "detail-title", bc.name));
+    const pills = createElement("div", "drawer-pills");
+    pills.append(lifecyclePill(bc.lifecycle), classificationPills(row));
+    const marker = markerPill(row);
+    if (marker) pills.append(marker);
+    if (row.warningCount) pills.append(warningBadge(row.warningCount));
+    header.append(pills);
+    const actions = createElement("div", "detail-actions");
+    const boardButton = createElement("button", "btn btn-primary btn-sm", "Open in Board");
+    boardButton.type = "button";
+    boardButton.title = "Lifecycle, gates, gaps and timeline for this bounded context";
+    boardButton.disabled = !options.onOpenBoard;
+    boardButton.addEventListener("click", () => options.onOpenBoard && options.onOpenBoard(bc.id, boardButton));
+    const scenariosButton = createElement("button", "btn btn-sm", "View scenarios");
+    scenariosButton.type = "button";
+    scenariosButton.disabled = !options.scenarioPath || !options.onViewScenarios;
+    scenariosButton.title = options.scenarioPath || "No bdd-scenarios.md found for this bounded context";
+    scenariosButton.addEventListener("click", () => options.onViewScenarios && options.onViewScenarios(bc.id));
+    actions.append(boardButton, scenariosButton);
+    header.append(actions);
+    container.append(header);
+
+    const facts = createElement("dl", "drawer-facts detail-facts");
+    const fact = (label, value) => {
+      const item = createElement("div", "drawer-fact");
+      item.append(createElement("dt", "", label));
+      const dd = createElement("dd");
+      dd.append(value);
+      item.append(dd);
+      facts.append(item);
+    };
+    fact("Gates", gateProgress(row.gates));
+    fact("Open gaps", gapCount(row.openGaps));
+    const next = createElement("span", "mono truncate", row.nextSkill || "–");
+    if (row.nextSkill) next.title = row.nextSkill;
+    fact("Next skill", next);
+    container.append(facts);
+
+    const body = createElement("div", "detail-body");
+    container.append(body);
+    if (bc.purpose) body.append(createElement("p", "detail-purpose", bc.purpose));
+
+    const boundary = createElement("section", "project-detail-section detail-boundary");
+    for (const [title, items] of [
+      ["Owns", bc.owns],
+      ["Does not own", bc.doesNotOwn],
+    ]) {
+      const block = createElement("div", "detail-boundary-block");
+      block.append(createElement("h3", "", title));
+      if (!items || !items.length) block.append(createElement("p", "muted", "Not documented."));
+      else {
+        const list = createElement("ul");
+        for (const item of items) list.append(createElement("li", "", String(item)));
+        block.append(list);
+      }
+      boundary.append(block);
+    }
+    body.append(boundary);
+
+    const numbered = numberRelationships(project).filter((relation) => relation.from === bc.id || relation.to === bc.id);
+    const relationSection = appendTable(
+      body,
+      "Relationships",
+      ["#", "With", "Information"],
+      numbered.map((relation) => {
+        const number = createElement("span", "edge-num", String(relation.number));
+        const outbound = relation.from === bc.id;
+        const other = createElement("span", "detail-with");
+        other.append(createElement("span", "detail-dir", outbound ? "→" : "←"), document.createTextNode(nameOf(outbound ? relation.to : relation.from)));
+        other.title = outbound ? `Outbound: ${bc.name} → ${nameOf(relation.to)}` : `Inbound: ${nameOf(relation.from)} → ${bc.name}`;
+        const info = createElement("div", "detail-rel");
+        info.append(createElement("span", "", relation.information || "–"));
+        if (relation.interaction) {
+          const meta = createElement("span", "detail-rel-meta");
+          meta.innerHTML = renderInlineMarkdown(relation.interaction);
+          info.append(meta);
+        }
+        return { cells: [number, other, info] };
+      }),
+      { empty: "No relationships in the context map.", className: "detail-relationships" },
     );
-    if (bc.purpose) container.append(createElement("p", "", bc.purpose));
-    appendList(container, "Owns", bc.owns, String);
-    appendList(container, "Does not own", bc.doesNotOwn, String);
-    appendList(
-      container,
+    relationSection.querySelectorAll("tbody tr").forEach((tr, index) => {
+      const relation = numbered[index];
+      tr.addEventListener("mouseenter", () => options.onRelationHover && options.onRelationHover(relation.number));
+      tr.addEventListener("mouseleave", () => options.onRelationHover && options.onRelationHover(null));
+    });
+
+    appendTable(
+      body,
       "Capabilities",
-      bc.capabilities,
-      (item) => `${item.name}${item.outcome ? ` — ${item.outcome}` : ""}`,
+      ["Capability", "Outcome"],
+      (bc.capabilities || []).map((item) => ({ cells: [item.name, item.outcome || ""] })),
+      { empty: "Not documented." },
     );
-    appendList(
-      container,
+    appendTable(
+      body,
       "Ports",
-      bc.ports,
-      (item) => `${item.name} (${item.direction || "UNKNOWN"})${item.purpose ? ` — ${item.purpose}` : ""}`,
+      ["Port", "Direction", "Purpose"],
+      (bc.ports || []).map((item) => {
+        const name = createElement("span", "mono", item.name);
+        const direction = pill(item.direction || "UNKNOWN", item.direction === "INBOUND" ? "pill-info" : "pill-neutral");
+        return { cells: [name, direction, item.purpose || ""] };
+      }),
+      { empty: "Not documented." },
     );
-    appendList(
-      container,
-      "ACLs",
-      bc.acls,
-      (item) => `${item.name}${item.system ? ` — ${item.system}` : ""}`,
+    appendTable(
+      body,
+      "Anti-corruption layers",
+      ["ACL", "System", "File"],
+      (bc.acls || []).map((item) => ({ cells: [item.name, item.system || "", item.file || ""] })),
+      { empty: "None documented." },
     );
-    appendList(
-      container,
-      "Inbound relationships",
-      project.relationships.filter((relation) => relation.to === bc.id),
-      (item) => `${item.from} → ${item.information}`,
-    );
-    appendList(
-      container,
-      "Outbound relationships",
-      project.relationships.filter((relation) => relation.from === bc.id),
-      (item) => `${item.to} → ${item.information}`,
-    );
-    appendList(
-      container,
-      "Journeys",
-      project.journeys.filter((journey) => journey.boundedContextIds.includes(bc.id)),
-      (item) => item.name,
-    );
+    const journeys = project.journeys.filter((journey) => (journey.boundedContextIds || []).includes(bc.id));
+    if (journeys.length) {
+      const section = createElement("section", "project-detail-section");
+      section.append(createElement("h3", "", "Journeys"));
+      const list = createElement("ul", "detail-journeys");
+      for (const journey of journeys) list.append(createElement("li", "", journey.name));
+      section.append(list);
+      body.append(section);
+    }
+    const sources = Object.entries(bc.sources || {}).filter(([, value]) => typeof value === "string" && value);
+    if (sources.length) {
+      appendTable(
+        body,
+        "Source artifacts",
+        ["Artifact", "Path"],
+        sources.map(([key, value]) => ({ cells: [key, value] })),
+      );
+    }
   }
 
   function appendTable(parent, title, headers, rows, options = {}) {
@@ -3285,8 +3796,14 @@
     const drawerScrim = document.getElementById("bcDrawerScrim");
     const drawerClose = document.getElementById("bcDrawerClose");
     const projectName = document.getElementById("projectName");
+    const projectCanvas = document.getElementById("projectCanvas");
+    const scenarioBcFilter = document.getElementById("scenarioBcFilter");
+    const scenarioPickerEmpty = document.getElementById("scenarioPickerEmpty");
     if (!scenarioTab || !projectTab || !folderInput) return;
     let diagramZoom = 100;
+    let diagramFitted = true;
+    // Scenario counts per bdd-scenarios.md path, filled after a project loads.
+    let scenarioCounts = new Map();
     let topology = null;
     let projectFiles = new Map();
     let loadedProject = null;
@@ -3301,15 +3818,25 @@
     let boardView = "matrix";
     let drawerReturnFocus = null;
 
-    const updateZoom = (nextZoom) => {
-      diagramZoom = clampZoom(nextZoom);
+    // Zoom controls reflect either a manual zoom or the fit-to-view zoom.
+    const showZoom = () => {
       const svg = graph.querySelector("svg");
-      if (topology) topology.setZoom(diagramZoom);
       zoomLevel.value = `${diagramZoom}%`;
       zoomLevel.textContent = `${diagramZoom}%`;
       zoomOutButton.disabled = !svg || diagramZoom <= MIN_ZOOM;
       zoomInButton.disabled = !svg || diagramZoom >= MAX_ZOOM;
-      fitDiagramButton.disabled = !svg || diagramZoom === 100;
+      fitDiagramButton.disabled = !svg || diagramFitted;
+    };
+    const updateZoom = (nextZoom) => {
+      diagramZoom = clampZoom(nextZoom);
+      diagramFitted = false;
+      if (topology) topology.setZoom(diagramZoom);
+      showZoom();
+    };
+    const onZoomChange = (percent, fitted) => {
+      diagramZoom = percent;
+      diagramFitted = fitted;
+      showZoom();
     };
 
     const scenarioPathFor = (bcId) => {
@@ -3317,43 +3844,97 @@
       return findScenarioPath(bc, projectFiles);
     };
 
+    // Scenarios picker (T14c): BCs grouped by domain with scenario count and
+    // lifecycle pill; the search box filters by name.
     const renderScenarioSources = () => {
       if (!scenarioSources) return;
-      const groups = listScenarioSources(loadedProject, projectFiles);
+      const all = listScenarioSources(loadedProject, projectFiles);
+      const groups = filterScenarioSources(all, scenarioBcFilter ? scenarioBcFilter.value : "");
       scenarioSources.replaceChildren();
-      scenarioSources.hidden = groups.length === 0;
+      scenarioSources.hidden = all.length === 0;
+      if (scenarioBcFilter) scenarioBcFilter.hidden = all.length === 0;
+      if (scenarioPickerEmpty) scenarioPickerEmpty.hidden = all.length > 0;
+      if (all.length && !groups.length) {
+        scenarioSources.append(createElement("p", "muted picker-none", "No bounded context matches."));
+      }
       for (const group of groups) {
-        const groupElement = createElement("div", "scenario-source-group");
-        groupElement.append(createElement("span", "scenario-source-label", group.label));
-        const pills = createElement("div", "scenario-source-pills");
+        const groupElement = createElement("div", "picker-group");
+        groupElement.append(createElement("h3", "picker-group-label", group.label));
+        const list = createElement("div", "picker-items");
         for (const item of group.items) {
-          const pill = createElement("button", "bc-pill", item.name);
-          pill.type = "button";
-          pill.dataset.bcId = item.id;
-          pill.disabled = !item.path;
-          pill.title = item.path || "No bdd-scenarios.md found for this bounded context";
-          pill.setAttribute("aria-pressed", String(item.id === activeScenarioId));
-          pill.addEventListener("click", () => showScenarios(item.id, item.path));
-          pills.append(pill);
+          const bc = loadedProject && loadedProject.boundedContexts.find((entry) => entry.id === item.id);
+          const button = createElement("button", "picker-item");
+          button.type = "button";
+          button.dataset.bcId = item.id;
+          button.disabled = !item.path;
+          button.title = item.path || "No bdd-scenarios.md found for this bounded context";
+          button.setAttribute("aria-pressed", String(item.id === activeScenarioId));
+          button.append(createElement("span", "picker-name truncate", item.name));
+          const count = item.path ? scenarioCounts.get(item.path) : null;
+          const countChip = createElement(
+            "span",
+            "chip picker-count tnum",
+            item.path ? (typeof count === "number" ? String(count) : "…") : "0",
+          );
+          countChip.title = item.path
+            ? typeof count === "number"
+              ? plural(count, "scenario")
+              : "Counting scenarios"
+            : "No scenarios file";
+          button.append(countChip);
+          const meta = createElement("span", "picker-meta");
+          if (bc) meta.append(lifecyclePill(bc.lifecycle));
+          if (!item.path) meta.append(createElement("span", "muted", "No scenarios file"));
+          button.append(meta);
+          button.addEventListener("click", () => showScenarios(item.id, item.path));
+          list.append(button);
         }
-        groupElement.append(pills);
+        groupElement.append(list);
         scenarioSources.append(groupElement);
       }
     };
 
     const markActivePill = () => {
       if (!scenarioSources) return;
-      for (const pill of scenarioSources.querySelectorAll(".bc-pill")) {
-        pill.setAttribute("aria-pressed", String(pill.dataset.bcId === activeScenarioId));
+      for (const button of scenarioSources.querySelectorAll(".picker-item")) {
+        button.setAttribute("aria-pressed", String(button.dataset.bcId === activeScenarioId));
       }
     };
 
-    const showScenarios = async (bcId, path) => {
-      if (!path || !projectFiles.has(path)) return;
-      scenarioSource.value = await projectFiles.get(path).text();
-      scenarioRender.click();
+    const countAllScenarios = async () => {
+      const items = listScenarioSources(loadedProject, projectFiles).flatMap((group) => group.items);
+      const counts = new Map();
+      for (const item of items) {
+        if (item.path && projectFiles.has(item.path)) counts.set(item.path, countScenarios(await projectFiles.get(item.path).text()));
+      }
+      scenarioCounts = counts;
+      renderScenarioSources();
+    };
+
+    // Renders one BC's scenarios in the Scenarios tab without switching to it.
+    const loadScenarios = async (bcId, path) => {
+      if (!path || !projectFiles.has(path)) return false;
+      const text = await projectFiles.get(path).text();
+      const bc = loadedProject && loadedProject.boundedContexts.find((item) => item.id === bcId);
+      const domain = bc && loadedProject.domains.find((item) => item.id === bc.domainId);
+      if (typeof window !== "undefined" && typeof window.renderScenarioSource === "function") {
+        window.renderScenarioSource(text, {
+          eyebrow: domain ? domain.name : "Bounded context",
+          title: bc ? bc.name : bcId,
+          path,
+          lifecycle: bc ? bc.lifecycle : null,
+        });
+      } else {
+        scenarioSource.value = text;
+        scenarioRender.click();
+      }
       activeScenarioId = bcId;
       markActivePill();
+      return true;
+    };
+
+    const showScenarios = async (bcId, path) => {
+      if (!(await loadScenarios(bcId, path))) return;
       if (loadedProject && loadedProject.boundedContexts.some((bc) => bc.id === bcId)) selectBc(bcId);
       activate("scenario");
     };
@@ -3380,7 +3961,9 @@
     const isDrawerOpen = () => Boolean(drawer) && !drawer.hidden;
     const openDrawer = (bcId, trigger) => {
       if (!drawer) return;
-      selectBc(bcId);
+      // Re-rendering the selected BC would detach the trigger (focus return target).
+      if (bcId !== selectedBcId) selectBc(bcId);
+      else if (loadedBoard) renderBoardDetails(loadedProject, loadedBoard, bcId, boardDetails, statusReport);
       if (trigger) drawerReturnFocus = trigger;
       if (!isDrawerOpen()) {
         drawer.hidden = false;
@@ -3420,18 +4003,29 @@
       renderBoardDetails(loadedProject, loadedBoard, selectedBcId, boardDetails, statusReport);
     };
 
+    const detailOptions = (bcId) => ({
+      board: loadedBoard,
+      scenarioPath: scenarioPathFor(bcId),
+      onOpenBoard: (id, trigger) => openDrawer(id, trigger),
+      onViewScenarios: (id) => showScenarios(id, scenarioPathFor(id)),
+      onRelationHover: (number) => topology && topology.highlightRelation(number),
+    });
+
     const selectBc = (bcId) => {
       selectedBcId = bcId;
-      if (loadedProject) renderDetails(loadedProject, bcId, details);
+      if (loadedProject) renderDetails(loadedProject, bcId, details, detailOptions(bcId));
+      if (topology) topology.highlight(bcId);
       if (boardLanes && loadedBoard) {
         for (const card of boardLanes.querySelectorAll("[data-bc-id]")) {
           card.setAttribute("aria-pressed", String(card.dataset.bcId === bcId));
         }
         renderBoardDetails(loadedProject, loadedBoard, bcId, boardDetails, statusReport);
       }
-      const path = scenarioPathFor(bcId);
-      viewScenariosButton.disabled = !path;
-      viewScenariosButton.title = path ? path : "No bdd-scenarios.md found for this bounded context";
+      if (viewScenariosButton) {
+        const path = scenarioPathFor(bcId);
+        viewScenariosButton.disabled = !path;
+        viewScenariosButton.title = path ? path : "No bdd-scenarios.md found for this bounded context";
+      }
     };
 
     const tabs = [
@@ -3480,12 +4074,25 @@
       if (gapLedger) renderGapLedger(loadedBoard, gapLedger);
       renderSummary(loaded.project, summary);
       renderDiagnostics(loaded.diagnostics, diagnostics);
-      topology = renderTopology(loaded.project, graph, selectBc);
-      updateZoom(100);
+      diagramFitted = true;
+      topology = renderTopology(loaded.project, graph, selectBc, {
+        board: loadedBoard,
+        overlay: projectCanvas || graph,
+        onZoomChange,
+      });
+      showZoom();
       selectedBcId = loaded.project.boundedContexts[0] && loaded.project.boundedContexts[0].id;
       renderBoard();
       selectBc(selectedBcId);
+      scenarioCounts = new Map();
+      if (scenarioBcFilter) scenarioBcFilter.value = "";
       renderScenarioSources();
+      countAllScenarios();
+      // Show the selected BC's scenarios (or the first BC that has some) in the Scenarios tab.
+      const firstWithScenarios = [selectedBcId]
+        .concat(listScenarioSources(loadedProject, projectFiles).flatMap((group) => group.items.map((item) => item.id)))
+        .find((id) => id && scenarioPathFor(id));
+      if (firstWithScenarios) await loadScenarios(firstWithScenarios, scenarioPathFor(firstWithScenarios));
       if (scenarioStatus) {
         const items = listScenarioSources(loadedProject, projectFiles).flatMap((group) => group.items);
         const withScenarios = items.filter((item) => item.path).length;
@@ -3605,12 +4212,20 @@
     initHelpPanel();
     selectButton.addEventListener("click", pickProject);
     if (scenarioLoadButton) scenarioLoadButton.addEventListener("click", pickProject);
-    viewScenariosButton.addEventListener("click", () =>
-      showScenarios(selectedBcId, scenarioPathFor(selectedBcId)),
-    );
+    if (viewScenariosButton) {
+      viewScenariosButton.addEventListener("click", () => showScenarios(selectedBcId, scenarioPathFor(selectedBcId)));
+    }
+    if (scenarioBcFilter) scenarioBcFilter.addEventListener("input", renderScenarioSources);
+    // Pasted Markdown or a single opened file replaces the BC selection in the picker.
+    document.addEventListener("hgate:scenario-source", () => {
+      activeScenarioId = null;
+      markActivePill();
+    });
     zoomOutButton.addEventListener("click", () => updateZoom(diagramZoom - ZOOM_STEP));
     zoomInButton.addEventListener("click", () => updateZoom(diagramZoom + ZOOM_STEP));
-    fitDiagramButton.addEventListener("click", () => updateZoom(100));
+    fitDiagramButton.addEventListener("click", () => {
+      if (topology) topology.fit();
+    });
     folderInput.addEventListener("change", () =>
       loadSafely(async () => {
         const [first] = Array.from(folderInput.files || []);
@@ -3692,5 +4307,16 @@
     computeCanvasSize,
     clampZoom,
     abbreviateEdgeLabel,
+    domainBoxes,
+    contentBounds,
+    chooseRowWidth,
+    fitZoom,
+    numberRelationships,
+    assignEdgeBends,
+    edgeGeometry,
+    curveHitsRects,
+    lifecycleTone,
+    countScenarios,
+    filterScenarioSources,
   };
 });
