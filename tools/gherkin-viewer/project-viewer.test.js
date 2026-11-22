@@ -1356,3 +1356,56 @@ test("filterScenarioSources matches BC names, ids and group labels", () => {
   assert.deepEqual(viewer.filterScenarioSources(groups, "ident"), [groups[1]]);
   assert.deepEqual(viewer.filterScenarioSources(groups, "zzz"), []);
 });
+
+// T14d: diagram re-wrap, label-aware routing and panel sizing helpers.
+test("chooseRowWidth can wrap a later run of domains onto a shared row", () => {
+  const bc = (id, domainId) => ({ id, name: id, domainId, classification: "CORE", role: "PRIMARY" });
+  const project = {
+    domains: [
+      { id: "a", name: "A" },
+      { id: "b", name: "B" },
+      { id: "c", name: "C" },
+    ],
+    boundedContexts: [bc("a1", "a"), bc("a2", "a"), bc("a3", "a"), bc("a4", "a"), bc("b1", "b"), bc("b2", "b"), bc("c1", "c")],
+    relationships: [],
+  };
+  const layout = viewer.layoutProject(project, { maxRowWidth: viewer.chooseRowWidth(project, 1.43) });
+  const [a, b, c] = layout.domains;
+  assert.ok(b.y > a.y, "second domain wraps below the first");
+  assert.equal(c.y, b.y, "third domain shares the second row");
+});
+
+test("curveHitCost weighs node hits above label hits and edgeGeometry prefers crossing a label", () => {
+  const start = { x: 0, y: 0 };
+  const end = { x: 100, y: 0 };
+  const control = { x: 50, y: 0 };
+  const node = { x: 40, y: -5, width: 20, height: 10 };
+  const label = { ...node, weight: 1 };
+  assert.equal(viewer.curveHitCost(start, control, end, [node]), 10);
+  assert.equal(viewer.curveHitCost(start, control, end, [label]), 1);
+  assert.equal(viewer.curveHitCost(start, control, end, [{ x: 0, y: 50, width: 5, height: 5 }]), 0);
+  // A label blocks the straight line and a node blocks every detour: the curve
+  // stays straight through the label rather than through the node.
+  const from = { x: 0, y: 0, width: 100, height: 50 };
+  const to = { x: 400, y: 0, width: 100, height: 50 };
+  const labelInPath = { x: 230, y: 15, width: 40, height: 20, weight: 1 };
+  const wall = { x: 200, y: -1000, width: 100, height: 1000 + 10 };
+  const floor = { x: 200, y: 40, width: 100, height: 1000 };
+  const geometry = viewer.edgeGeometry(from, to, 0, [labelInPath, wall, floor]);
+  assert.equal(geometry.offset, 0);
+});
+
+test("domainLabelRect covers the label at the box's top-left within the box", () => {
+  const box = { x: 100, y: 50, width: 300, height: 200 };
+  assert.deepEqual(viewer.domainLabelRect(box, 120), { x: 108, y: 58, width: 144, height: 32, weight: 1 });
+  assert.equal(viewer.domainLabelRect(box, 1000).width, 284);
+  assert.equal(viewer.estimateLabelWidth("Commerce 4 bounded contexts"), Math.ceil(27 * 7.4));
+  assert.equal(viewer.estimateLabelWidth(""), 0);
+});
+
+test("fittedPanelHeight sizes the panel to the fitted drawing within limits", () => {
+  assert.equal(viewer.fittedPanelHeight(400, 50, { min: 100, max: 1000 }), 234);
+  assert.equal(viewer.fittedPanelHeight(400, 50, { min: 300, max: 1000 }), 300);
+  assert.equal(viewer.fittedPanelHeight(4000, 100, { min: 300, max: 700 }), 700);
+  assert.equal(viewer.fittedPanelHeight(400, 50, { margin: 34 }), 270);
+});

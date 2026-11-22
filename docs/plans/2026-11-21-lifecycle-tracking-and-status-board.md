@@ -309,7 +309,7 @@ Review findings: no brand (pale blue everywhere, unlike hgate.org's pine/sage + 
   - Acceptance:
     - [x] Diagram fits to screen, domain grouping boxes, larger nodes, edge labels without overlap (hover for full text)
     - [x] Scenarios: BC picker + rendered scenarios; paste box behind "Paste Markdown"
-- [ ] **T14d — Visual verification** (screenshots light/dark, 1280 and 1440 widths, fix pass)
+- [x] **T14d — Visual verification** (screenshots light/dark, 1280 and 1440 widths, fix pass)
 
 ## 6. Dependency order
 
@@ -366,3 +366,4 @@ Parallel-safe after T2: T3a, T3b, T4a. After T4a: T4b, T4c, T5, T6a.
 | 2026-11-22 | T14a | Done | Tokens (light + dark), `.btn/.chip/.pill/.card/.panel/.table` components, sticky top bar (single Load, Reload, warnings button kept non-dismissible, "?"), welcome screen, tab order Board/Project/Scenarios, fonts bundled in `tools/gherkin-viewer/fonts/`, Merit sample replaced by a library-loan sample. Open: subset fonts lack `[ ] | $ { }` and backtick; swimlanes overflow at 1280 (T14b) |
 | 2026-11-22 | T14b | Done | Summary strip (5 tiles), lifecycle matrix with progress rails + kanban toggle, gap panel as cards beside the matrix ≥1400px (below at 1280), identical dispositions collapse to "n sources agree", modal BC drawer (620px, focus trap). Helpers `buildSummaryStrip`, `buildLifecycleMatrix`, `collapseDispositions`, `baseLifecycleOf`. Open: kanban scrolls below ~1100px; faint dark scrim. Tests 274/275 |
 | 2026-11-22 | T14c | Done | Project: fit-to-screen diagram, domain boxes, HTML nodes with Board pills/gate ring, numbered edge markers with tooltips linked to the details table, "Open in Board". Scenarios: BC picker with search, feature cards, ID chips, token-styled steps/examples, Paste Markdown in a native dialog. Open: inter-domain edges can cross domain labels; layout computed while tab hidden can be narrow; Safari foreignObject unchecked. Tests 284/285 |
+| 2026-11-22 | T14d | Done | System fonts for body/code (subsets lack ``$ [ \ ] ^ ` { | } ~``), brand fonts only for headings/buttons/pills; all text ≥4.5:1 (32 automated runs); kanban wraps to 900px; stronger dark scrims; diagram routes around domain labels and re-lays out when shown; `.clamp-2` instead of hard truncation; compact gap legend. `fonts/IBMPlexMono-*.woff2` now unused (could not delete here). Safari unchecked. Tests 288/289 |

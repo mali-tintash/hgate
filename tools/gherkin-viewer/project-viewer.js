@@ -2083,14 +2083,23 @@
   }
 
   // Row width for layoutProject that best fits a panel with this aspect ratio
-  // (width / height): every wrap point is tried and the one whose layout can
-  // be drawn largest wins (ties keep the wider row).
+  // (width / height): every row width that some run of consecutive domain
+  // boxes needs is tried, and the one whose layout can be drawn largest wins
+  // (ties keep the wider row).
   function chooseRowWidth(project, aspect) {
     const single = layoutProject(project, { maxRowWidth: Number.MAX_SAFE_INTEGER });
     if (!(aspect > 0) || single.domains.length < 2) return single.width;
     let best = { width: single.width, scale: Math.min(aspect / single.width, 1 / single.height) };
-    for (const box of single.domains) {
-      const candidate = box.x + box.width + 1;
+    const widths = single.domains.map((box) => box.width);
+    const candidates = new Set();
+    for (let first = 0; first < widths.length; first += 1) {
+      let run = LAYOUT_MARGIN - DOMAIN_GAP;
+      for (let last = first; last < widths.length; last += 1) {
+        run += DOMAIN_GAP + widths[last];
+        candidates.add(run + 1);
+      }
+    }
+    for (const candidate of [...candidates].sort((a, b) => b - a)) {
       const layout = layoutProject(project, { maxRowWidth: candidate });
       const scale = Math.min(aspect / layout.width, 1 / layout.height);
       if (scale > best.scale + 1e-9) best = { width: candidate, scale };
@@ -2133,6 +2142,24 @@
       Math.max(1, visibleHeight - margin * 2) / contentHeight,
     );
     return Math.min(FIT_MAX_ZOOM, Math.max(FIT_MIN_ZOOM, Math.floor(scale * 100)));
+  }
+
+  // Panel height (px) that shows content of `contentHeight` logical px at
+  // `percent` zoom with `margin` px around it, kept within { min, max }.
+  function fittedPanelHeight(contentHeight, percent, { min = 0, max = Infinity, margin = 16 } = {}) {
+    const wanted = Math.ceil((contentHeight * percent) / 100 + margin * 2 + 2);
+    return Math.round(Math.min(max, Math.max(min, wanted)));
+  }
+
+  // Rough rendered width of a domain label (display font, 15px name + 12px count)
+  // for when the SVG cannot measure text (hidden tab, tests).
+  function estimateLabelWidth(text) {
+    return Math.ceil(String(text || "").length * 7.4);
+  }
+
+  // Area an edge must avoid around a domain box's label (top-left of the box).
+  function domainLabelRect(box, textWidth) {
+    return { x: box.x + 8, y: box.y + 8, width: Math.min(box.width - 16, textWidth + 24), height: 32, weight: 1 };
   }
 
   // Relationships that can be drawn (both ends known, not a self-loop), numbered
@@ -2183,6 +2210,22 @@
     };
   }
 
+  // Sum of `weight` (default 10) over the rectangles the curve passes through;
+  // labels use a small weight so crossing a node is always worse.
+  function curveHitCost(start, control, end, rects) {
+    let cost = 0;
+    for (const rect of rects) {
+      for (let step = 1; step < 20; step += 1) {
+        const point = quadPoint(start, control, end, step / 20);
+        if (point.x > rect.x && point.x < rect.x + rect.width && point.y > rect.y && point.y < rect.y + rect.height) {
+          cost += rect.weight === undefined ? 10 : rect.weight;
+          break;
+        }
+      }
+    }
+    return cost;
+  }
+
   function curveHitsRects(start, control, end, rects) {
     for (let step = 1; step < 20; step += 1) {
       const point = quadPoint(start, control, end, step / 20);
@@ -2206,13 +2249,17 @@
       const control = { x: (a.x + b.x) / 2 + nx * offset * 2, y: (a.y + b.y) / 2 + ny * offset * 2 };
       return { start: borderPointOf(fromRect, control, 3), control, end: borderPointOf(toRect, control, 5), offset };
     };
-    let chosen = shape(bend);
+    // First clear detour wins; if none is clear, the one with the lowest hit cost.
+    let chosen = null;
+    let chosenCost = Infinity;
     for (const detour of EDGE_DETOURS) {
       const candidate = shape(bend + (bend < 0 ? -detour : detour));
-      if (!curveHitsRects(candidate.start, candidate.control, candidate.end, obstacles)) {
+      const cost = curveHitCost(candidate.start, candidate.control, candidate.end, obstacles);
+      if (cost < chosenCost) {
         chosen = candidate;
-        break;
+        chosenCost = cost;
       }
+      if (cost === 0) break;
     }
     const round = (value) => Math.round(value * 10) / 10;
     const { start, control, end, offset } = chosen;
@@ -2290,15 +2337,20 @@
     const overlay = options.overlay || container;
     const staleTooltip = overlay.querySelector(":scope > .graph-tooltip");
     if (staleTooltip) staleTooltip.remove();
-    // Wrap domain rows to suit the panel's shape (estimated from the window while the tab is hidden).
+    // Wrap domain rows to suit the panel's shape (estimated from the window while
+    // the tab is hidden); re-chosen when the panel is shown or resized.
     const host = options.overlay || container;
-    const aspect =
-      host.clientWidth > 0 && host.clientHeight > 0
-        ? host.clientWidth / host.clientHeight
-        : typeof window !== "undefined" && window.innerHeight > 0
-          ? Math.max(0.6, (window.innerWidth - 480) / Math.max(300, window.innerHeight - 270))
-          : 1.6;
-    const layout = layoutProject(project, { maxRowWidth: chooseRowWidth(project, aspect) });
+    const panelAspect = () => {
+      const height = options.paneHeight ? options.paneHeight() : host.clientHeight;
+      if (host.clientWidth > 0 && height > 0) return host.clientWidth / height;
+      return typeof window !== "undefined" && window.innerHeight > 0
+        ? Math.max(0.6, (window.innerWidth - 480) / Math.max(300, window.innerHeight - 270))
+        : 1.6;
+    };
+    let rowWidth = chooseRowWidth(project, panelAspect());
+    let layout = layoutProject(project, { maxRowWidth: rowWidth });
+    // Set once the user drags a node; their arrangement is then kept on resize.
+    let userArranged = false;
     const rowsById = new Map(
       options.board ? buildLifecycleMatrix(options.board).rows.map((row) => [row.id, row]) : [],
     );
@@ -2354,6 +2406,19 @@
       domainShapes.set(domainId, { rect, label });
     }
     const currentBoxes = () => domainBoxes(layout.columns, positions);
+    // Screen area of each domain's label, kept clear of edges (see updateEdges).
+    const labelRects = () =>
+      currentBoxes().map((box) => {
+        const shape = domainShapes.get(box.id);
+        const text = shape ? shape.label.textContent || "" : "";
+        let width = 0;
+        try {
+          width = shape && typeof shape.label.getComputedTextLength === "function" ? shape.label.getComputedTextLength() : 0;
+        } catch {
+          width = 0;
+        }
+        return domainLabelRect(box, width || estimateLabelWidth(text));
+      });
     const updateDomains = () => {
       for (const box of currentBoxes()) {
         const shape = domainShapes.get(box.id);
@@ -2397,8 +2462,9 @@
 
     const updateEdges = () => {
       const rects = new Map(Array.from(positions, ([id, position]) => [id, rectOf(position)]));
+      const labels = labelRects();
       for (const edge of edges) {
-        const obstacles = [];
+        const obstacles = [...labels];
         for (const [id, rect] of rects) {
           if (id === edge.relation.from || id === edge.relation.to) continue;
           obstacles.push({ x: rect.x - 10, y: rect.y - 10, width: rect.width + 20, height: rect.height + 20 });
@@ -2528,17 +2594,43 @@
       const visible = measure();
       if (visible.width <= 0 || visible.height <= 0) return null;
       const bounds = contentBounds(currentBoxes());
+      // With fitHeight the panel may grow back to its maximum, so fit against that.
+      const limits = options.fitHeight ? options.fitHeight() : null;
       const percent = fitZoom({
         visibleWidth: visible.width,
-        visibleHeight: visible.height,
+        visibleHeight: limits ? limits.max : visible.height,
         contentWidth: bounds.width + LAYOUT_MARGIN * 2,
         contentHeight: bounds.height + LAYOUT_MARGIN * 2,
       });
       view.zoom = percent / 100;
       view.autoFit = true;
+      // Optionally shrink the panel to the fitted drawing (no empty bands).
+      if (limits) {
+        const wanted = fittedPanelHeight(bounds.height + LAYOUT_MARGIN * 2, percent, limits);
+        if (Math.abs(wanted - host.clientHeight) > 1) host.style.height = `${wanted}px`;
+      } else if (options.fitHeight && host.style.height) {
+        host.style.height = "";
+      }
       applyView();
       if (options.onZoomChange) options.onZoomChange(percent, true);
       return percent;
+    };
+    // Re-wrap domain rows when the panel's shape changes enough to pick another
+    // row width (e.g. the tab was hidden at render time), unless nodes were dragged.
+    const relayout = () => {
+      if (userArranged) return false;
+      const nextWidth = chooseRowWidth(project, panelAspect());
+      if (nextWidth === rowWidth) return false;
+      rowWidth = nextWidth;
+      layout = layoutProject(project, { maxRowWidth: rowWidth });
+      for (const [id, next] of layout.positions) {
+        const position = positions.get(id);
+        if (position) Object.assign(position, { x: next.x, y: next.y });
+      }
+      for (const place of placers) place();
+      updateDomains();
+      updateEdges();
+      return true;
     };
 
     const toSvgPoint = (event) => {
@@ -2549,6 +2641,7 @@
     };
 
     const nodeGroups = new Map();
+    const placers = [];
     for (const bc of project.boundedContexts) {
       const position = positions.get(bc.id);
       if (!position) continue;
@@ -2587,6 +2680,7 @@
         object.setAttribute("y", position.y);
       };
       place();
+      placers.push(place);
 
       const select = () => onSelect(bc.id);
       let drag = null;
@@ -2619,6 +2713,7 @@
         else {
           // Keep the zoom, grow the canvas to the moved content; Fit re-fits it.
           view.autoFit = false;
+          userArranged = true;
           applyView();
           if (options.onZoomChange) options.onZoomChange(Math.round(view.zoom * 100), false);
         }
@@ -2657,7 +2752,14 @@
     if (!fit()) applyView();
     if (typeof ResizeObserver === "function") {
       // Re-fit when the tab is shown or the window resizes, unless the user zoomed.
-      container._topologyObserver = new ResizeObserver(() => (view.autoFit ? fit() : applyView()));
+      container._topologyObserver = new ResizeObserver(() => {
+        if (!view.autoFit) {
+          applyView();
+          return;
+        }
+        relayout();
+        fit();
+      });
       container._topologyObserver.observe(container);
     }
     return { setZoom, fit, highlight, highlightRelation };
@@ -2716,7 +2818,7 @@
     };
     fact("Gates", gateProgress(row.gates));
     fact("Open gaps", gapCount(row.openGaps));
-    const next = createElement("span", "mono truncate", row.nextSkill || "–");
+    const next = createElement("span", "mono clamp-2", row.nextSkill || "–");
     if (row.nextSkill) next.title = row.nextSkill;
     fact("Next skill", next);
     container.append(facts);
@@ -2837,8 +2939,10 @@
     const body = createElement("tbody");
     for (const row of rows) {
       const tr = createElement("tr", row.className || "");
-      for (const value of row.cells) {
+      for (const [index, value] of row.cells.entries()) {
         const cell = createElement("td");
+        // Column name for the stacked layout used in narrow panels (CSS attr()).
+        if (headers[index]) cell.dataset.label = headers[index];
         if (value instanceof Node) cell.append(value);
         else if (typeof value === "string" && /^[\w.@-]*(\/[\w.@-]+)+\.\w+(:\d+)?$/.test(value)) {
           // Bare repository paths: monospace, truncated, full path on hover (T14a .cell-path).
@@ -2879,15 +2983,19 @@
     return abbr;
   }
 
-  function renderLegend(name) {
-    const legend = createElement("p", `legend legend-${name}`);
+  // Options: compact - render inside a closed "Legend" disclosure, one row per
+  // part (used in the narrow gap panel).
+  function renderLegend(name, options = {}) {
+    const legend = createElement("p", `legend legend-${name}${options.compact ? " legend-compact" : ""}`);
     legend.setAttribute("role", "note");
     legend.setAttribute("aria-label", "Legend");
     legendItems(name).forEach((part, partIndex) => {
       if (partIndex) legend.append(createElement("span", "legend-separator", " | "));
-      legend.append(createElement("strong", "", `${part.title}: `));
+      const row = createElement("span", "legend-part");
+      legend.append(row);
+      row.append(createElement("strong", "", `${part.title}: `));
       part.entries.forEach((entry, entryIndex) => {
-        if (entryIndex) legend.append(document.createTextNode(" · "));
+        if (entryIndex) row.append(createElement("span", "legend-dot", " · "));
         const item = createElement("span", "legend-item");
         item.title = entry.text;
         if (part.group === "kind") item.append(createElement("code", "", entry.key), document.createTextNode(" "));
@@ -2896,10 +3004,13 @@
         else if (entry.key === "drift") item.append(createElement("span", "warning-badge", "n warnings"), document.createTextNode(" "));
         else if (entry.key === "partial") item.append(createElement("span", "gap-state gap-state-partial", "Partial"), document.createTextNode(" "));
         item.append(document.createTextNode(entry.label.replace(/^(Amber|Blue): /, "")));
-        legend.append(item);
+        row.append(item);
       });
     });
-    return legend;
+    if (!options.compact) return legend;
+    const disclosure = createElement("details", "legend-disclosure");
+    disclosure.append(createElement("summary", "", "Legend"), legend);
+    return disclosure;
   }
 
   function resultBadge(result) {
@@ -3006,7 +3117,7 @@
   }
 
   function nextSkillLine(row) {
-    const line = createElement("span", "next-skill truncate");
+    const line = createElement("span", "next-skill clamp-2");
     line.append(createElement("span", "next-skill-label", "Next "));
     line.append(document.createTextNode(row.nextSkill || "–"));
     if (row.nextSkill) line.title = `Next skill: ${row.nextSkill}`;
@@ -3135,7 +3246,7 @@
     tile.append(createElement("span", "stat-label", label));
     tile.append(createElement("span", "stat-value tnum", value));
     if (extra) tile.append(extra);
-    tile.append(createElement("span", "stat-detail truncate", detail));
+    tile.append(createElement("span", "stat-detail clamp-2", detail));
     return tile;
   }
 
@@ -3316,7 +3427,7 @@
       summary.append(gapPanelHeader(model, "span"));
       details.append(summary);
       renderGapList(model.resolved, details, "No gaps in the projection (schema v1 and legacy projects carry none).");
-      if (model.level === "clear") details.append(renderLegend("gaps"));
+      if (model.level === "clear") details.append(renderLegend("gaps", { compact: true }));
       container.append(details);
       return;
     }
@@ -3340,7 +3451,7 @@
       });
       container.append(toggle, resolvedWrap);
     }
-    container.append(renderLegend("gaps"));
+    container.append(renderLegend("gaps", { compact: true }));
   }
 
   function renderBoardDiagnostics(board, details, list, countElement) {
@@ -3833,6 +3944,17 @@
       if (topology) topology.setZoom(diagramZoom);
       showZoom();
     };
+    // Mirrors .project-layout's --project-pane-height (CSS) for the diagram's shape.
+    const projectPaneHeight = () => {
+      const appbarHeight =
+        parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--appbar-height")) || 104;
+      return Math.max(520, window.innerHeight - appbarHeight - 168);
+    };
+    // Stacked layout (< 1280px): the diagram panel shrinks to the fitted drawing.
+    const projectFitHeight = () =>
+      window.matchMedia && window.matchMedia("(min-width: 1280px)").matches
+        ? null
+        : { min: 320, max: projectPaneHeight(), margin: 34 };
     const onZoomChange = (percent, fitted) => {
       diagramZoom = percent;
       diagramFitted = fitted;
@@ -3869,7 +3991,7 @@
           button.disabled = !item.path;
           button.title = item.path || "No bdd-scenarios.md found for this bounded context";
           button.setAttribute("aria-pressed", String(item.id === activeScenarioId));
-          button.append(createElement("span", "picker-name truncate", item.name));
+          button.append(createElement("span", "picker-name clamp-2", item.name));
           const count = item.path ? scenarioCounts.get(item.path) : null;
           const countChip = createElement(
             "span",
@@ -4079,6 +4201,8 @@
         board: loadedBoard,
         overlay: projectCanvas || graph,
         onZoomChange,
+        paneHeight: projectPaneHeight,
+        fitHeight: projectFitHeight,
       });
       showZoom();
       selectedBcId = loaded.project.boundedContexts[0] && loaded.project.boundedContexts[0].id;
@@ -4304,6 +4428,9 @@
     readProjectDirectory,
     loadProject,
     layoutProject,
+    fittedPanelHeight,
+    estimateLabelWidth,
+    domainLabelRect,
     computeCanvasSize,
     clampZoom,
     abbreviateEdgeLabel,
@@ -4315,6 +4442,7 @@
     assignEdgeBends,
     edgeGeometry,
     curveHitsRects,
+    curveHitCost,
     lifecycleTone,
     countScenarios,
     filterScenarioSources,
