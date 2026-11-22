@@ -13,6 +13,36 @@ code generation. It combines:
 The AI recommends and executes one specialist stage at a time. Humans confirm
 requirements, boundaries, plans, and workflow transitions.
 
+## Contents
+
+- [Quick Start](#quick-start)
+  - [1. Add hGATE to your project](#1-add-hgate-to-your-project)
+  - [2. Install the complete hGATE project instructions](#2-install-the-complete-hgate-project-instructions)
+  - [3. Start with the guide](#3-start-with-the-guide)
+- [Workflow](#workflow)
+- [Skill Catalog](#skill-catalog)
+- [Persistent Artifacts](#persistent-artifacts)
+- [BDD Scenario Viewer](#bdd-scenario-viewer)
+- [hGATE Project Viewer](#hgate-project-viewer)
+- [Status Report](#status-report)
+- [Specification Verifier](#specification-verifier)
+- [BDD Traceability Verifier](#bdd-traceability-verifier)
+- [Optional Business-Logic Verification](#optional-business-logic-verification)
+- [Lifecycle](#lifecycle)
+  - [Gates](#gates)
+- [Example Prompts](#example-prompts)
+  - [Discover a new product area](#discover-a-new-product-area)
+  - [Refine one BC](#refine-one-bc)
+  - [Implement an approved BC](#implement-an-approved-bc)
+  - [Change existing behavior](#change-existing-behavior)
+  - [Add a new capability slice to an existing BC](#add-a-new-capability-slice-to-an-existing-bc)
+  - [Onboard a brownfield codebase](#onboard-a-brownfield-codebase)
+  - [Validate a cross-BC journey](#validate-a-cross-bc-journey)
+- [Adoption Levels](#adoption-levels)
+- [Core Rules](#core-rules)
+- [Why hGATE](#why-hgate)
+
+
 ## Quick Start
 
 ### 1. Add hGATE to your project
