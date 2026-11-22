@@ -288,6 +288,29 @@ acceptance boxes here.
     - [x] Header count chips; warning icon (not colour alone); unresolved sorted first; resolved behind "Show resolved (n)"
     - [x] Guide and glossary updated; tests for each panel state
 
+### Phase 8 — Viewer redesign, direction B (added 2026-11-22)
+
+Review findings: no brand (pale blue everywhere, unlike hgate.org's pine/sage + Bricolage/Instrument Sans/IBM Plex Mono); document-style long scroll with three Load buttons; 7 mostly empty swimlanes overflowing; text-wall cards; buttons indistinguishable from badges; gap dispositions repeated per source; cramped tables; underused diagram; textarea-first Scenarios tab with a Merit client sample; no overview, first-run or dark mode.
+
+- [x] **T14a — Design system and app shell**
+  - Acceptance:
+    - [x] hgate.org tokens (palette, fonts bundled locally with the viewer, tabular numerics), light + dark (prefers-color-scheme)
+    - [x] Distinct button / chip / status-pill components; tables don't wrap dates, paths truncate with hover
+    - [x] Top bar: project name, single Load project, warning count, refresh, "?"; first-run welcome screen
+    - [x] Merit-specific default sample removed (neutral sample or empty state)
+- [x] **T14b — Board redesign**
+  - Acceptance:
+    - [x] Summary strip (BCs by state, gates met, open gaps, warnings, last change)
+    - [x] Lifecycle matrix (BC rows × state columns) with kanban toggle; no horizontal overflow at 1280px
+    - [x] Compact cards/rows: status, gate progress, open gaps, next skill; no duplicate labels
+    - [x] Gap attention panel always visible beside/below the matrix; identical dispositions collapse to "n sources agree"
+    - [x] BC details in a right slide-over (Esc to close, focus managed)
+- [x] **T14c — Project and Scenarios tabs**
+  - Acceptance:
+    - [x] Diagram fits to screen, domain grouping boxes, larger nodes, edge labels without overlap (hover for full text)
+    - [x] Scenarios: BC picker + rendered scenarios; paste box behind "Paste Markdown"
+- [x] **T14d — Visual verification** (screenshots light/dark, 1280 and 1440 widths, fix pass)
+
 ## 6. Dependency order
 
 ```text
@@ -340,3 +363,7 @@ Parallel-safe after T2: T3a, T3b, T4a. After T4a: T4b, T4c, T5, T6a.
 | 2026-11-21 | T11 | Done | Independent verifier: all boxes PASS except T7a gate summary (N/A counted as met, missing gates not counted). Fixed: shared `tools/shared/gate-rules.mjs` used by verify-spec and generator; projection per-BC `gateStatus`; cards show n/m with unmet list; catalog rows with dated evidence paths no longer skipped; ADR §6/§8 corrected; fixture catalogs synced (byte-equality test); clearer HGS001; one warnings format. Live-pet signers now `Unrecorded product owner (Technical PM)`. Tests 255/256 (BDD009 fails only in this VM: a global typescript under `/opt/cowork-node-tools` lacks `ScriptTarget`) |
 | 2026-11-21 | T12 | Done | `GLOSSARY` drives tooltips and legends; "?" help panel (Esc/Close, focus return); `docs/viewer-guide.md` embedded as generated `viewer-guide.js` (`node tools/gherkin-viewer/sync-guide.mjs`), byte-equality test. Tests 261/262. Not checked in a real browser |
 | 2026-11-21 | T13 | Done | `gapPanelModel` (attention / pending / clear / empty), panel styled by level with icon, count chips, natural-order sorting, "Show resolved (n)"; guide section added and re-synced. Live-pet: pending, `3 partial · 1 deferred · 2 resolved`. Tests 267/268 |
+| 2026-11-22 | T14a | Done | Tokens (light + dark), `.btn/.chip/.pill/.card/.panel/.table` components, sticky top bar (single Load, Reload, warnings button kept non-dismissible, "?"), welcome screen, tab order Board/Project/Scenarios, fonts bundled in `tools/gherkin-viewer/fonts/`, Merit sample replaced by a library-loan sample. Open: subset fonts lack `[ ] | $ { }` and backtick; swimlanes overflow at 1280 (T14b) |
+| 2026-11-22 | T14b | Done | Summary strip (5 tiles), lifecycle matrix with progress rails + kanban toggle, gap panel as cards beside the matrix ≥1400px (below at 1280), identical dispositions collapse to "n sources agree", modal BC drawer (620px, focus trap). Helpers `buildSummaryStrip`, `buildLifecycleMatrix`, `collapseDispositions`, `baseLifecycleOf`. Open: kanban scrolls below ~1100px; faint dark scrim. Tests 274/275 |
+| 2026-11-22 | T14c | Done | Project: fit-to-screen diagram, domain boxes, HTML nodes with Board pills/gate ring, numbered edge markers with tooltips linked to the details table, "Open in Board". Scenarios: BC picker with search, feature cards, ID chips, token-styled steps/examples, Paste Markdown in a native dialog. Open: inter-domain edges can cross domain labels; layout computed while tab hidden can be narrow; Safari foreignObject unchecked. Tests 284/285 |
+| 2026-11-22 | T14d | Done | System fonts for body/code (subsets lack ``$ [ \ ] ^ ` { | } ~``), brand fonts only for headings/buttons/pills; all text ≥4.5:1 (32 automated runs); kanban wraps to 900px; stronger dark scrims; diagram routes around domain labels and re-lays out when shown; `.clamp-2` instead of hard truncation; compact gap legend. `fonts/IBMPlexMono-*.woff2` now unused (could not delete here). Safari unchecked. Tests 288/289 |

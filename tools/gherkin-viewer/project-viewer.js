@@ -18,8 +18,7 @@
   const MIN_ZOOM = 50;
   const MAX_ZOOM = 200;
   const ZOOM_STEP = 25;
-  const NODE_WIDTH = 180;
-  const COLUMN_STEP = 390;
+  const NODE_WIDTH = 264;
   const MAX_EDGE_LABEL_LENGTH = 26;
   // Agent-specific skill folders, in lookup order: GitHub Copilot, Claude Code, Codex/agents.
   const SKILLS_ROOTS = [".github/skills", ".claude/skills", ".agents/skills", ".codex/skills"];
@@ -420,6 +419,39 @@
       });
     }
     return result;
+  }
+
+  // Scenario count of a bdd-scenarios.md: Scenario / Scenario Outline lines
+  // inside ```gherkin blocks (escaped fences from pasted Markdown included).
+  function countScenarios(markdown) {
+    let inBlock = false;
+    let count = 0;
+    for (const raw of String(markdown || "").replace(/\\`/g, "`").split(/\r?\n/)) {
+      const line = raw.trim();
+      const fence = line.match(/^```\s*(\w*)/);
+      if (fence) {
+        inBlock = inBlock ? false : fence[1].toLowerCase() === "gherkin";
+        continue;
+      }
+      if (inBlock && /^Scenario( Outline| Template)?:/.test(line)) count += 1;
+    }
+    return count;
+  }
+
+  // Filters listScenarioSources groups by BC name or id (case-insensitive);
+  // a matching group label keeps the whole group. Empty groups are dropped.
+  function filterScenarioSources(groups, query) {
+    const needle = String(query || "").trim().toLowerCase();
+    if (!needle) return groups;
+    return groups
+      .map((group) => {
+        if (String(group.label).toLowerCase().includes(needle)) return group;
+        return {
+          ...group,
+          items: group.items.filter((item) => `${item.name} ${item.id}`.toLowerCase().includes(needle)),
+        };
+      })
+      .filter((group) => group.items.length > 0);
   }
 
   async function childDirectory(handle, segments) {
@@ -1014,6 +1046,201 @@
     };
   }
 
+  // --- Board redesign models (T14b) -----------------------------------------
+  // Pure helpers behind the summary strip, the lifecycle matrix / kanban and the
+  // collapsed gap dispositions. DOM renderers below only draw these models.
+
+  // Main lifecycle state a BC sits at. Main states map to themselves; for
+  // CHANGING / BLOCKED / DEPRECATED the latest main state found walking the
+  // transitions backwards (to, then from); -1 position when none is known.
+  function baseLifecycleOf(bc, lifecycle) {
+    if (MAIN_LIFECYCLES.includes(lifecycle)) return lifecycle;
+    const ordered = orderTransitions((bc && bc.transitions) || []);
+    for (let index = ordered.length - 1; index >= 0; index -= 1) {
+      const to = cleanCell(ordered[index].to);
+      const from = cleanCell(ordered[index].from);
+      if (MAIN_LIFECYCLES.includes(to)) return to;
+      if (MAIN_LIFECYCLES.includes(from)) return from;
+    }
+    return null;
+  }
+
+  const plural = (count, word, many) => `${count} ${count === 1 ? word : many || `${word}s`}`;
+
+  // Summary strip: BCs by state, gates met, open gaps, warnings, last change.
+  function buildSummaryStrip(board) {
+    const cards = (board && board.cards) || [];
+    const gaps = (board && board.gaps) || [];
+    const states = MAIN_LIFECYCLES.concat(OPTIONAL_LIFECYCLES);
+    const byState = states
+      .map((state) => ({
+        state,
+        label: lifecycleLabel(state),
+        optional: OPTIONAL_LIFECYCLES.includes(state),
+        count: cards.filter((card) => card.lifecycle === state).length,
+      }))
+      .filter((entry) => entry.count > 0);
+    const gated = cards.filter((card) => card.gateSummary && card.gateSummary.total > 0);
+    const valid = cards.filter((card) => card.gateSummary && card.gateSummary.valid).length;
+    const counts = gapPanelModel(gaps).counts;
+    const openGaps = counts.open + counts.partial + counts.mixed;
+    const gapParts = [
+      counts.open ? `${counts.open} open` : "",
+      counts.partial ? `${counts.partial} partial` : "",
+      counts.mixed ? `${counts.mixed} drift` : "",
+      counts.deferred ? `${counts.deferred} deferred` : "",
+    ].filter(Boolean);
+    const dated = cards
+      .filter((card) => card.lifecycleDate && TRANSITION_DATE.test(card.lifecycleDate))
+      .sort((a, b) => (a.lifecycleDate < b.lifecycleDate ? 1 : a.lifecycleDate > b.lifecycleDate ? -1 : a.name.localeCompare(b.name)));
+    const latest = dated[0] || null;
+    const warningCount = board && board.warnings ? board.warnings.count : 0;
+    return {
+      total: cards.length,
+      byState,
+      stateText: byState.map((entry) => `${entry.count} ${entry.label}`).join(" · ") || "No bounded contexts",
+      gates: {
+        valid,
+        total: cards.length,
+        gated: gated.length,
+        allValid: cards.length > 0 && valid === cards.length,
+        text: `${valid}/${cards.length}`,
+        detail: cards.length ? `${plural(valid, "BC")} with valid gates` : "No bounded contexts",
+        invalidNames: cards.filter((card) => card.gateSummary && !card.gateSummary.valid).map((card) => card.name),
+      },
+      gaps: {
+        open: openGaps,
+        deferred: counts.deferred,
+        resolved: counts.resolved,
+        total: gaps.length,
+        tone: counts.open || counts.mixed ? "danger" : counts.partial || counts.deferred ? "warning" : "neutral",
+        detail: gapParts.length ? gapParts.join(" · ") : gaps.length ? `All ${gaps.length} resolved` : "No gaps recorded",
+      },
+      warnings: {
+        count: warningCount,
+        tone: warningCount ? "warning" : "neutral",
+        detail: warningCount ? "Projection drift; see diagnostics" : "No projection warnings",
+      },
+      lastChange: latest
+        ? {
+            date: latest.lifecycleDate,
+            bcId: latest.id,
+            bcName: latest.name,
+            from: latest.lifecycleFrom,
+            to: latest.lifecycle,
+            text: `${latest.name} → ${lifecycleLabel(latest.lifecycle)}`,
+          }
+        : null,
+    };
+  }
+
+  // One matrix row per BC; also the content of a kanban card.
+  function matrixRow(card) {
+    const base = card.baseLifecycle || (MAIN_LIFECYCLES.includes(card.lifecycle) ? card.lifecycle : null);
+    const position = base ? MAIN_LIFECYCLES.indexOf(base) : -1;
+    const optional = OPTIONAL_LIFECYCLES.includes(card.lifecycle);
+    const gate = card.gateSummary || { satisfied: 0, total: 0, valid: false, unmetGates: [], transition: null };
+    const gateTitle = [
+      gate.total ? `${gate.satisfied} of ${gate.total} required gates satisfied` : "No gates required or recorded",
+      gate.transition ? `Current transition: ${gate.transition}` : "",
+      gate.unmetGates && gate.unmetGates.length ? `Unmet: ${gate.unmetGates.join(", ")}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    return {
+      id: card.id,
+      name: card.name,
+      classification: card.classification,
+      role: card.role,
+      showRole: Boolean(card.role) && card.role !== card.classification && card.role !== "UNCONFIRMED",
+      inferred: Boolean(card.inferred),
+      lifecycle: card.lifecycle,
+      lifecycleLabel: lifecycleLabel(card.lifecycle),
+      lifecycleDate: card.lifecycleDate,
+      position,
+      marker: optional ? { state: card.lifecycle, label: lifecycleLabel(card.lifecycle) } : null,
+      steps: MAIN_LIFECYCLES.map((state, index) => ({
+        state,
+        label: lifecycleLabel(state),
+        status: position < 0 || index > position ? "future" : index === position ? "current" : "done",
+      })),
+      gates: {
+        satisfied: gate.satisfied,
+        total: gate.total,
+        valid: Boolean(gate.valid),
+        ratio: gate.total ? Math.min(1, gate.satisfied / gate.total) : 0,
+        text: gate.total ? `${gate.satisfied}/${gate.total}` : "–",
+        tone: !gate.total ? "neutral" : gate.valid ? "success" : "danger",
+        title: gateTitle,
+        unmet: gate.unmetGates || [],
+      },
+      openGaps: card.stats ? card.stats.openGaps : null,
+      warningCount: card.warningCount || 0,
+      blockers: card.blockers || [],
+      nextSkill: card.nextSkill || null,
+    };
+  }
+
+  // Matrix rows (main-state order, then name) plus kanban columns; empty
+  // kanban columns collapse into narrow rails.
+  function buildLifecycleMatrix(board) {
+    const cards = (board && board.cards) || [];
+    // Most advanced first; BCs without a known main state (position -1) last.
+    const rows = cards.map(matrixRow).sort((a, b) => b.position - a.position || a.name.localeCompare(b.name));
+    const columns = ((board && board.columns) || []).map((column) => ({
+      state: column.state,
+      label: column.label,
+      optional: column.optional,
+      collapsed: column.cards.length === 0,
+      count: column.cards.length,
+      rows: column.cards.map(matrixRow),
+    }));
+    return {
+      states: MAIN_LIFECYCLES.map((state) => ({ state, label: lifecycleLabel(state) })),
+      rows,
+      columns,
+    };
+  }
+
+  // Collapses identical dispositions across a gap's sources. Text is compared
+  // after trimming and whitespace folding. The largest group (first on a tie)
+  // is the common disposition; other sources are listed as differing.
+  function collapseDispositions(sources) {
+    const list = Array.isArray(sources) ? sources.filter(Boolean) : [];
+    const norm = (value) => String(value || "").replace(/\s+/g, " ").trim();
+    const groups = [];
+    for (const item of list) {
+      const key = norm(item.disposition);
+      let group = groups.find((entry) => entry.key === key);
+      if (!group) {
+        group = { key, disposition: key, sources: [] };
+        groups.push(group);
+      }
+      group.sources.push(item);
+    }
+    let common = null;
+    for (const group of groups) if (!common || group.sources.length > common.sources.length) common = group;
+    const ownersOf = (items) => Array.from(new Set(items.map((item) => norm(item.owner)).filter(Boolean)));
+    const differing = common ? list.filter((item) => !common.sources.includes(item)) : [];
+    return {
+      count: list.length,
+      agree: groups.length <= 1,
+      common: common
+        ? {
+            disposition: common.disposition,
+            owners: ownersOf(common.sources),
+            sources: common.sources,
+            count: common.sources.length,
+            text: groups.length <= 1
+              ? `${plural(common.sources.length, "source")} agree${common.sources.length === 1 ? "s" : ""}`
+              : `${common.sources.length} of ${list.length} sources agree`,
+          }
+        : null,
+      differing,
+      groupCount: groups.length,
+    };
+  }
+
   // Plain-language definitions shared by tooltips, legends and the guide (T12).
   // Each entry: `label` (short, used in legends) and `text` (full tooltip).
   const GLOSSARY = {
@@ -1348,6 +1575,8 @@
         role: bc.role || "UNCONFIRMED",
         lifecycle,
         lifecycleDate: transition && transition.date ? transition.date : null,
+        lifecycleFrom: transition ? cleanCell(transition.from) || null : null,
+        baseLifecycle: baseLifecycleOf(bc, lifecycle),
         nextSkill: bc.nextSkill || null,
         blockers,
         blocked: blockers.length > 0,
@@ -1780,7 +2009,33 @@
     container.hidden = diagnostics.length === 0;
   }
 
-  function layoutProject(project) {
+  // --- Project diagram (T14c) ------------------------------------------------
+  // BC nodes sit in a small grid inside one labelled box per domain; domain
+  // boxes flow left to right and wrap. Gaps leave room for edge markers.
+  const NODE_HEIGHT = 104;
+  const NODE_GAP_X = 128;
+  const NODE_GAP_Y = 80;
+  const DOMAIN_PAD_X = 24;
+  const DOMAIN_PAD_TOP = 48;
+  const DOMAIN_PAD_BOTTOM = 24;
+  const DOMAIN_GAP = 88;
+  const LAYOUT_MARGIN = 24;
+  const MAX_ROW_WIDTH = 1600;
+  const FIT_MIN_ZOOM = 35;
+  const FIT_MAX_ZOOM = 125;
+  const EDGE_PAIR_SPACING = 56;
+  const EDGE_DETOURS = [0, 64, -64, 128, -128, 192, -192];
+
+  function domainColumnsFor(count) {
+    if (count <= 1) return 1;
+    if (count <= 4) return 2;
+    return 3;
+  }
+
+  // `options.maxRowWidth` caps a row of domain boxes before wrapping
+  // (see chooseRowWidth); the default suits a landscape panel.
+  function layoutProject(project, options = {}) {
+    const maxRowWidth = options.maxRowWidth || MAX_ROW_WIDTH;
     const groups = new Map();
     for (const bc of [...project.boundedContexts].sort((a, b) => a.name.localeCompare(b.name))) {
       const key = bc.domainId || "unassigned";
@@ -1789,21 +2044,233 @@
     }
     const columns = Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
     const positions = new Map();
-    columns.forEach(([domainId, contexts], columnIndex) => {
-      contexts.forEach((bc, rowIndex) => {
+    const domains = [];
+    let x = LAYOUT_MARGIN;
+    let y = LAYOUT_MARGIN;
+    let rowHeight = 0;
+    for (const [domainId, contexts] of columns) {
+      const cols = domainColumnsFor(contexts.length);
+      const rows = Math.ceil(contexts.length / cols);
+      const width = DOMAIN_PAD_X * 2 + cols * NODE_WIDTH + (cols - 1) * NODE_GAP_X;
+      const height = DOMAIN_PAD_TOP + DOMAIN_PAD_BOTTOM + rows * NODE_HEIGHT + (rows - 1) * NODE_GAP_Y;
+      if (x > LAYOUT_MARGIN && x + width > maxRowWidth) {
+        x = LAYOUT_MARGIN;
+        y += rowHeight + DOMAIN_GAP;
+        rowHeight = 0;
+      }
+      domains.push({ id: domainId, x, y, width, height });
+      contexts.forEach((bc, index) => {
         positions.set(bc.id, {
-          x: 40 + columnIndex * COLUMN_STEP,
-          y: 65 + rowIndex * 130,
+          x: x + DOMAIN_PAD_X + (index % cols) * (NODE_WIDTH + NODE_GAP_X),
+          y: y + DOMAIN_PAD_TOP + Math.floor(index / cols) * (NODE_HEIGHT + NODE_GAP_Y),
           domainId,
         });
       });
-    });
-    const maxRows = Math.max(1, ...columns.map(([, contexts]) => contexts.length));
+      x += width + DOMAIN_GAP;
+      rowHeight = Math.max(rowHeight, height);
+    }
+    const right = Math.max(0, ...domains.map((box) => box.x + box.width));
+    const bottom = Math.max(0, ...domains.map((box) => box.y + box.height));
     return {
       columns,
       positions,
-      width: Math.max(520, columns.length * COLUMN_STEP + 40),
-      height: Math.max(280, maxRows * 130 + 80),
+      domains,
+      nodeWidth: NODE_WIDTH,
+      nodeHeight: NODE_HEIGHT,
+      width: Math.max(320, right + LAYOUT_MARGIN),
+      height: Math.max(200, bottom + LAYOUT_MARGIN),
+    };
+  }
+
+  // Row width for layoutProject that best fits a panel with this aspect ratio
+  // (width / height): every row width that some run of consecutive domain
+  // boxes needs is tried, and the one whose layout can be drawn largest wins
+  // (ties keep the wider row).
+  function chooseRowWidth(project, aspect) {
+    const single = layoutProject(project, { maxRowWidth: Number.MAX_SAFE_INTEGER });
+    if (!(aspect > 0) || single.domains.length < 2) return single.width;
+    let best = { width: single.width, scale: Math.min(aspect / single.width, 1 / single.height) };
+    const widths = single.domains.map((box) => box.width);
+    const candidates = new Set();
+    for (let first = 0; first < widths.length; first += 1) {
+      let run = LAYOUT_MARGIN - DOMAIN_GAP;
+      for (let last = first; last < widths.length; last += 1) {
+        run += DOMAIN_GAP + widths[last];
+        candidates.add(run + 1);
+      }
+    }
+    for (const candidate of [...candidates].sort((a, b) => b - a)) {
+      const layout = layoutProject(project, { maxRowWidth: candidate });
+      const scale = Math.min(aspect / layout.width, 1 / layout.height);
+      if (scale > best.scale + 1e-9) best = { width: candidate, scale };
+    }
+    return best.width;
+  }
+
+  // Domain boxes recomputed around wherever their nodes currently sit, so a
+  // dragged node never leaves its domain box. `columns` is layoutProject's.
+  function domainBoxes(columns, positions, nodeWidth = NODE_WIDTH, nodeHeight = NODE_HEIGHT) {
+    const boxes = [];
+    for (const [domainId, contexts] of columns) {
+      const points = contexts.map((bc) => positions.get(bc.id)).filter(Boolean);
+      if (!points.length) continue;
+      const left = Math.min(...points.map((point) => point.x)) - DOMAIN_PAD_X;
+      const top = Math.min(...points.map((point) => point.y)) - DOMAIN_PAD_TOP;
+      const right = Math.max(...points.map((point) => point.x + nodeWidth)) + DOMAIN_PAD_X;
+      const bottom = Math.max(...points.map((point) => point.y + nodeHeight)) + DOMAIN_PAD_BOTTOM;
+      boxes.push({ id: domainId, x: left, y: top, width: right - left, height: bottom - top });
+    }
+    return boxes;
+  }
+
+  // Bounding box of all rectangles ({x, y, width, height}); empty input is a zero box.
+  function contentBounds(rects) {
+    if (!rects.length) return { x: 0, y: 0, width: 0, height: 0 };
+    const left = Math.min(...rects.map((rect) => rect.x));
+    const top = Math.min(...rects.map((rect) => rect.y));
+    const right = Math.max(...rects.map((rect) => rect.x + rect.width));
+    const bottom = Math.max(...rects.map((rect) => rect.y + rect.height));
+    return { x: left, y: top, width: right - left, height: bottom - top };
+  }
+
+  // Zoom (percent) that fits the content into the visible area, keeping
+  // `margin` screen pixels around it. Bounded so tiny projects do not blow up.
+  function fitZoom({ visibleWidth, visibleHeight, contentWidth, contentHeight, margin = 16 }) {
+    if (!(visibleWidth > 0 && visibleHeight > 0 && contentWidth > 0 && contentHeight > 0)) return 100;
+    const scale = Math.min(
+      Math.max(1, visibleWidth - margin * 2) / contentWidth,
+      Math.max(1, visibleHeight - margin * 2) / contentHeight,
+    );
+    return Math.min(FIT_MAX_ZOOM, Math.max(FIT_MIN_ZOOM, Math.floor(scale * 100)));
+  }
+
+  // Panel height (px) that shows content of `contentHeight` logical px at
+  // `percent` zoom with `margin` px around it, kept within { min, max }.
+  function fittedPanelHeight(contentHeight, percent, { min = 0, max = Infinity, margin = 16 } = {}) {
+    const wanted = Math.ceil((contentHeight * percent) / 100 + margin * 2 + 2);
+    return Math.round(Math.min(max, Math.max(min, wanted)));
+  }
+
+  // Rough rendered width of a domain label (display font, 15px name + 12px count)
+  // for when the SVG cannot measure text (hidden tab, tests).
+  function estimateLabelWidth(text) {
+    return Math.ceil(String(text || "").length * 7.4);
+  }
+
+  // Area an edge must avoid around a domain box's label (top-left of the box).
+  function domainLabelRect(box, textWidth) {
+    return { x: box.x + 8, y: box.y + 8, width: Math.min(box.width - 16, textWidth + 24), height: 32, weight: 1 };
+  }
+
+  // Relationships that can be drawn (both ends known, not a self-loop), numbered
+  // 1..n in projection order. The number labels the edge and the details table.
+  function numberRelationships(project) {
+    const ids = new Set(((project && project.boundedContexts) || []).map((bc) => bc.id));
+    return ((project && project.relationships) || [])
+      .filter((relation) => ids.has(relation.from) && ids.has(relation.to) && relation.from !== relation.to)
+      .map((relation, index) => ({ ...relation, number: index + 1 }));
+  }
+
+  // Signed bend (peak offset) per relationship: edges between the same pair of
+  // BCs, in either direction, fan out symmetrically around the straight line.
+  function assignEdgeBends(relations, spacing = EDGE_PAIR_SPACING) {
+    const totals = new Map();
+    const keyOf = (relation) => [relation.from, relation.to].sort().join("|");
+    for (const relation of relations) totals.set(keyOf(relation), (totals.get(keyOf(relation)) || 0) + 1);
+    const seen = new Map();
+    return relations.map((relation) => {
+      const key = keyOf(relation);
+      const index = seen.get(key) || 0;
+      seen.set(key, index + 1);
+      // The normal is taken in canonical pair order so opposite directions agree.
+      const sign = relation.from < relation.to ? 1 : -1;
+      return (index - (totals.get(key) - 1) / 2) * spacing * sign;
+    });
+  }
+
+  function rectCenter(rect) {
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  }
+
+  // Where the ray from the rectangle's centre toward `toward` leaves it, `gap` outside.
+  function borderPointOf(rect, toward, gap = 0) {
+    const center = rectCenter(rect);
+    const dx = toward.x - center.x;
+    const dy = toward.y - center.y;
+    if (dx === 0 && dy === 0) return center;
+    const scale = 1 / Math.max(Math.abs(dx) / (rect.width / 2 + gap), Math.abs(dy) / (rect.height / 2 + gap));
+    return { x: center.x + dx * scale, y: center.y + dy * scale };
+  }
+
+  function quadPoint(start, control, end, t) {
+    const u = 1 - t;
+    return {
+      x: u * u * start.x + 2 * u * t * control.x + t * t * end.x,
+      y: u * u * start.y + 2 * u * t * control.y + t * t * end.y,
+    };
+  }
+
+  // Sum of `weight` (default 10) over the rectangles the curve passes through;
+  // labels use a small weight so crossing a node is always worse.
+  function curveHitCost(start, control, end, rects) {
+    let cost = 0;
+    for (const rect of rects) {
+      for (let step = 1; step < 20; step += 1) {
+        const point = quadPoint(start, control, end, step / 20);
+        if (point.x > rect.x && point.x < rect.x + rect.width && point.y > rect.y && point.y < rect.y + rect.height) {
+          cost += rect.weight === undefined ? 10 : rect.weight;
+          break;
+        }
+      }
+    }
+    return cost;
+  }
+
+  function curveHitsRects(start, control, end, rects) {
+    for (let step = 1; step < 20; step += 1) {
+      const point = quadPoint(start, control, end, step / 20);
+      if (rects.some((rect) => point.x > rect.x && point.x < rect.x + rect.width && point.y > rect.y && point.y < rect.y + rect.height)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Quadratic edge from one node rectangle to another. `bend` is the curve's
+  // peak offset from the straight line; when the curve would pass under an
+  // obstacle (another node) it detours further out, up to ±192px.
+  function edgeGeometry(fromRect, toRect, bend = 0, obstacles = []) {
+    const a = rectCenter(fromRect);
+    const b = rectCenter(toRect);
+    const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const nx = -(b.y - a.y) / length;
+    const ny = (b.x - a.x) / length;
+    const shape = (offset) => {
+      const control = { x: (a.x + b.x) / 2 + nx * offset * 2, y: (a.y + b.y) / 2 + ny * offset * 2 };
+      return { start: borderPointOf(fromRect, control, 3), control, end: borderPointOf(toRect, control, 5), offset };
+    };
+    // First clear detour wins; if none is clear, the one with the lowest hit cost.
+    let chosen = null;
+    let chosenCost = Infinity;
+    for (const detour of EDGE_DETOURS) {
+      const candidate = shape(bend + (bend < 0 ? -detour : detour));
+      const cost = curveHitCost(candidate.start, candidate.control, candidate.end, obstacles);
+      if (cost < chosenCost) {
+        chosen = candidate;
+        chosenCost = cost;
+      }
+      if (cost === 0) break;
+    }
+    const round = (value) => Math.round(value * 10) / 10;
+    const { start, control, end, offset } = chosen;
+    const mid = quadPoint(start, control, end, 0.5);
+    return {
+      start,
+      control,
+      end,
+      offset,
+      mid: { x: round(mid.x), y: round(mid.y) },
+      d: `M ${round(start.x)} ${round(start.y)} Q ${round(control.x)} ${round(control.y)} ${round(end.x)} ${round(end.y)}`,
     };
   }
 
@@ -1832,141 +2299,338 @@
     return element;
   }
 
-  function renderTopology(project, container, onSelect) {
+  // Pill tone for a lifecycle state; same mapping as the Board drawer.
+  function lifecycleTone(state) {
+    return { VERIFIED: "pill-success", BLOCKED: "pill-danger", DEPRECATED: "pill-neutral" }[state] || "pill-info";
+  }
+
+  function lifecyclePill(state) {
+    const element = pill(lifecycleLabel(state || "UNCONFIRMED"), `pill-lifecycle ${lifecycleTone(state)}`);
+    return withTooltip(element, "lifecycle", state, { hidden: false });
+  }
+
+  function relationshipTooltipHtml(relation, nameOf) {
+    const meta = [
+      ["Interaction", relation.interaction],
+      ["Consistency", relation.consistency],
+      ["Source of truth", relation.sourceOfTruth],
+      ["Translation", relation.translationAcl],
+    ].filter(([, value]) => value);
+    return (
+      `<div class="graph-tooltip-head"><span class="edge-num">${relation.number}</span>` +
+      `<span>${escapeHtml(nameOf(relation.from))} → ${escapeHtml(nameOf(relation.to))}</span></div>` +
+      (relation.information ? `<p>${renderInlineMarkdown(relation.information)}</p>` : "") +
+      (meta.length
+        ? `<dl>${meta.map(([label, value]) => `<dt>${label}</dt><dd>${renderInlineMarkdown(value)}</dd>`).join("")}</dl>`
+        : "")
+    );
+  }
+
+  // Renders the topology into `container` (a scrolling box). Options:
+  //   board         Board model, for gate / gap indicators on nodes
+  //   overlay       non-scrolling ancestor that hosts the edge tooltip
+  //   onZoomChange  (percent, fitted) after fit-to-view (load, resize, Fit)
+  // Returns { setZoom, fit, highlight, highlightRelation }.
+  function renderTopology(project, container, onSelect, options = {}) {
     container.replaceChildren();
-    const layout = layoutProject(project);
-    const NODE_HEIGHT = 80;
-    const view = { width: layout.width, height: layout.height, zoom: 1 };
     if (container._topologyObserver) container._topologyObserver.disconnect();
-    const svg = svgElement("svg", {
-      role: "img",
-      "aria-label": "Bounded context topology",
-    });
+    const overlay = options.overlay || container;
+    const staleTooltip = overlay.querySelector(":scope > .graph-tooltip");
+    if (staleTooltip) staleTooltip.remove();
+    // Wrap domain rows to suit the panel's shape (estimated from the window while
+    // the tab is hidden); re-chosen when the panel is shown or resized.
+    const host = options.overlay || container;
+    const panelAspect = () => {
+      const height = options.paneHeight ? options.paneHeight() : host.clientHeight;
+      if (host.clientWidth > 0 && height > 0) return host.clientWidth / height;
+      return typeof window !== "undefined" && window.innerHeight > 0
+        ? Math.max(0.6, (window.innerWidth - 480) / Math.max(300, window.innerHeight - 270))
+        : 1.6;
+    };
+    let rowWidth = chooseRowWidth(project, panelAspect());
+    let layout = layoutProject(project, { maxRowWidth: rowWidth });
+    // Set once the user drags a node; their arrangement is then kept on resize.
+    let userArranged = false;
+    const rowsById = new Map(
+      options.board ? buildLifecycleMatrix(options.board).rows.map((row) => [row.id, row]) : [],
+    );
+    const nameOf = (id) => {
+      const bc = project.boundedContexts.find((item) => item.id === id);
+      return bc ? bc.name : id;
+    };
+    const view = { width: layout.width, height: layout.height, zoom: 1, autoFit: true, minX: 0, minY: 0 };
+    const svg = svgElement("svg", { role: "group", "aria-label": "Bounded context topology", class: "graph-canvas" });
     const defs = svgElement("defs");
-    const marker = svgElement("marker", {
-      id: "project-arrow",
-      viewBox: "0 0 10 10",
-      refX: "9",
-      refY: "5",
-      markerWidth: "7",
-      markerHeight: "7",
-      orient: "auto-start-reverse",
-    });
-    marker.append(svgElement("path", { d: "M 0 0 L 10 5 L 0 10 z", class: "graph-arrow" }));
-    defs.append(marker);
+    for (const [id, className] of [
+      ["project-arrow", "graph-arrow"],
+      ["project-arrow-active", "graph-arrow graph-arrow-active"],
+    ]) {
+      const marker = svgElement("marker", {
+        id,
+        viewBox: "0 0 10 10",
+        refX: 9,
+        refY: 5,
+        markerWidth: 10,
+        markerHeight: 10,
+        markerUnits: "userSpaceOnUse",
+        orient: "auto-start-reverse",
+      });
+      marker.append(svgElement("path", { d: "M 0 0 L 10 5 L 0 10 z", class: className }));
+      defs.append(marker);
+    }
     svg.append(defs);
 
     const positions = new Map();
     for (const [id, position] of layout.positions) positions.set(id, { x: position.x, y: position.y });
+    const rectOf = (position) => ({ x: position.x, y: position.y, width: NODE_WIDTH, height: NODE_HEIGHT });
 
-    for (const [domainId] of layout.columns) {
-      const first = Array.from(layout.positions.values()).find((position) => position.domainId === domainId);
-      if (!first) continue;
-      const label = svgElement("text", { x: first.x, y: 30, class: "graph-domain-label" });
+    const domainLayer = svgElement("g", { class: "graph-domains" });
+    const edgeLayer = svgElement("g", { class: "graph-edges" });
+    const nodeLayer = svgElement("g", { class: "graph-nodes" });
+    const badgeLayer = svgElement("g", { class: "graph-badges" });
+    svg.append(domainLayer, edgeLayer, nodeLayer, badgeLayer);
+
+    // Domain boxes
+    const domainShapes = new Map();
+    for (const [domainId, contexts] of layout.columns) {
       const domain = project.domains.find((item) => item.id === domainId);
-      label.textContent = domain ? domain.name : domainId;
-      svg.append(label);
+      const group = svgElement("g", { class: "graph-domain" });
+      const rect = svgElement("rect", { class: "graph-domain-box", rx: 16 });
+      const label = svgElement("text", { class: "graph-domain-label" });
+      label.textContent = domain ? domain.name : domainId === "unassigned" ? "No domain" : domainId;
+      const count = svgElement("tspan", { class: "graph-domain-count", dx: 10 });
+      count.textContent = plural(contexts.length, "bounded context");
+      label.append(count);
+      group.append(rect, label);
+      domainLayer.append(group);
+      domainShapes.set(domainId, { rect, label });
     }
-
-    const pairCounts = new Map();
-    const edges = [];
-    const edgeLayer = svgElement("g");
-    const labelLayer = svgElement("g");
-    const nodeLayer = svgElement("g");
-    svg.append(edgeLayer, nodeLayer, labelLayer);
-
-    for (const relation of project.relationships) {
-      if (!positions.has(relation.from) || !positions.has(relation.to) || relation.from === relation.to) continue;
-      const pairKey = [relation.from, relation.to].sort().join("|");
-      const index = pairCounts.get(pairKey) || 0;
-      pairCounts.set(pairKey, index + 1);
-      const fullLabel = relation.information || relation.interaction || "";
-      const displayLabel = abbreviateEdgeLabel(fullLabel);
-      const labelWidth = Math.min(178, Math.max(54, displayLabel.length * 6.2 + 14));
-      const path = svgElement("path", { class: "graph-edge", "marker-end": "url(#project-arrow)", fill: "none" });
-      const labelBackground = svgElement("rect", {
-        width: labelWidth,
-        height: 19,
-        rx: 7,
-        class: "graph-edge-label-background",
+    const currentBoxes = () => domainBoxes(layout.columns, positions);
+    // Screen area of each domain's label, kept clear of edges (see updateEdges).
+    const labelRects = () =>
+      currentBoxes().map((box) => {
+        const shape = domainShapes.get(box.id);
+        const text = shape ? shape.label.textContent || "" : "";
+        let width = 0;
+        try {
+          width = shape && typeof shape.label.getComputedTextLength === "function" ? shape.label.getComputedTextLength() : 0;
+        } catch {
+          width = 0;
+        }
+        return domainLabelRect(box, width || estimateLabelWidth(text));
       });
-      const edgeLabel = svgElement("text", { class: "graph-edge-label", "text-anchor": "middle" });
-      edgeLabel.textContent = displayLabel;
-      const title = svgElement("title");
-      title.textContent = fullLabel;
-      edgeLabel.append(title);
-      edgeLayer.append(path);
-      labelLayer.append(labelBackground, edgeLabel);
-      edges.push({ relation, index, pairKey, path, labelBackground, edgeLabel, labelWidth });
-    }
-
-    const borderPoint = (position, toward) => {
-      const cx = position.x + NODE_WIDTH / 2;
-      const cy = position.y + NODE_HEIGHT / 2;
-      const dx = toward.x - cx;
-      const dy = toward.y - cy;
-      if (dx === 0 && dy === 0) return { x: cx, y: cy };
-      const scale = 1 / Math.max(Math.abs(dx) / (NODE_WIDTH / 2 + 4), Math.abs(dy) / (NODE_HEIGHT / 2 + 4));
-      return { x: cx + dx * scale, y: cy + dy * scale };
-    };
-
-    const updateEdges = () => {
-      for (const edge of edges) {
-        const from = positions.get(edge.relation.from);
-        const to = positions.get(edge.relation.to);
-        const fromCenter = { x: from.x + NODE_WIDTH / 2, y: from.y + NODE_HEIGHT / 2 };
-        const toCenter = { x: to.x + NODE_WIDTH / 2, y: to.y + NODE_HEIGHT / 2 };
-        const start = borderPoint(from, toCenter);
-        const end = borderPoint(to, fromCenter);
-        const dx = end.x - start.x;
-        const dy = end.y - start.y;
-        const length = Math.hypot(dx, dy) || 1;
-        // Normal is oriented by canonical pair order so opposite edges curve apart.
-        const sign = edge.relation.from < edge.relation.to ? 1 : -1;
-        const bend = edge.index === 0 ? 0 : (edge.index % 2 === 1 ? 1 : -1) * Math.ceil(edge.index / 2) * 36;
-        const offset = bend * sign;
-        const nx = (-dy / length) * offset;
-        const ny = (dx / length) * offset;
-        const cx = (start.x + end.x) / 2 + nx * 2;
-        const cy = (start.y + end.y) / 2 + ny * 2;
-        edge.path.setAttribute("d", `M ${start.x} ${start.y} Q ${cx} ${cy} ${end.x} ${end.y}`);
-        const mx = 0.25 * start.x + 0.5 * cx + 0.25 * end.x;
-        const my = 0.25 * start.y + 0.5 * cy + 0.25 * end.y;
-        edge.labelBackground.setAttribute("x", mx - edge.labelWidth / 2);
-        edge.labelBackground.setAttribute("y", my - 10);
-        edge.edgeLabel.setAttribute("x", mx);
-        edge.edgeLabel.setAttribute("y", my + 4);
+    const updateDomains = () => {
+      for (const box of currentBoxes()) {
+        const shape = domainShapes.get(box.id);
+        if (!shape) continue;
+        shape.rect.setAttribute("x", box.x);
+        shape.rect.setAttribute("y", box.y);
+        shape.rect.setAttribute("width", box.width);
+        shape.rect.setAttribute("height", box.height);
+        shape.label.setAttribute("x", box.x + 18);
+        shape.label.setAttribute("y", box.y + 29);
       }
     };
 
-    // The SVG is absolutely positioned, so it never drives the container's size;
-    // the container is sized by the grid row and the canvas fills (or overflows) it.
+    // Edge tooltip (HTML, outside the scrolling canvas so it is never clipped).
+    const tooltip = createElement("div", "graph-tooltip");
+    tooltip.setAttribute("role", "tooltip");
+    tooltip.id = "graphTooltip";
+    tooltip.hidden = true;
+    overlay.append(tooltip);
+
+    // Edges: path + wide invisible hit path; numbered badge at the midpoint.
+    const relations = numberRelationships(project);
+    const bends = assignEdgeBends(relations);
+    let activeEdge = null;
+    let pinnedEdge = null;
+    const edges = relations.map((relation, index) => {
+      const group = svgElement("g", { class: "graph-edge-group" });
+      const hit = svgElement("path", { class: "graph-edge-hit" });
+      const path = svgElement("path", { class: "graph-edge", "marker-end": "url(#project-arrow)" });
+      group.append(hit, path);
+      edgeLayer.append(group);
+      const label = `Relationship ${relation.number}: ${nameOf(relation.from)} to ${nameOf(relation.to)}${
+        relation.information ? `. ${relation.information}` : ""
+      }`;
+      const badge = svgElement("g", { class: "graph-edge-badge", tabindex: 0, role: "button", "aria-label": label });
+      badge.append(svgElement("circle", { r: 11 }), svgElement("text", { class: "graph-edge-badge-text", y: 4 }));
+      badge.lastChild.textContent = String(relation.number);
+      badgeLayer.append(badge);
+      return { relation, bend: bends[index], group, hit, path, badge, mid: { x: 0, y: 0 } };
+    });
+
+    const updateEdges = () => {
+      const rects = new Map(Array.from(positions, ([id, position]) => [id, rectOf(position)]));
+      const labels = labelRects();
+      for (const edge of edges) {
+        const obstacles = [...labels];
+        for (const [id, rect] of rects) {
+          if (id === edge.relation.from || id === edge.relation.to) continue;
+          obstacles.push({ x: rect.x - 10, y: rect.y - 10, width: rect.width + 20, height: rect.height + 20 });
+        }
+        const geometry = edgeGeometry(rects.get(edge.relation.from), rects.get(edge.relation.to), edge.bend, obstacles);
+        edge.path.setAttribute("d", geometry.d);
+        edge.hit.setAttribute("d", geometry.d);
+        edge.badge.setAttribute("transform", `translate(${geometry.mid.x} ${geometry.mid.y})`);
+        edge.mid = geometry.mid;
+      }
+    };
+
+    const placeTooltip = (edge) => {
+      const badgeBox = edge.badge.getBoundingClientRect();
+      const hostBox = overlay.getBoundingClientRect();
+      const width = tooltip.offsetWidth;
+      const height = tooltip.offsetHeight;
+      const centerX = badgeBox.left + badgeBox.width / 2 - hostBox.left;
+      let left = Math.min(Math.max(8, centerX - width / 2), Math.max(8, hostBox.width - width - 8));
+      let top = badgeBox.top - hostBox.top - height - 10;
+      if (top < 8) top = badgeBox.bottom - hostBox.top + 10;
+      tooltip.style.left = `${Math.round(left)}px`;
+      tooltip.style.top = `${Math.round(top)}px`;
+    };
+
+    const setActiveEdge = (edge) => {
+      if (activeEdge === edge) return;
+      if (activeEdge) {
+        activeEdge.group.classList.remove("is-active");
+        activeEdge.badge.classList.remove("is-active");
+        activeEdge.badge.removeAttribute("aria-describedby");
+      }
+      activeEdge = edge;
+      svg.classList.toggle("has-active-edge", Boolean(edge));
+      if (!edge) {
+        tooltip.hidden = true;
+        refreshMarkers();
+        return;
+      }
+      edge.group.classList.add("is-active");
+      edge.badge.classList.add("is-active");
+      edge.badge.setAttribute("aria-describedby", tooltip.id);
+      edgeLayer.append(edge.group);
+      tooltip.innerHTML = relationshipTooltipHtml(edge.relation, nameOf);
+      tooltip.hidden = false;
+      placeTooltip(edge);
+      refreshMarkers();
+    };
+
+    let selectedId = null;
+    const refreshMarkers = () => {
+      for (const edge of edges) {
+        const related = selectedId && (edge.relation.from === selectedId || edge.relation.to === selectedId);
+        edge.group.classList.toggle("is-related", Boolean(related));
+        edge.path.setAttribute(
+          "marker-end",
+          edge === activeEdge || related ? "url(#project-arrow-active)" : "url(#project-arrow)",
+        );
+      }
+    };
+
+    for (const edge of edges) {
+      const enter = () => {
+        if (!pinnedEdge) setActiveEdge(edge);
+      };
+      const leave = () => {
+        if (!pinnedEdge) setActiveEdge(null);
+      };
+      edge.hit.addEventListener("pointerenter", enter);
+      edge.hit.addEventListener("pointerleave", leave);
+      edge.badge.addEventListener("pointerenter", enter);
+      edge.badge.addEventListener("pointerleave", leave);
+      edge.badge.addEventListener("focus", () => {
+        pinnedEdge = edge;
+        setActiveEdge(edge);
+      });
+      edge.badge.addEventListener("blur", () => {
+        pinnedEdge = null;
+        setActiveEdge(null);
+      });
+      edge.badge.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && activeEdge) {
+          event.preventDefault();
+          event.stopPropagation();
+          edge.badge.blur();
+        }
+      });
+    }
+
+    const measure = () => ({ width: container.clientWidth, height: container.clientHeight });
+
+    // Content is centred when the canvas is larger than it; otherwise it scrolls.
+    // The viewBox origin is fixed during a drag so nodes do not jump.
     const applyView = () => {
-      const style = getComputedStyle(container);
-      const visibleWidth =
-        container.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-      const visibleHeight =
-        container.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+      const visible = measure();
       // A hidden tab reports 0; keep the last size until the ResizeObserver fires on show.
-      if (visibleWidth <= 0 || visibleHeight <= 0) return;
+      if (visible.width <= 0 || visible.height <= 0) return false;
+      const bounds = contentBounds(currentBoxes());
+      const contentWidth = bounds.width + LAYOUT_MARGIN * 2;
+      const contentHeight = bounds.height + LAYOUT_MARGIN * 2;
       const size = computeCanvasSize({
-        visibleWidth,
-        visibleHeight,
+        visibleWidth: visible.width,
+        visibleHeight: visible.height,
         zoom: view.zoom,
-        layout,
-        positions,
+        layout: { width: contentWidth, height: contentHeight },
+        positions: new Map(),
         nodeWidth: NODE_WIDTH,
         nodeHeight: NODE_HEIGHT,
       });
       view.width = size.width;
       view.height = size.height;
-      svg.setAttribute("viewBox", `0 0 ${view.width} ${view.height}`);
-      svg.style.width = `${view.width * view.zoom}px`;
-      svg.style.height = `${view.height * view.zoom}px`;
+      view.minX = bounds.x - LAYOUT_MARGIN - (size.width - contentWidth) / 2;
+      view.minY = bounds.y - LAYOUT_MARGIN - (size.height - contentHeight) / 2;
+      svg.setAttribute("viewBox", `${view.minX} ${view.minY} ${view.width} ${view.height}`);
+      // Floor so rounding never creates a 1px scrollbar.
+      svg.style.width = `${Math.floor(view.width * view.zoom)}px`;
+      svg.style.height = `${Math.floor(view.height * view.zoom)}px`;
+      if (activeEdge) placeTooltip(activeEdge);
+      return true;
     };
     const setZoom = (percent) => {
       view.zoom = percent / 100;
+      view.autoFit = false;
       applyView();
+    };
+    const fit = () => {
+      const visible = measure();
+      if (visible.width <= 0 || visible.height <= 0) return null;
+      const bounds = contentBounds(currentBoxes());
+      // With fitHeight the panel may grow back to its maximum, so fit against that.
+      const limits = options.fitHeight ? options.fitHeight() : null;
+      const percent = fitZoom({
+        visibleWidth: visible.width,
+        visibleHeight: limits ? limits.max : visible.height,
+        contentWidth: bounds.width + LAYOUT_MARGIN * 2,
+        contentHeight: bounds.height + LAYOUT_MARGIN * 2,
+      });
+      view.zoom = percent / 100;
+      view.autoFit = true;
+      // Optionally shrink the panel to the fitted drawing (no empty bands).
+      if (limits) {
+        const wanted = fittedPanelHeight(bounds.height + LAYOUT_MARGIN * 2, percent, limits);
+        if (Math.abs(wanted - host.clientHeight) > 1) host.style.height = `${wanted}px`;
+      } else if (options.fitHeight && host.style.height) {
+        host.style.height = "";
+      }
+      applyView();
+      if (options.onZoomChange) options.onZoomChange(percent, true);
+      return percent;
+    };
+    // Re-wrap domain rows when the panel's shape changes enough to pick another
+    // row width (e.g. the tab was hidden at render time), unless nodes were dragged.
+    const relayout = () => {
+      if (userArranged) return false;
+      const nextWidth = chooseRowWidth(project, panelAspect());
+      if (nextWidth === rowWidth) return false;
+      rowWidth = nextWidth;
+      layout = layoutProject(project, { maxRowWidth: rowWidth });
+      for (const [id, next] of layout.positions) {
+        const position = positions.get(id);
+        if (position) Object.assign(position, { x: next.x, y: next.y });
+      }
+      for (const place of placers) place();
+      updateDomains();
+      updateEdges();
+      return true;
     };
 
     const toSvgPoint = (event) => {
@@ -1976,58 +2640,88 @@
       return { x: point.x, y: point.y };
     };
 
+    const nodeGroups = new Map();
+    const placers = [];
     for (const bc of project.boundedContexts) {
       const position = positions.get(bc.id);
       if (!position) continue;
+      const row = rowsById.get(bc.id) || matrixRow(bc);
+      const gateText = row.gates.total ? `, gates ${row.gates.satisfied} of ${row.gates.total}` : "";
+      const gapText = typeof row.openGaps === "number" ? `, ${plural(row.openGaps, "open gap")}` : "";
       const group = svgElement("g", {
-        class: `graph-node classification-${bc.classification.toLowerCase()} role-${bc.role.toLowerCase()}${bc.inferred ? " inferred" : ""}`,
+        class: `graph-node classification-${slug(bc.classification)}${bc.inferred ? " inferred" : ""}${
+          row.gates.total && !row.gates.valid ? " is-gate-invalid" : ""
+        }`,
         tabindex: "0",
         role: "button",
-        "aria-label": `${bc.name}, ${bc.classification}, ${bc.role}`,
-        style: "cursor: grab; touch-action: none",
+        "aria-label": `${bc.name}: ${row.lifecycleLabel}, ${bc.classification}${row.showRole ? `, ${bc.role}` : ""}${gateText}${gapText}`,
+        "data-bc-id": bc.id,
       });
-      group.append(svgElement("rect", { x: 0, y: 0, width: NODE_WIDTH, height: NODE_HEIGHT, rx: 12 }));
-      const title = svgElement("text", { x: 12, y: 28, class: "graph-node-title" });
-      title.textContent = bc.name;
-      const meta = svgElement("text", { x: 12, y: 52, class: "graph-node-meta" });
-      meta.textContent = `${bc.classification} · ${bc.role}`;
-      const lifecycle = svgElement("text", { x: 12, y: 69, class: "graph-node-lifecycle" });
-      lifecycle.textContent = bc.lifecycle || "Unconfirmed";
-      group.append(title, meta, lifecycle);
-      const place = () => group.setAttribute("transform", `translate(${position.x} ${position.y})`);
+      // HTML inside the node so it reuses the Board's pills and indicators.
+      const object = svgElement("foreignObject", { width: NODE_WIDTH, height: NODE_HEIGHT, class: "graph-node-object" });
+      const card = createElement("div", "gnode");
+      card.setAttribute("aria-hidden", "true");
+      const title = createElement("div", "gnode-title", bc.name);
+      title.title = bc.name;
+      const pills = createElement("div", "gnode-pills");
+      pills.append(lifecyclePill(bc.lifecycle), classificationPills(row));
+      const foot = createElement("div", "gnode-foot");
+      const gates = createElement("span", "gnode-stat");
+      gates.append(gateProgress(row.gates), createElement("span", "gnode-stat-label", "gates"));
+      const gaps = createElement("span", "gnode-stat");
+      gaps.append(gapCount(row.openGaps), createElement("span", "gnode-stat-label", row.openGaps === 1 ? "gap" : "gaps"));
+      foot.append(gates, gaps);
+      if (row.warningCount) foot.append(warningBadge(row.warningCount, { hidden: false }));
+      card.append(title, pills, foot);
+      object.append(card);
+      group.append(object);
+      const place = () => {
+        object.setAttribute("x", position.x);
+        object.setAttribute("y", position.y);
+      };
       place();
+      placers.push(place);
 
       const select = () => onSelect(bc.id);
       let drag = null;
       group.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
         const pointer = toSvgPoint(event);
         drag = { dx: pointer.x - position.x, dy: pointer.y - position.y, startX: event.clientX, startY: event.clientY, moved: false };
         group.setPointerCapture(event.pointerId);
-        group.style.cursor = "grabbing";
-        nodeLayer.append(group);
+        group.classList.add("is-dragging");
       });
       group.addEventListener("pointermove", (event) => {
         if (!drag) return;
         if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 4) return;
+        if (!drag.moved) nodeLayer.append(group);
         drag.moved = true;
         const pointer = toSvgPoint(event);
-        position.x = Math.max(0, Math.min(Math.max(0, view.width - NODE_WIDTH), pointer.x - drag.dx));
-        position.y = Math.max(0, Math.min(Math.max(0, view.height - NODE_HEIGHT), pointer.y - drag.dy));
+        position.x = Math.max(view.minX, Math.min(view.minX + view.width - NODE_WIDTH, pointer.x - drag.dx));
+        position.y = Math.max(view.minY + DOMAIN_PAD_TOP, Math.min(view.minY + view.height - NODE_HEIGHT, pointer.y - drag.dy));
         place();
+        updateDomains();
         updateEdges();
       });
       const end = (event) => {
         if (!drag) return;
         const wasClick = !drag.moved;
         drag = null;
-        group.style.cursor = "grab";
+        group.classList.remove("is-dragging");
         if (group.hasPointerCapture(event.pointerId)) group.releasePointerCapture(event.pointerId);
         if (wasClick) select();
+        else {
+          // Keep the zoom, grow the canvas to the moved content; Fit re-fits it.
+          view.autoFit = false;
+          userArranged = true;
+          applyView();
+          if (options.onZoomChange) options.onZoomChange(Math.round(view.zoom * 100), false);
+        }
       };
       group.addEventListener("pointerup", end);
       group.addEventListener("pointercancel", () => {
         drag = null;
-        group.style.cursor = "grab";
+        group.classList.remove("is-dragging");
       });
       group.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -2036,75 +2730,191 @@
         }
       });
       nodeLayer.append(group);
+      nodeGroups.set(bc.id, group);
     }
+
+    const highlight = (bcId) => {
+      selectedId = bcId || null;
+      for (const [id, group] of nodeGroups) {
+        group.classList.toggle("is-selected", id === selectedId);
+        group.setAttribute("aria-pressed", String(id === selectedId));
+      }
+      refreshMarkers();
+    };
+    const highlightRelation = (relationNumber) => {
+      if (pinnedEdge) return;
+      setActiveEdge(edges.find((edge) => edge.relation.number === relationNumber) || null);
+    };
+
+    updateDomains();
     updateEdges();
     container.append(svg);
-    applyView();
+    if (!fit()) applyView();
     if (typeof ResizeObserver === "function") {
-      // Re-fit when the tab is shown, the window resizes, or the details panel changes height.
-      container._topologyObserver = new ResizeObserver(() => applyView());
+      // Re-fit when the tab is shown or the window resizes, unless the user zoomed.
+      container._topologyObserver = new ResizeObserver(() => {
+        if (!view.autoFit) {
+          applyView();
+          return;
+        }
+        relayout();
+        fit();
+      });
       container._topologyObserver.observe(container);
     }
-    return { setZoom };
+    return { setZoom, fit, highlight, highlightRelation };
   }
 
-  function renderDetails(project, bcId, container) {
+  // Details panel beside the diagram. Options: board (gate/gap facts),
+  // scenarioPath, onOpenBoard(bcId, button), onViewScenarios(bcId),
+  // onRelationHover(number | null) to highlight the matching edge.
+  function renderDetails(project, bcId, container, options = {}) {
     container.replaceChildren();
-    const bc = project.boundedContexts.find((item) => item.id === bcId);
+    const bc = project && project.boundedContexts.find((item) => item.id === bcId);
     if (!bc) {
-      container.append(createElement("p", "muted", "Select a bounded context to inspect it."));
+      container.append(createElement("p", "muted project-details-empty", "Select a bounded context in the diagram to see its details."));
       return;
     }
-    const heading = createElement("div", "project-detail-heading");
-    heading.append(createElement("h2", "", bc.name));
-    if (bc.inferred) heading.append(createElement("span", "inferred-badge", "Inferred"));
-    container.append(heading);
-    container.append(
-      createElement(
-        "p",
-        "project-meta",
-        `${bc.classification} · ${bc.role} · ${bc.lifecycle || "UNCONFIRMED"}`,
-      ),
+    const card = options.board && options.board.cards.find((item) => item.id === bcId);
+    const row = matrixRow(card || bc);
+    const domain = project.domains.find((item) => item.id === bc.domainId);
+    const nameOf = (id) => {
+      const other = project.boundedContexts.find((item) => item.id === id);
+      return other ? other.name : id;
+    };
+
+    const header = createElement("header", "detail-header");
+    header.append(createElement("p", "eyebrow", domain ? domain.name : "Bounded context"));
+    header.append(createElement("h2", "detail-title", bc.name));
+    const pills = createElement("div", "drawer-pills");
+    pills.append(lifecyclePill(bc.lifecycle), classificationPills(row));
+    const marker = markerPill(row);
+    if (marker) pills.append(marker);
+    if (row.warningCount) pills.append(warningBadge(row.warningCount));
+    header.append(pills);
+    const actions = createElement("div", "detail-actions");
+    const boardButton = createElement("button", "btn btn-primary btn-sm", "Open in Board");
+    boardButton.type = "button";
+    boardButton.title = "Lifecycle, gates, gaps and timeline for this bounded context";
+    boardButton.disabled = !options.onOpenBoard;
+    boardButton.addEventListener("click", () => options.onOpenBoard && options.onOpenBoard(bc.id, boardButton));
+    const scenariosButton = createElement("button", "btn btn-sm", "View scenarios");
+    scenariosButton.type = "button";
+    scenariosButton.disabled = !options.scenarioPath || !options.onViewScenarios;
+    scenariosButton.title = options.scenarioPath || "No bdd-scenarios.md found for this bounded context";
+    scenariosButton.addEventListener("click", () => options.onViewScenarios && options.onViewScenarios(bc.id));
+    actions.append(boardButton, scenariosButton);
+    header.append(actions);
+    container.append(header);
+
+    const facts = createElement("dl", "drawer-facts detail-facts");
+    const fact = (label, value) => {
+      const item = createElement("div", "drawer-fact");
+      item.append(createElement("dt", "", label));
+      const dd = createElement("dd");
+      dd.append(value);
+      item.append(dd);
+      facts.append(item);
+    };
+    fact("Gates", gateProgress(row.gates));
+    fact("Open gaps", gapCount(row.openGaps));
+    const next = createElement("span", "mono clamp-2", row.nextSkill || "–");
+    if (row.nextSkill) next.title = row.nextSkill;
+    fact("Next skill", next);
+    container.append(facts);
+
+    const body = createElement("div", "detail-body");
+    container.append(body);
+    if (bc.purpose) body.append(createElement("p", "detail-purpose", bc.purpose));
+
+    const boundary = createElement("section", "project-detail-section detail-boundary");
+    for (const [title, items] of [
+      ["Owns", bc.owns],
+      ["Does not own", bc.doesNotOwn],
+    ]) {
+      const block = createElement("div", "detail-boundary-block");
+      block.append(createElement("h3", "", title));
+      if (!items || !items.length) block.append(createElement("p", "muted", "Not documented."));
+      else {
+        const list = createElement("ul");
+        for (const item of items) list.append(createElement("li", "", String(item)));
+        block.append(list);
+      }
+      boundary.append(block);
+    }
+    body.append(boundary);
+
+    const numbered = numberRelationships(project).filter((relation) => relation.from === bc.id || relation.to === bc.id);
+    const relationSection = appendTable(
+      body,
+      "Relationships",
+      ["#", "With", "Information"],
+      numbered.map((relation) => {
+        const number = createElement("span", "edge-num", String(relation.number));
+        const outbound = relation.from === bc.id;
+        const other = createElement("span", "detail-with");
+        other.append(createElement("span", "detail-dir", outbound ? "→" : "←"), document.createTextNode(nameOf(outbound ? relation.to : relation.from)));
+        other.title = outbound ? `Outbound: ${bc.name} → ${nameOf(relation.to)}` : `Inbound: ${nameOf(relation.from)} → ${bc.name}`;
+        const info = createElement("div", "detail-rel");
+        info.append(createElement("span", "", relation.information || "–"));
+        if (relation.interaction) {
+          const meta = createElement("span", "detail-rel-meta");
+          meta.innerHTML = renderInlineMarkdown(relation.interaction);
+          info.append(meta);
+        }
+        return { cells: [number, other, info] };
+      }),
+      { empty: "No relationships in the context map.", className: "detail-relationships" },
     );
-    if (bc.purpose) container.append(createElement("p", "", bc.purpose));
-    appendList(container, "Owns", bc.owns, String);
-    appendList(container, "Does not own", bc.doesNotOwn, String);
-    appendList(
-      container,
+    relationSection.querySelectorAll("tbody tr").forEach((tr, index) => {
+      const relation = numbered[index];
+      tr.addEventListener("mouseenter", () => options.onRelationHover && options.onRelationHover(relation.number));
+      tr.addEventListener("mouseleave", () => options.onRelationHover && options.onRelationHover(null));
+    });
+
+    appendTable(
+      body,
       "Capabilities",
-      bc.capabilities,
-      (item) => `${item.name}${item.outcome ? ` — ${item.outcome}` : ""}`,
+      ["Capability", "Outcome"],
+      (bc.capabilities || []).map((item) => ({ cells: [item.name, item.outcome || ""] })),
+      { empty: "Not documented." },
     );
-    appendList(
-      container,
+    appendTable(
+      body,
       "Ports",
-      bc.ports,
-      (item) => `${item.name} (${item.direction || "UNKNOWN"})${item.purpose ? ` — ${item.purpose}` : ""}`,
+      ["Port", "Direction", "Purpose"],
+      (bc.ports || []).map((item) => {
+        const name = createElement("span", "mono", item.name);
+        const direction = pill(item.direction || "UNKNOWN", item.direction === "INBOUND" ? "pill-info" : "pill-neutral");
+        return { cells: [name, direction, item.purpose || ""] };
+      }),
+      { empty: "Not documented." },
     );
-    appendList(
-      container,
-      "ACLs",
-      bc.acls,
-      (item) => `${item.name}${item.system ? ` — ${item.system}` : ""}`,
+    appendTable(
+      body,
+      "Anti-corruption layers",
+      ["ACL", "System", "File"],
+      (bc.acls || []).map((item) => ({ cells: [item.name, item.system || "", item.file || ""] })),
+      { empty: "None documented." },
     );
-    appendList(
-      container,
-      "Inbound relationships",
-      project.relationships.filter((relation) => relation.to === bc.id),
-      (item) => `${item.from} → ${item.information}`,
-    );
-    appendList(
-      container,
-      "Outbound relationships",
-      project.relationships.filter((relation) => relation.from === bc.id),
-      (item) => `${item.to} → ${item.information}`,
-    );
-    appendList(
-      container,
-      "Journeys",
-      project.journeys.filter((journey) => journey.boundedContextIds.includes(bc.id)),
-      (item) => item.name,
-    );
+    const journeys = project.journeys.filter((journey) => (journey.boundedContextIds || []).includes(bc.id));
+    if (journeys.length) {
+      const section = createElement("section", "project-detail-section");
+      section.append(createElement("h3", "", "Journeys"));
+      const list = createElement("ul", "detail-journeys");
+      for (const journey of journeys) list.append(createElement("li", "", journey.name));
+      section.append(list);
+      body.append(section);
+    }
+    const sources = Object.entries(bc.sources || {}).filter(([, value]) => typeof value === "string" && value);
+    if (sources.length) {
+      appendTable(
+        body,
+        "Source artifacts",
+        ["Artifact", "Path"],
+        sources.map(([key, value]) => ({ cells: [key, value] })),
+      );
+    }
   }
 
   function appendTable(parent, title, headers, rows, options = {}) {
@@ -2116,7 +2926,7 @@
       return sectionElement;
     }
     const wrapper = createElement("div", "board-table-wrap");
-    const table = createElement("table", "board-table");
+    const table = createElement("table", "board-table table");
     if (title) table.append(createElement("caption", "visually-hidden", title));
     const head = createElement("thead");
     const headRow = createElement("tr");
@@ -2129,10 +2939,19 @@
     const body = createElement("tbody");
     for (const row of rows) {
       const tr = createElement("tr", row.className || "");
-      for (const value of row.cells) {
+      for (const [index, value] of row.cells.entries()) {
         const cell = createElement("td");
+        // Column name for the stacked layout used in narrow panels (CSS attr()).
+        if (headers[index]) cell.dataset.label = headers[index];
         if (value instanceof Node) cell.append(value);
-        else cell.textContent = value === null || value === undefined || value === "" ? "–" : String(value);
+        else if (typeof value === "string" && /^[\w.@-]*(\/[\w.@-]+)+\.\w+(:\d+)?$/.test(value)) {
+          // Bare repository paths: monospace, truncated, full path on hover (T14a .cell-path).
+          const pathElement = createElement("span", "cell-path", value);
+          pathElement.title = value;
+          cell.append(pathElement);
+        } else cell.textContent = value === null || value === undefined || value === "" ? "–" : String(value);
+        // ISO dates never wrap (T14a .cell-date).
+        if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) cell.className = "cell-date";
         tr.append(cell);
       }
       body.append(tr);
@@ -2164,15 +2983,19 @@
     return abbr;
   }
 
-  function renderLegend(name) {
-    const legend = createElement("p", `legend legend-${name}`);
+  // Options: compact - render inside a closed "Legend" disclosure, one row per
+  // part (used in the narrow gap panel).
+  function renderLegend(name, options = {}) {
+    const legend = createElement("p", `legend legend-${name}${options.compact ? " legend-compact" : ""}`);
     legend.setAttribute("role", "note");
     legend.setAttribute("aria-label", "Legend");
     legendItems(name).forEach((part, partIndex) => {
       if (partIndex) legend.append(createElement("span", "legend-separator", " | "));
-      legend.append(createElement("strong", "", `${part.title}: `));
+      const row = createElement("span", "legend-part");
+      legend.append(row);
+      row.append(createElement("strong", "", `${part.title}: `));
       part.entries.forEach((entry, entryIndex) => {
-        if (entryIndex) legend.append(document.createTextNode(" · "));
+        if (entryIndex) row.append(createElement("span", "legend-dot", " · "));
         const item = createElement("span", "legend-item");
         item.title = entry.text;
         if (part.group === "kind") item.append(createElement("code", "", entry.key), document.createTextNode(" "));
@@ -2181,10 +3004,13 @@
         else if (entry.key === "drift") item.append(createElement("span", "warning-badge", "n warnings"), document.createTextNode(" "));
         else if (entry.key === "partial") item.append(createElement("span", "gap-state gap-state-partial", "Partial"), document.createTextNode(" "));
         item.append(document.createTextNode(entry.label.replace(/^(Amber|Blue): /, "")));
-        legend.append(item);
+        row.append(item);
       });
     });
-    return legend;
+    if (!options.compact) return legend;
+    const disclosure = createElement("details", "legend-disclosure");
+    disclosure.append(createElement("summary", "", "Legend"), legend);
+    return disclosure;
   }
 
   function resultBadge(result) {
@@ -2196,92 +3022,293 @@
     return withTooltip(createElement("span", "warning-badge", `${count} warning${count === 1 ? "" : "s"}`), "badge", "drift", options);
   }
 
+  // App-bar warning count (T14a): persistent and not dismissible (plan §3.1).
+  // Shows "n warnings"; the full message is the hover text of the indicator.
   function renderWarningBanner(board, banner, textElement) {
     const count = board ? board.warnings.count : 0;
     banner.hidden = count === 0;
-    if (textElement) textElement.textContent = board ? board.warnings.message : "";
+    banner.title = board && count ? `${board.warnings.message}. Click to open the diagnostics.` : "";
+    if (textElement) textElement.textContent = count ? `${count} warning${count === 1 ? "" : "s"}` : "";
   }
 
-  function renderBoardCard(card, selected, onSelect) {
-    const button = createElement("button", "board-card");
-    button.type = "button";
-    button.dataset.bcId = card.id;
-    button.setAttribute("aria-pressed", String(selected));
-    if (card.blocked) button.classList.add("has-blockers");
-    if (card.warningCount) button.classList.add("has-warnings");
+  // --- Board rendering (T14b): summary strip, lifecycle matrix, kanban -------
 
-    const header = createElement("span", "board-card-header");
-    header.append(createElement("span", "board-card-title", card.name));
-    if (card.warningCount) header.append(warningBadge(card.warningCount, { hidden: false }));
-    button.append(header);
-    button.append(
-      createElement("span", "board-card-meta", `${card.classification} · ${card.role}${card.inferred ? " · inferred" : ""}`),
-    );
-    const facts = createElement("span", "board-card-facts");
-    facts.append(createElement("span", "", card.lifecycleDate ? `Since ${card.lifecycleDate}` : "No transition date"));
-    facts.append(createElement("span", "", `Next: ${card.nextSkill || "–"}`));
-    button.append(facts);
-    if (card.blocked) {
-      button.append(
-        createElement(
-          "span",
-          "board-card-blockers",
-          `${card.blockers.length} blocker${card.blockers.length === 1 ? "" : "s"}: ${card.blockers.join("; ")}`,
-        ),
+  function pill(text, className, title) {
+    const element = createElement("span", `pill ${className || ""}`.trim(), text);
+    if (title) {
+      element.title = title;
+      element.classList.add("has-tooltip");
+    }
+    return element;
+  }
+
+  // Classification pill; role only when it adds information (never "SUPPORTING · SUPPORTING").
+  function classificationPills(row) {
+    const wrap = createElement("span", "bc-pills");
+    wrap.append(pill(row.classification, `pill-class pill-class-${slug(row.classification)}`, `Classification: ${row.classification}`));
+    if (row.showRole) wrap.append(pill(row.role, "pill-role", `Boundary role: ${row.role}`));
+    if (row.inferred) wrap.append(pill("Inferred", "pill-warning", "Inferred from legacy Markdown, not confirmed in the domain map"));
+    return wrap;
+  }
+
+  function markerPill(row) {
+    if (row.marker) {
+      const tone = row.marker.state === "BLOCKED" ? "pill-danger" : row.marker.state === "CHANGING" ? "pill-info" : "pill-neutral";
+      return pill(row.marker.label, `${tone} pill-marker`, glossaryText("lifecycle", row.marker.state));
+    }
+    if (row.blockers.length) {
+      return pill(plural(row.blockers.length, "blocker"), "pill-danger pill-marker", row.blockers.join("\n"));
+    }
+    return null;
+  }
+
+  // Ring + "n/m"; red when the current transition's gates are not valid, unmet list on hover.
+  function gateProgress(gates) {
+    const wrap = createElement("span", `gate-progress gate-progress-${gates.tone}`);
+    wrap.title = gates.title;
+    wrap.classList.add("has-tooltip");
+    const radius = 7;
+    const circumference = 2 * Math.PI * radius;
+    const svg = svgElement("svg", { viewBox: "0 0 18 18", class: "gate-ring", "aria-hidden": "true", focusable: "false" });
+    svg.append(svgElement("circle", { cx: 9, cy: 9, r: radius, class: "gate-ring-track" }));
+    if (gates.total) {
+      svg.append(
+        svgElement("circle", {
+          cx: 9,
+          cy: 9,
+          r: radius,
+          class: "gate-ring-value",
+          "stroke-dasharray": `${(circumference * gates.ratio).toFixed(2)} ${circumference.toFixed(2)}`,
+          transform: "rotate(-90 9 9)",
+        }),
       );
     }
-    const show = (value) => (value === null || value === undefined ? "–" : String(value));
-    const stats = createElement("span", "board-card-stats");
-    stats.append(
-      createElement("span", "", `${show(card.stats.rules)} rules`),
-      createElement("span", "", `${show(card.stats.scenarios)} scenarios`),
-      createElement("span", "", `${show(card.stats.decisions)} decisions`),
-      createElement("span", card.stats.openGaps ? "stat-attention" : "", `${show(card.stats.openGaps)} open gaps`),
-    );
-    button.append(stats);
-    const footer = createElement("span", "board-card-footer");
-    const gates = createElement(
-      "span",
-      `gate-summary${card.gateSummary.invalid ? " has-fail" : ""}`,
-      card.gateSummary.label,
-    );
-    gates.title = `${glossaryText("badge", "gates")}${card.gateSummary.transition ? ` (current transition: ${card.gateSummary.transition})` : ""}`;
-    gates.classList.add("has-tooltip");
-    footer.append(gates);
-    if (card.gateSummary.unmetGates.length) {
-      footer.append(createElement("span", "gate-fail", `Unmet: ${card.gateSummary.unmetGates.join(", ")}`));
-    }
-    footer.append(
-      createElement("span", "", `${card.signoffCount} sign-off${card.signoffCount === 1 ? "" : "s"}`),
-    );
-    button.append(footer);
-    button.addEventListener("click", () => onSelect(card.id));
+    wrap.append(svg, createElement("span", "gate-progress-text tnum", gates.text));
+    wrap.append(createElement("span", "visually-hidden", ` gates. ${gates.title.replace(/\n/g, ". ")}`));
+    return wrap;
+  }
+
+  function gapCount(value) {
+    if (value === null || value === undefined) return createElement("span", "gap-count muted", "–");
+    const element = createElement("span", `gap-count tnum${value ? " gap-count-open" : ""}`, String(value));
+    element.title = `${plural(value, "open gap")} (open, partial, drift or deferred) involving this BC`;
+    element.append(createElement("span", "visually-hidden", ` open gap${value === 1 ? "" : "s"}`));
+    return element;
+  }
+
+  // Progress rail: passed states filled, current emphasised, future hollow.
+  function lifecycleRail(row, className) {
+    const rail = createElement("span", `rail ${className || ""}`.trim());
+    rail.setAttribute("aria-hidden", "true");
+    rail.style.setProperty("--progress", String(row.position > 0 ? row.position / (row.steps.length - 1) : 0));
+    if (row.marker) rail.classList.add(`rail-marker-${slug(row.marker.state)}`);
+    row.steps.forEach((step) => {
+      const cell = createElement("span", `rail-step rail-${step.status}`);
+      cell.title = `${step.label}${step.status === "current" ? (row.marker ? ` (now ${row.marker.label})` : " (current)") : ""}`;
+      cell.append(createElement("span", "rail-dot"));
+      rail.append(cell);
+    });
+    return rail;
+  }
+
+  function railText(row) {
+    if (row.position < 0) return `Lifecycle: ${row.lifecycleLabel}`;
+    return `Lifecycle: ${row.lifecycleLabel}${row.marker ? `, from ${row.steps[row.position].label}` : ""}, step ${row.position + 1} of ${row.steps.length}`;
+  }
+
+  function nextSkillLine(row) {
+    const line = createElement("span", "next-skill clamp-2");
+    line.append(createElement("span", "next-skill-label", "Next "));
+    line.append(document.createTextNode(row.nextSkill || "–"));
+    if (row.nextSkill) line.title = `Next skill: ${row.nextSkill}`;
+    return line;
+  }
+
+  function bcTitleLine(row) {
+    const line = createElement("span", "bc-title-line");
+    line.append(createElement("span", "bc-name truncate", row.name));
+    const marker = markerPill(row);
+    if (marker) line.append(marker);
+    if (row.warningCount) line.append(warningBadge(row.warningCount, { hidden: false }));
+    return line;
+  }
+
+  function renderMatrixRow(row, selected, onSelect) {
+    const button = createElement("button", "matrix-row");
+    button.type = "button";
+    button.dataset.bcId = row.id;
+    button.setAttribute("aria-pressed", String(selected));
+    if (!row.gates.valid && row.gates.total) button.classList.add("is-gate-invalid");
+    const main = createElement("span", "matrix-cell matrix-bc");
+    main.append(bcTitleLine(row));
+    const meta = createElement("span", "bc-meta");
+    meta.append(classificationPills(row), nextSkillLine(row));
+    main.append(meta);
+    const railCell = createElement("span", "matrix-cell matrix-rail");
+    railCell.append(lifecycleRail(row), createElement("span", "visually-hidden", railText(row)));
+    const mobileState = createElement("span", "matrix-state-label", row.lifecycleLabel);
+    railCell.append(mobileState);
+    const gates = createElement("span", "matrix-cell matrix-gates");
+    gates.append(gateProgress(row.gates));
+    const gaps = createElement("span", "matrix-cell matrix-gaps");
+    gaps.append(gapCount(row.openGaps));
+    button.append(main, railCell, gates, gaps);
+    button.addEventListener("click", () => onSelect(row.id, button));
     return button;
   }
 
-  function renderBoardLanes(board, container, selectedBcId, onSelect) {
-    container.replaceChildren();
-    for (const column of board.columns) {
-      const columnElement = createElement("section", `board-column${column.optional ? " optional" : ""}`);
+  function renderMatrix(matrix, container, selectedBcId, onSelect) {
+    const wrap = createElement("div", "matrix");
+    const head = createElement("div", "matrix-head");
+    head.setAttribute("aria-hidden", "true");
+    head.append(createElement("span", "matrix-cell matrix-bc", "Bounded context"));
+    const states = createElement("span", "matrix-cell matrix-rail matrix-states");
+    for (const state of matrix.states) {
+      // Soft hyphens let long state names wrap in narrow columns.
+      const label = createElement("span", "matrix-state", state.label.replace(/^Implement/, "Imple\u00adment"));
+      const text = glossaryText("lifecycle", state.state);
+      if (text) {
+        label.title = text;
+        label.classList.add("has-tooltip");
+      }
+      states.append(label);
+    }
+    head.append(states);
+    const gatesHead = createElement("span", "matrix-cell matrix-gates", "Gates");
+    gatesHead.title = glossaryText("badge", "gates") || "";
+    head.append(gatesHead, createElement("span", "matrix-cell matrix-gaps", "Gaps"));
+    wrap.append(head);
+    const list = createElement("div", "matrix-body");
+    list.setAttribute("role", "list");
+    list.setAttribute("aria-label", "Bounded contexts by lifecycle");
+    if (!matrix.rows.length) list.append(createElement("p", "muted board-empty", "No bounded contexts in the projection."));
+    for (const row of matrix.rows) {
+      const item = createElement("div", "matrix-item");
+      item.setAttribute("role", "listitem");
+      item.append(renderMatrixRow(row, row.id === selectedBcId, onSelect));
+      list.append(item);
+    }
+    wrap.append(list);
+    container.append(wrap);
+  }
+
+  function renderKanbanCard(row, selected, onSelect) {
+    const button = createElement("button", "kanban-card");
+    button.type = "button";
+    button.dataset.bcId = row.id;
+    button.setAttribute("aria-pressed", String(selected));
+    if (!row.gates.valid && row.gates.total) button.classList.add("is-gate-invalid");
+    button.append(bcTitleLine(row), classificationPills(row));
+    const footer = createElement("span", "kanban-card-footer");
+    footer.append(gateProgress(row.gates));
+    const gaps = createElement("span", "kanban-gaps");
+    gaps.append(gapCount(row.openGaps), createElement("span", "muted", " gaps"));
+    footer.append(gaps);
+    button.append(footer, nextSkillLine(row));
+    button.addEventListener("click", () => onSelect(row.id, button));
+    return button;
+  }
+
+  function renderKanban(matrix, container, selectedBcId, onSelect) {
+    const wrap = createElement("div", "kanban");
+    for (const column of matrix.columns) {
+      const columnElement = createElement("section", `kanban-col${column.collapsed ? " is-collapsed" : ""}${column.optional ? " is-optional" : ""}`);
       const headingId = `board-column-${slug(column.state)}`;
       columnElement.setAttribute("aria-labelledby", headingId);
-      const heading = createElement("h3", "board-column-title");
+      const heading = createElement("h3", "kanban-col-title");
       heading.id = headingId;
-      if (glossaryText("lifecycle", column.state)) {
-        heading.title = glossaryText("lifecycle", column.state);
-        heading.classList.add("has-tooltip");
-      }
-      heading.append(
-        createElement("span", "", column.label),
-        createElement("span", "board-column-count", String(column.cards.length)),
-      );
+      const text = glossaryText("lifecycle", column.state);
+      heading.title = `${column.label}: ${column.count} BC${column.count === 1 ? "" : "s"}${text ? ` — ${text}` : ""}`;
+      heading.append(createElement("span", "kanban-col-label", column.label), createElement("span", "kanban-col-count tnum", String(column.count)));
       columnElement.append(heading);
-      if (column.cards.length === 0) columnElement.append(createElement("p", "muted board-empty", "No BCs"));
-      for (const card of column.cards) {
-        columnElement.append(renderBoardCard(card, card.id === selectedBcId, onSelect));
-      }
-      container.append(columnElement);
+      for (const row of column.rows) columnElement.append(renderKanbanCard(row, row.id === selectedBcId, onSelect));
+      wrap.append(columnElement);
     }
+    container.append(wrap);
+  }
+
+  // Matrix (default) or kanban view of the board. onSelect(bcId, triggerElement).
+  function renderBoardLanes(board, container, selectedBcId, onSelect, view = "matrix") {
+    container.replaceChildren();
+    container.dataset.view = view;
+    const matrix = buildLifecycleMatrix(board);
+    if (view === "kanban") renderKanban(matrix, container, selectedBcId, onSelect);
+    else renderMatrix(matrix, container, selectedBcId, onSelect);
+  }
+
+  function summaryTile({ key, label, value, detail, tone, title, onClick, extra }) {
+    const tile = createElement(onClick ? "button" : "div", `stat-tile stat-tile-${key} stat-${tone || "neutral"}`);
+    if (onClick) {
+      tile.type = "button";
+      tile.addEventListener("click", onClick);
+    }
+    if (title) tile.title = title;
+    tile.append(createElement("span", "stat-label", label));
+    tile.append(createElement("span", "stat-value tnum", value));
+    if (extra) tile.append(extra);
+    tile.append(createElement("span", "stat-detail clamp-2", detail));
+    return tile;
+  }
+
+  // Summary strip: BCs by state, gates met, open gaps, warnings, last change.
+  function renderSummaryStrip(board, container, handlers = {}) {
+    container.replaceChildren();
+    const model = buildSummaryStrip(board);
+    const bar = createElement("span", "state-bar");
+    bar.setAttribute("aria-hidden", "true");
+    for (const entry of model.byState) {
+      const segment = createElement("span", `state-bar-seg state-seg-${slug(entry.state)}`);
+      segment.style.flexGrow = String(entry.count);
+      segment.title = `${entry.count} ${entry.label}`;
+      bar.append(segment);
+    }
+    container.append(
+      summaryTile({
+        key: "states",
+        label: "Bounded contexts",
+        value: String(model.total),
+        detail: model.stateText,
+        title: model.stateText,
+        extra: bar,
+      }),
+      summaryTile({
+        key: "gates",
+        label: "Gates met",
+        value: model.gates.text,
+        detail: model.gates.invalidNames.length ? `Not valid: ${model.gates.invalidNames.join(", ")}` : model.gates.detail,
+        tone: model.total === 0 ? "neutral" : model.gates.allValid ? "success" : "danger",
+        title: `${model.gates.detail} for their current transition`,
+      }),
+      summaryTile({
+        key: "gaps",
+        label: "Open gaps",
+        value: String(model.gaps.open),
+        detail: model.gaps.detail,
+        tone: model.gaps.tone,
+        title: "Open + partial + drift gaps. Click to go to the gap ledger.",
+        onClick: handlers.onGaps,
+      }),
+      summaryTile({
+        key: "warnings",
+        label: "Warnings",
+        value: String(model.warnings.count),
+        detail: model.warnings.detail,
+        tone: model.warnings.tone,
+        title: "Projection warnings. Click to open the diagnostics.",
+        onClick: handlers.onWarnings,
+      }),
+      summaryTile({
+        key: "last",
+        label: "Last change",
+        value: model.lastChange ? model.lastChange.date : "–",
+        detail: model.lastChange ? model.lastChange.text : "No dated transitions",
+        title: model.lastChange
+          ? `${model.lastChange.bcName}: ${model.lastChange.from || "–"} → ${model.lastChange.to}. Click for details.`
+          : "",
+        onClick: model.lastChange && handlers.onBc ? (event) => handlers.onBc(model.lastChange.bcId, event.currentTarget) : null,
+      }),
+    );
+    return model;
   }
 
   const GAP_PANEL_ICONS = {
@@ -2290,30 +3317,6 @@
     clear: { icon: "\u2713", text: "All clear:" },
     empty: { icon: "\u2013", text: "Empty:" },
   };
-
-  function gapLedgerRows(gaps) {
-    return gaps.map((gap) => {
-      const stateValue = gap.state || "OPEN";
-      const state = withTooltip(
-        createElement("span", `gap-state gap-state-${slug(stateValue)}`, gap.stateLabel || gapStateLabel(stateValue)),
-        "gapState",
-        stateValue,
-      );
-      const sources = createElement("ul", "gap-sources");
-      for (const item of gap.sources || []) {
-        const li = createElement("li");
-        li.append(createElement("code", "", item.location || "–"));
-        li.append(document.createTextNode(` — ${item.disposition || "–"}${item.owner ? ` (${item.owner})` : ""}`));
-        sources.append(li);
-      }
-      return {
-        className: stateValue === "MIXED" ? "gap-mixed" : stateValue === "PARTIAL" ? "gap-partial" : "",
-        cells: [gap.id, gap.gap, state, sources, gap.warningCount ? warningBadge(gap.warningCount) : ""],
-      };
-    });
-  }
-
-  const GAP_LEDGER_HEADERS = ["ID", "Gap", "State", "Dispositions by source", "Warnings"];
 
   // Header line: icon (aria-hidden, with screen-reader text), title, count chips.
   function gapPanelHeader(model, tag) {
@@ -2339,36 +3342,107 @@
     return header;
   }
 
+  // One gap: ID, state, title and dispositions. Identical dispositions collapse
+  // to one line with "n sources agree" (expand for the file:line list); sources
+  // that differ are listed one by one and highlighted (T14b).
+  function renderGapItem(gap) {
+    const stateValue = gap.state || "OPEN";
+    const item = createElement("li", `gap-item gap-item-${slug(stateValue)}`);
+    item.dataset.gapId = gap.id;
+    const head = createElement("div", "gap-item-head");
+    head.append(createElement("code", "gap-id", gap.id));
+    head.append(
+      withTooltip(
+        createElement("span", `gap-state gap-state-${slug(stateValue)}`, gap.stateLabel || gapStateLabel(stateValue)),
+        "gapState",
+        stateValue,
+      ),
+    );
+    if (gap.warningCount) head.append(warningBadge(gap.warningCount));
+    item.append(head);
+    if (gap.gap) item.append(createElement("p", "gap-item-title", gap.gap));
+    const model = collapseDispositions(gap.sources);
+    if (!model.common) {
+      item.append(createElement("p", "muted gap-disp-text", "No sources recorded."));
+      return item;
+    }
+    const common = createElement("div", "gap-disp");
+    const text = createElement("p", "gap-disp-text");
+    appendRichText(text, model.common.disposition || "–");
+    if (model.common.owners.length) text.append(createElement("span", "gap-owner", ` — ${model.common.owners.join(", ")}`));
+    common.append(text);
+    const details = createElement("details", "gap-agree");
+    const summary = createElement("summary", model.agree ? "" : "gap-agree-partial", model.common.text);
+    details.append(summary);
+    const list = createElement("ul", "gap-source-list");
+    for (const source of model.common.sources) {
+      const li = createElement("li");
+      const code = createElement("code", "cell-path", source.location || "–");
+      code.title = source.location || "";
+      li.append(code);
+      list.append(li);
+    }
+    details.append(list);
+    common.append(details);
+    item.append(common);
+    if (model.differing.length) {
+      const differ = createElement("ul", "gap-differ");
+      differ.setAttribute("aria-label", "Sources with a different disposition");
+      for (const source of model.differing) {
+        const li = createElement("li", "gap-differ-item");
+        const code = createElement("code", "cell-path", source.location || "–");
+        code.title = source.location || "";
+        li.append(createElement("span", "gap-differ-flag", "Differs"), code);
+        const body = createElement("p", "gap-disp-text");
+        appendRichText(body, source.disposition || "–");
+        if (source.owner) body.append(createElement("span", "gap-owner", ` — ${source.owner}`));
+        li.append(body);
+        differ.append(li);
+      }
+      item.append(differ);
+    }
+    return item;
+  }
+
+  function renderGapList(gaps, parent, empty) {
+    if (!gaps.length) {
+      parent.append(createElement("p", "muted", empty || "None recorded."));
+      return;
+    }
+    const list = createElement("ul", "gap-list");
+    for (const gap of gaps) list.append(renderGapItem(gap));
+    parent.append(list);
+  }
+
   function renderGapLedger(board, container) {
     const model = gapPanelModel(board ? board.gaps : []);
     container.replaceChildren();
     container.className = `gap-panel gap-panel-${model.level}`;
     container.dataset.level = model.level;
+    if (!container.hasAttribute("tabindex")) container.tabIndex = -1;
 
     if (model.level === "clear" || model.level === "empty") {
       const details = createElement("details", "gap-panel-collapsed");
       const summary = createElement("summary");
       summary.append(gapPanelHeader(model, "span"));
       details.append(summary);
-      appendTable(details, "", GAP_LEDGER_HEADERS, gapLedgerRows(model.resolved), {
-        empty: "No gaps in the projection (schema v1 and legacy projects carry none).",
-      });
-      if (model.level === "clear") details.append(renderLegend("gaps"));
+      renderGapList(model.resolved, details, "No gaps in the projection (schema v1 and legacy projects carry none).");
+      if (model.level === "clear") details.append(renderLegend("gaps", { compact: true }));
       container.append(details);
       return;
     }
 
     container.append(gapPanelHeader(model, "h2"));
-    appendTable(container, "", GAP_LEDGER_HEADERS, gapLedgerRows(model.unresolved));
+    renderGapList(model.unresolved, container);
     if (model.resolved.length) {
-      const toggle = createElement("button", "gap-panel-toggle", `Show resolved (${model.resolved.length})`);
+      const toggle = createElement("button", "btn btn-sm btn-ghost gap-panel-toggle", `Show resolved (${model.resolved.length})`);
       toggle.type = "button";
       toggle.setAttribute("aria-expanded", "false");
       const resolvedWrap = createElement("div", "gap-panel-resolved");
       resolvedWrap.id = "gapLedgerResolved";
       resolvedWrap.hidden = true;
       toggle.setAttribute("aria-controls", resolvedWrap.id);
-      appendTable(resolvedWrap, "", GAP_LEDGER_HEADERS, gapLedgerRows(model.resolved));
+      renderGapList(model.resolved, resolvedWrap);
       toggle.addEventListener("click", () => {
         const expanded = toggle.getAttribute("aria-expanded") === "true";
         toggle.setAttribute("aria-expanded", String(!expanded));
@@ -2377,7 +3451,7 @@
       });
       container.append(toggle, resolvedWrap);
     }
-    container.append(renderLegend("gaps"));
+    container.append(renderLegend("gaps", { compact: true }));
   }
 
   function renderBoardDiagnostics(board, details, list, countElement) {
@@ -2488,7 +3562,6 @@
   function renderTimeline(model, slot) {
     slot.replaceChildren();
     slot.hidden = false;
-    slot.append(createElement("h3", "", "Timeline and changes"));
     if (model.hint) {
       const hint = createElement("p", "timeline-hint muted");
       appendRichText(hint, model.hint);
@@ -2500,29 +3573,40 @@
       slot.append(p);
     }
     if (model.baselines.length) {
+      const changes = createElement("section", "drawer-section");
+      changes.append(createElement("h3", "", "Changes"));
       const summaries = createElement("div", "change-summaries");
       for (const baseline of model.baselines) {
         summaries.append(
           renderChangeSummary(baseline.title, baseline.summary, { id: baseline.id, base: baseline.base, files: baseline.files }),
         );
       }
-      slot.append(summaries);
+      changes.append(summaries);
+      slot.append(changes);
     }
+    const timelineSection = createElement("section", "drawer-section");
+    timelineSection.append(createElement("h3", "", "Timeline"));
+    slot.append(timelineSection);
     if (model.steps.length === 0) {
-      slot.append(createElement("p", "muted", "No transitions recorded."));
+      timelineSection.append(createElement("p", "muted", "No transitions recorded."));
     } else {
       const list = createElement("ol", "timeline");
-      for (const step of model.steps) {
-        const item = createElement("li", "timeline-step");
+      model.steps.forEach((step, index) => {
+        const item = createElement("li", `timeline-step${index === model.steps.length - 1 ? " is-current" : ""}`);
         const head = createElement("div", "timeline-step-head");
-        head.append(createElement("strong", "", `${step.from} → ${step.to}`));
-        head.append(createElement("span", "muted", ` · ${step.date || "no date"}${step.actor ? ` · ${step.actor}` : ""}`));
+        const to = createElement("span", "pill pill-lifecycle pill-info", lifecycleLabel(step.to));
+        withTooltip(to, "lifecycle", step.to, { hidden: false });
+        head.append(to);
+        head.append(createElement("span", "timeline-from muted", `from ${step.from && step.from !== "-" ? lifecycleLabel(step.from) : "start"}`));
+        head.append(createElement("span", "timeline-date cell-date", step.date || "no date"));
         item.append(head);
+        if (step.actor) item.append(createElement("p", "timeline-actor muted", step.actor));
         if (step.commit) {
           const commit = createElement("div", `timeline-commit commit-${step.commit.kind}`);
           if (step.commit.kind === "commit") {
-            commit.append(createElement("code", "", step.commit.shortSha || ""));
-            if (step.commit.subject) commit.append(document.createTextNode(` ${step.commit.subject}`));
+            commit.append(createElement("code", "commit-chip", step.commit.shortSha || ""));
+            if (step.commit.subject) commit.append(createElement("span", "commit-subject truncate", step.commit.subject));
+            if (step.commit.subject) commit.title = step.commit.subject;
           } else {
             commit.textContent = step.commit.text;
             withTooltip(commit, "commit", step.commit.kind);
@@ -2539,84 +3623,147 @@
           item.append(renderChangeSummary(title, step.changes));
         }
         list.append(item);
-      }
-      slot.append(list);
+      });
+      timelineSection.append(list);
     }
     if (model.unmatchedGates.length) {
-      slot.append(createElement("h4", "", "Gates for transitions not recorded yet"));
-      slot.append(renderGateList(model.unmatchedGates));
+      timelineSection.append(createElement("h4", "", "Gates for transitions not recorded yet"));
+      timelineSection.append(renderGateList(model.unmatchedGates));
     }
   }
 
-  // Detail panel for one BC on the Board. Sections are appended in order; the
-  // timeline slot shows transitions, gates and the optional git-derived status
-  // report (T7b).
+  function callout(tone, title, items, formatter) {
+    const box = createElement("section", `callout callout-${tone}`);
+    box.append(createElement("h3", "", title));
+    const list = createElement("ul");
+    for (const item of items) list.append(createElement("li", "", formatter(item)));
+    box.append(list);
+    return box;
+  }
+
+  // BC details for the Board slide-over (T14b). Sections in order: header,
+  // blockers/warnings, changes, timeline (slot), gate evidence, open items, sign-offs.
   function renderBoardDetails(project, board, bcId, container, statusReport = null) {
     container.replaceChildren();
     const bc = project && project.boundedContexts.find((item) => item.id === bcId);
     const card = board && board.cards.find((item) => item.id === bcId);
     if (!bc || !card) {
-      container.append(createElement("p", "muted", "Select a bounded context card to see its lifecycle evidence."));
+      container.append(createElement("p", "muted", "Select a bounded context to see its lifecycle evidence."));
       return;
     }
-    const heading = createElement("div", "project-detail-heading");
-    heading.append(createElement("h2", "", bc.name));
-    if (card.warningCount) heading.append(warningBadge(card.warningCount));
-    container.append(heading);
-    const meta = createElement("p", "project-meta", `${card.classification} · ${card.role} · `);
-    meta.append(withTooltip(createElement("span", "", card.lifecycle), "lifecycle", card.lifecycle));
-    container.append(meta);
-    container.append(
-      createElement(
-        "p",
-        "",
-        `Next skill: ${card.nextSkill || "–"} · ${card.gateSummary.label}` +
-          `${card.gateSummary.transition ? ` (${card.gateSummary.transition})` : ""}`,
-      ),
-    );
-    const timeline = buildTimelineModel(project, statusReport, bc.id);
-    if (timeline && timeline.coverage) container.append(createElement("p", "project-meta timeline-coverage", timeline.coverage));
-    if (card.blocked) appendList(container, "Blockers", card.blockers, String);
-    if (card.warningCount) {
-      appendList(container, "Warnings", card.warnings, (item) => `${item.code ? `${item.code}: ` : ""}${item.message}`);
+    const row = matrixRow(card);
+    const header = createElement("header", "drawer-header");
+    header.append(createElement("p", "eyebrow", "Bounded context"));
+    const title = createElement("h2", "drawer-title", bc.name);
+    title.id = "bcDrawerTitle";
+    header.append(title);
+    const pills = createElement("div", "drawer-pills");
+    const lifecycleTone = { VERIFIED: "pill-success", BLOCKED: "pill-danger", DEPRECATED: "pill-neutral" }[card.lifecycle] || "pill-info";
+    const lifecycle = pill(row.lifecycleLabel, `pill-lifecycle ${lifecycleTone}`);
+    withTooltip(lifecycle, "lifecycle", card.lifecycle, { hidden: false });
+    pills.append(lifecycle, classificationPills(row));
+    const marker = markerPill(row);
+    if (marker && !row.marker) pills.append(marker);
+    if (card.warningCount) pills.append(warningBadge(card.warningCount));
+    header.append(pills);
+    const railWrap = createElement("div", "drawer-rail");
+    railWrap.append(lifecycleRail(row, "rail-labelled"), createElement("span", "visually-hidden", railText(row)));
+    const labels = createElement("div", "drawer-rail-labels");
+    labels.setAttribute("aria-hidden", "true");
+    row.steps.forEach((step) => labels.append(createElement("span", `rail-label rail-label-${step.status}`, step.label)));
+    railWrap.append(labels);
+    header.append(railWrap);
+    const facts = createElement("dl", "drawer-facts");
+    const fact = (label, value) => {
+      const item = createElement("div", "drawer-fact");
+      item.append(createElement("dt", "", label));
+      const dd = createElement("dd");
+      if (value instanceof Node) dd.append(value);
+      else dd.textContent = value;
+      item.append(dd);
+      facts.append(item);
+    };
+    const next = createElement("span", "", card.nextSkill || "–");
+    fact("Next skill", next);
+    const gateWrap = createElement("span", "drawer-gates");
+    gateWrap.append(gateProgress(row.gates));
+    if (card.gateSummary.transition) gateWrap.append(createElement("span", "muted", transitionKey(card.gateSummary.transition).replace("->", "→")));
+    fact("Gates", gateWrap);
+    fact("Since", createElement("span", "cell-date", card.lifecycleDate || "–"));
+    header.append(facts);
+    if (row.gates.unmet.length) {
+      header.append(createElement("p", "drawer-unmet", `Unmet: ${row.gates.unmet.join(", ")}`));
     }
-    const timelineSlot = createElement("section", "project-detail-section board-timeline-slot");
+    const show = (value) => (value === null || value === undefined ? "–" : String(value));
+    const stats = createElement("div", "drawer-stats");
+    [
+      [card.stats.rules, "rules"],
+      [card.stats.scenarios, "scenarios"],
+      [card.stats.decisions, "decisions"],
+      [card.stats.openGaps, "open gaps"],
+      [card.signoffCount, "sign-offs"],
+    ].forEach(([value, word]) => {
+      const chip = createElement("span", "chip");
+      chip.append(createElement("strong", "tnum", show(value)), document.createTextNode(` ${word}`));
+      stats.append(chip);
+    });
+    header.append(stats);
+    container.append(header);
+
+    const body = createElement("div", "drawer-content");
+    container.append(body);
+    if (card.blocked) body.append(callout("danger", "Blockers", card.blockers, String));
+    if (card.warningCount) {
+      body.append(callout("warning", "Warnings", card.warnings, (item) => `${item.code ? `${item.code}: ` : ""}${item.message}`));
+    }
+    const timeline = buildTimelineModel(project, statusReport, bc.id);
+    if (timeline && timeline.coverage) body.append(createElement("p", "project-meta timeline-coverage", timeline.coverage));
+    const timelineSlot = createElement("div", "board-timeline-slot");
     timelineSlot.dataset.slot = "timeline";
     timelineSlot.dataset.bcId = bc.id;
     timelineSlot.hidden = true;
-    container.append(timelineSlot);
+    body.append(timelineSlot);
     if (timeline) renderTimeline(timeline, timelineSlot);
     const gateEvidence = appendTable(
-      container,
+      body,
       "All gate evidence",
-      ["Transition", "Gate", "Kind", "Result", "Evidence", "Signed by", "Date"],
-      (bc.gates || []).map((item) => ({
-        className: item.result === "FAIL" ? "gate-row-fail" : "",
-        cells: [
-          transitionKey(item.transition),
-          item.gate,
-          kindAbbr(item.kind),
-          resultBadge(item.result),
-          item.evidence,
-          item.signedBy,
-          item.date,
-        ],
-      })),
+      ["Gate", "Result", "Evidence and signer"],
+      (bc.gates || []).map((item) => {
+        const gateCell = createElement("div", "gate-cell");
+        const name = createElement("span", "gate-name");
+        name.append(createElement("strong", "", item.gate || "–"));
+        if (item.kind) name.append(document.createTextNode(" "), kindAbbr(item.kind));
+        gateCell.append(name);
+        if (item.transition) gateCell.append(createElement("span", "gate-transition muted", transitionKey(item.transition).replace("->", "→")));
+        gateCell.append(createElement("span", "gate-date cell-date", item.date || "no date"));
+        const evidence = createElement("div", "gate-evidence");
+        appendRichText(evidence, item.evidence || "–");
+        evidence.append(createElement("span", "gate-signer", item.signedBy ? `Signed by ${item.signedBy}` : "Unsigned"));
+        return {
+          className: item.result === "FAIL" ? "gate-row-fail" : "",
+          cells: [gateCell, resultBadge(item.result), evidence],
+        };
+      }),
+      { className: "drawer-section" },
     );
     gateEvidence.append(renderLegend("gates"));
     appendTable(
-      container,
+      body,
       "Open items",
       ["ID", "Item", "Owner", "Disposition"],
       (bc.openItems || []).map((item) => ({ cells: [item.id, item.item, item.owner, item.disposition] })),
+      { className: "drawer-section table-ids" },
     );
     appendTable(
-      container,
+      body,
       "Sign-offs",
       ["Kind", "File", "Date", "Outcome"],
-      (bc.signoffs || []).map((item) => ({
-        cells: [item.kind, createElement("code", "", item.file || "–"), item.date, item.outcome || item.status],
-      })),
+      (bc.signoffs || []).map((item) => {
+        const file = createElement("code", "cell-path", item.file || "–");
+        file.title = item.file || "";
+        return { cells: [item.kind, file, item.date, item.outcome || item.status] };
+      }),
+      { className: "drawer-section" },
     );
   }
 
@@ -2749,8 +3896,25 @@
     const warningBanner = document.getElementById("warningBanner");
     const warningBannerText = document.getElementById("warningBannerText");
     const warningBannerShow = document.getElementById("warningBannerShow");
+    const welcomePanel = document.getElementById("welcomePanel");
+    const welcomeLoadButton = document.getElementById("welcomeLoadBtn");
+    const welcomeStatus = document.getElementById("welcomeStatus");
+    const reloadButton = document.getElementById("reloadProjectBtn");
+    const appProject = document.getElementById("appProject");
+    const boardSummary = document.getElementById("boardSummary");
+    const boardViewButtons = Array.from(document.querySelectorAll("[data-board-view]"));
+    const drawer = document.getElementById("bcDrawer");
+    const drawerScrim = document.getElementById("bcDrawerScrim");
+    const drawerClose = document.getElementById("bcDrawerClose");
+    const projectName = document.getElementById("projectName");
+    const projectCanvas = document.getElementById("projectCanvas");
+    const scenarioBcFilter = document.getElementById("scenarioBcFilter");
+    const scenarioPickerEmpty = document.getElementById("scenarioPickerEmpty");
     if (!scenarioTab || !projectTab || !folderInput) return;
     let diagramZoom = 100;
+    let diagramFitted = true;
+    // Scenario counts per bdd-scenarios.md path, filled after a project loads.
+    let scenarioCounts = new Map();
     let topology = null;
     let projectFiles = new Map();
     let loadedProject = null;
@@ -2759,16 +3923,42 @@
     let statusReport = null;
     let selectedBcId = null;
     let activeScenarioId = null;
+    // Directory handle of the last showDirectoryPicker load, reused by Reload.
+    let lastHandle = null;
+    // Board view (T14b): "matrix" (default) or "kanban". Drawer focus return target.
+    let boardView = "matrix";
+    let drawerReturnFocus = null;
 
-    const updateZoom = (nextZoom) => {
-      diagramZoom = clampZoom(nextZoom);
+    // Zoom controls reflect either a manual zoom or the fit-to-view zoom.
+    const showZoom = () => {
       const svg = graph.querySelector("svg");
-      if (topology) topology.setZoom(diagramZoom);
       zoomLevel.value = `${diagramZoom}%`;
       zoomLevel.textContent = `${diagramZoom}%`;
       zoomOutButton.disabled = !svg || diagramZoom <= MIN_ZOOM;
       zoomInButton.disabled = !svg || diagramZoom >= MAX_ZOOM;
-      fitDiagramButton.disabled = !svg || diagramZoom === 100;
+      fitDiagramButton.disabled = !svg || diagramFitted;
+    };
+    const updateZoom = (nextZoom) => {
+      diagramZoom = clampZoom(nextZoom);
+      diagramFitted = false;
+      if (topology) topology.setZoom(diagramZoom);
+      showZoom();
+    };
+    // Mirrors .project-layout's --project-pane-height (CSS) for the diagram's shape.
+    const projectPaneHeight = () => {
+      const appbarHeight =
+        parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--appbar-height")) || 104;
+      return Math.max(520, window.innerHeight - appbarHeight - 168);
+    };
+    // Stacked layout (< 1280px): the diagram panel shrinks to the fitted drawing.
+    const projectFitHeight = () =>
+      window.matchMedia && window.matchMedia("(min-width: 1280px)").matches
+        ? null
+        : { min: 320, max: projectPaneHeight(), margin: 34 };
+    const onZoomChange = (percent, fitted) => {
+      diagramZoom = percent;
+      diagramFitted = fitted;
+      showZoom();
     };
 
     const scenarioPathFor = (bcId) => {
@@ -2776,65 +3966,188 @@
       return findScenarioPath(bc, projectFiles);
     };
 
+    // Scenarios picker (T14c): BCs grouped by domain with scenario count and
+    // lifecycle pill; the search box filters by name.
     const renderScenarioSources = () => {
       if (!scenarioSources) return;
-      const groups = listScenarioSources(loadedProject, projectFiles);
+      const all = listScenarioSources(loadedProject, projectFiles);
+      const groups = filterScenarioSources(all, scenarioBcFilter ? scenarioBcFilter.value : "");
       scenarioSources.replaceChildren();
-      scenarioSources.hidden = groups.length === 0;
+      scenarioSources.hidden = all.length === 0;
+      if (scenarioBcFilter) scenarioBcFilter.hidden = all.length === 0;
+      if (scenarioPickerEmpty) scenarioPickerEmpty.hidden = all.length > 0;
+      if (all.length && !groups.length) {
+        scenarioSources.append(createElement("p", "muted picker-none", "No bounded context matches."));
+      }
       for (const group of groups) {
-        const groupElement = createElement("div", "scenario-source-group");
-        groupElement.append(createElement("span", "scenario-source-label", group.label));
-        const pills = createElement("div", "scenario-source-pills");
+        const groupElement = createElement("div", "picker-group");
+        groupElement.append(createElement("h3", "picker-group-label", group.label));
+        const list = createElement("div", "picker-items");
         for (const item of group.items) {
-          const pill = createElement("button", "bc-pill", item.name);
-          pill.type = "button";
-          pill.dataset.bcId = item.id;
-          pill.disabled = !item.path;
-          pill.title = item.path || "No bdd-scenarios.md found for this bounded context";
-          pill.setAttribute("aria-pressed", String(item.id === activeScenarioId));
-          pill.addEventListener("click", () => showScenarios(item.id, item.path));
-          pills.append(pill);
+          const bc = loadedProject && loadedProject.boundedContexts.find((entry) => entry.id === item.id);
+          const button = createElement("button", "picker-item");
+          button.type = "button";
+          button.dataset.bcId = item.id;
+          button.disabled = !item.path;
+          button.title = item.path || "No bdd-scenarios.md found for this bounded context";
+          button.setAttribute("aria-pressed", String(item.id === activeScenarioId));
+          button.append(createElement("span", "picker-name clamp-2", item.name));
+          const count = item.path ? scenarioCounts.get(item.path) : null;
+          const countChip = createElement(
+            "span",
+            "chip picker-count tnum",
+            item.path ? (typeof count === "number" ? String(count) : "…") : "0",
+          );
+          countChip.title = item.path
+            ? typeof count === "number"
+              ? plural(count, "scenario")
+              : "Counting scenarios"
+            : "No scenarios file";
+          button.append(countChip);
+          const meta = createElement("span", "picker-meta");
+          if (bc) meta.append(lifecyclePill(bc.lifecycle));
+          if (!item.path) meta.append(createElement("span", "muted", "No scenarios file"));
+          button.append(meta);
+          button.addEventListener("click", () => showScenarios(item.id, item.path));
+          list.append(button);
         }
-        groupElement.append(pills);
+        groupElement.append(list);
         scenarioSources.append(groupElement);
       }
     };
 
     const markActivePill = () => {
       if (!scenarioSources) return;
-      for (const pill of scenarioSources.querySelectorAll(".bc-pill")) {
-        pill.setAttribute("aria-pressed", String(pill.dataset.bcId === activeScenarioId));
+      for (const button of scenarioSources.querySelectorAll(".picker-item")) {
+        button.setAttribute("aria-pressed", String(button.dataset.bcId === activeScenarioId));
       }
     };
 
-    const showScenarios = async (bcId, path) => {
-      if (!path || !projectFiles.has(path)) return;
-      scenarioSource.value = await projectFiles.get(path).text();
-      scenarioRender.click();
+    const countAllScenarios = async () => {
+      const items = listScenarioSources(loadedProject, projectFiles).flatMap((group) => group.items);
+      const counts = new Map();
+      for (const item of items) {
+        if (item.path && projectFiles.has(item.path)) counts.set(item.path, countScenarios(await projectFiles.get(item.path).text()));
+      }
+      scenarioCounts = counts;
+      renderScenarioSources();
+    };
+
+    // Renders one BC's scenarios in the Scenarios tab without switching to it.
+    const loadScenarios = async (bcId, path) => {
+      if (!path || !projectFiles.has(path)) return false;
+      const text = await projectFiles.get(path).text();
+      const bc = loadedProject && loadedProject.boundedContexts.find((item) => item.id === bcId);
+      const domain = bc && loadedProject.domains.find((item) => item.id === bc.domainId);
+      if (typeof window !== "undefined" && typeof window.renderScenarioSource === "function") {
+        window.renderScenarioSource(text, {
+          eyebrow: domain ? domain.name : "Bounded context",
+          title: bc ? bc.name : bcId,
+          path,
+          lifecycle: bc ? bc.lifecycle : null,
+        });
+      } else {
+        scenarioSource.value = text;
+        scenarioRender.click();
+      }
       activeScenarioId = bcId;
       markActivePill();
+      return true;
+    };
+
+    const showScenarios = async (bcId, path) => {
+      if (!(await loadScenarios(bcId, path))) return;
       if (loadedProject && loadedProject.boundedContexts.some((bc) => bc.id === bcId)) selectBc(bcId);
       activate("scenario");
     };
 
+    const openDiagnostics = () => {
+      closeDrawer(false);
+      activate("board");
+      if (!boardDiagnostics) return;
+      boardDiagnostics.open = true;
+      boardDiagnostics.scrollIntoView({ block: "center" });
+      const summaryElement = boardDiagnostics.querySelector("summary");
+      if (summaryElement) summaryElement.focus();
+    };
+
+    const focusGaps = () => {
+      if (!gapLedger) return;
+      gapLedger.scrollIntoView({ block: "start" });
+      gapLedger.focus({ preventScroll: true });
+    };
+
+    // BC slide-over (T14b): modal, Esc / close button / scrim close it, Tab is
+    // trapped inside and focus returns to the row that opened it. URL-free.
+    const shellParts = () => Array.from(document.querySelectorAll(".app-bar, .app-main"));
+    const isDrawerOpen = () => Boolean(drawer) && !drawer.hidden;
+    const openDrawer = (bcId, trigger) => {
+      if (!drawer) return;
+      // Re-rendering the selected BC would detach the trigger (focus return target).
+      if (bcId !== selectedBcId) selectBc(bcId);
+      else if (loadedBoard) renderBoardDetails(loadedProject, loadedBoard, bcId, boardDetails, statusReport);
+      if (trigger) drawerReturnFocus = trigger;
+      if (!isDrawerOpen()) {
+        drawer.hidden = false;
+        if (drawerScrim) drawerScrim.hidden = false;
+        document.body.classList.add("has-drawer");
+        for (const part of shellParts()) part.inert = true;
+      }
+      if (boardDetails) boardDetails.scrollTop = 0;
+      (drawerClose || drawer).focus();
+    };
+    function closeDrawer(restoreFocus = true) {
+      if (!isDrawerOpen()) return;
+      drawer.hidden = true;
+      if (drawerScrim) drawerScrim.hidden = true;
+      document.body.classList.remove("has-drawer");
+      for (const part of shellParts()) part.inert = false;
+      if (restoreFocus) {
+        const target =
+          (drawerReturnFocus && drawerReturnFocus.isConnected && drawerReturnFocus) ||
+          (boardLanes && selectedBcId && boardLanes.querySelector(`[data-bc-id="${CSS.escape(selectedBcId)}"]`));
+        if (target) target.focus();
+      }
+      drawerReturnFocus = null;
+    }
+
+    const onBoardSelect = (bcId, trigger) => openDrawer(bcId, trigger);
+
     const renderBoard = () => {
       if (!boardLanes || !loadedBoard) return;
-      renderBoardLanes(loadedBoard, boardLanes, selectedBcId, selectBc);
+      if (boardSummary) {
+        renderSummaryStrip(loadedBoard, boardSummary, { onGaps: focusGaps, onWarnings: openDiagnostics, onBc: onBoardSelect });
+      }
+      renderBoardLanes(loadedBoard, boardLanes, selectedBcId, onBoardSelect, boardView);
+      for (const button of boardViewButtons) {
+        button.setAttribute("aria-pressed", String(button.dataset.boardView === boardView));
+      }
       renderBoardDetails(loadedProject, loadedBoard, selectedBcId, boardDetails, statusReport);
     };
 
+    const detailOptions = (bcId) => ({
+      board: loadedBoard,
+      scenarioPath: scenarioPathFor(bcId),
+      onOpenBoard: (id, trigger) => openDrawer(id, trigger),
+      onViewScenarios: (id) => showScenarios(id, scenarioPathFor(id)),
+      onRelationHover: (number) => topology && topology.highlightRelation(number),
+    });
+
     const selectBc = (bcId) => {
       selectedBcId = bcId;
-      if (loadedProject) renderDetails(loadedProject, bcId, details);
+      if (loadedProject) renderDetails(loadedProject, bcId, details, detailOptions(bcId));
+      if (topology) topology.highlight(bcId);
       if (boardLanes && loadedBoard) {
-        for (const card of boardLanes.querySelectorAll(".board-card")) {
+        for (const card of boardLanes.querySelectorAll("[data-bc-id]")) {
           card.setAttribute("aria-pressed", String(card.dataset.bcId === bcId));
         }
         renderBoardDetails(loadedProject, loadedBoard, bcId, boardDetails, statusReport);
       }
-      const path = scenarioPathFor(bcId);
-      viewScenariosButton.disabled = !path;
-      viewScenariosButton.title = path ? path : "No bdd-scenarios.md found for this bounded context";
+      if (viewScenariosButton) {
+        const path = scenarioPathFor(bcId);
+        viewScenariosButton.disabled = !path;
+        viewScenariosButton.title = path ? path : "No bdd-scenarios.md found for this bounded context";
+      }
     };
 
     const tabs = [
@@ -2843,7 +4156,9 @@
       ["board", boardTab, boardPanel],
     ].filter(([, tab, panel]) => tab && panel);
 
+    // "welcome" is the first-run screen: no tab selected, tabs stay reachable.
     const activate = (name) => {
+      if (welcomePanel) welcomePanel.hidden = name !== "welcome";
       for (const [tabName, tab, panel] of tabs) {
         panel.hidden = tabName !== name;
         tab.setAttribute("aria-selected", String(tabName === name));
@@ -2853,6 +4168,7 @@
     const showLoadError = (message) => {
       renderDiagnostics([{ severity: "error", message }], diagnostics);
       if (scenarioStatus) scenarioStatus.textContent = message;
+      if (welcomeStatus) welcomeStatus.textContent = message;
     };
 
     const applyProjectFiles = async (fileMap, folderName) => {
@@ -2865,6 +4181,7 @@
         return;
       }
       details.replaceChildren(createElement("p", "muted", "Loading project artifacts..."));
+      closeDrawer(false);
       projectFiles = fileMap;
       activeScenarioId = null;
       const loaded = await loadProject(fileMap);
@@ -2872,18 +4189,34 @@
       statusReport = loaded.statusReport;
       loadedBoard = buildBoardModel(loaded.project);
       if (warningBanner) renderWarningBanner(loadedBoard, warningBanner, warningBannerText);
+      renderProjectIdentity(folderName);
       if (boardDiagnostics) {
         renderBoardDiagnostics(loadedBoard, boardDiagnostics, boardDiagnosticsList, boardDiagnosticsCount);
       }
       if (gapLedger) renderGapLedger(loadedBoard, gapLedger);
       renderSummary(loaded.project, summary);
       renderDiagnostics(loaded.diagnostics, diagnostics);
-      topology = renderTopology(loaded.project, graph, selectBc);
-      updateZoom(100);
+      diagramFitted = true;
+      topology = renderTopology(loaded.project, graph, selectBc, {
+        board: loadedBoard,
+        overlay: projectCanvas || graph,
+        onZoomChange,
+        paneHeight: projectPaneHeight,
+        fitHeight: projectFitHeight,
+      });
+      showZoom();
       selectedBcId = loaded.project.boundedContexts[0] && loaded.project.boundedContexts[0].id;
       renderBoard();
       selectBc(selectedBcId);
+      scenarioCounts = new Map();
+      if (scenarioBcFilter) scenarioBcFilter.value = "";
       renderScenarioSources();
+      countAllScenarios();
+      // Show the selected BC's scenarios (or the first BC that has some) in the Scenarios tab.
+      const firstWithScenarios = [selectedBcId]
+        .concat(listScenarioSources(loadedProject, projectFiles).flatMap((group) => group.items.map((item) => item.id)))
+        .find((id) => id && scenarioPathFor(id));
+      if (firstWithScenarios) await loadScenarios(firstWithScenarios, scenarioPathFor(firstWithScenarios));
       if (scenarioStatus) {
         const items = listScenarioSources(loadedProject, projectFiles).flatMap((group) => group.items);
         const withScenarios = items.filter((item) => item.path).length;
@@ -2901,6 +4234,25 @@
       }
     };
 
+    // App bar: project name, reload state and the first-run screen.
+    const renderProjectIdentity = (folderName) => {
+      const name = (loadedProject && loadedProject.project && loadedProject.project.name) || folderName || "hGATE project";
+      if (projectName) {
+        projectName.textContent = name;
+        projectName.title = folderName && folderName !== name ? `${name} (folder: ${folderName})` : name;
+      }
+      if (appProject) appProject.classList.remove("is-empty");
+      if (typeof document !== "undefined") document.title = `${name} · hGATE viewer`;
+      if (welcomeStatus) welcomeStatus.textContent = "";
+      if (reloadButton) {
+        reloadButton.disabled = false;
+        reloadButton.title = lastHandle
+          ? `Re-read ${lastHandle.name} from disk`
+          : "Pick the project folder again to re-read it (this browser cannot re-open a folder by itself)";
+      }
+      if (welcomePanel && !welcomePanel.hidden) activate("board");
+    };
+
     const loadSafely = async (load) => {
       try {
         await load();
@@ -2916,6 +4268,7 @@
       if (typeof window.showDirectoryPicker === "function") {
         loadSafely(async () => {
           const handle = await window.showDirectoryPicker({ id: "hgate-project", mode: "read" });
+          lastHandle = handle;
           await applyProjectFiles(await readProjectDirectory(handle), handle.name);
         });
       } else {
@@ -2923,38 +4276,90 @@
       }
     };
 
+    // Reload re-reads the same directory handle; without one (webkitdirectory
+    // fallback) the browser has to ask for the folder again.
+    const reloadProject = () => {
+      if (!lastHandle) {
+        pickProject();
+        return;
+      }
+      loadSafely(async () => {
+        await applyProjectFiles(await readProjectDirectory(lastHandle), lastHandle.name);
+      });
+    };
+
     scenarioTab.addEventListener("click", () => activate("scenario"));
     projectTab.addEventListener("click", () => activate("project"));
     if (boardTab) boardTab.addEventListener("click", () => activate("board"));
     if (boardLoadButton) boardLoadButton.addEventListener("click", pickProject);
-    if (warningBannerShow) {
-      warningBannerShow.addEventListener("click", () => {
-        activate("board");
-        if (!boardDiagnostics) return;
-        boardDiagnostics.open = true;
-        boardDiagnostics.scrollIntoView({ block: "start" });
-        const summaryElement = boardDiagnostics.querySelector("summary");
-        if (summaryElement) summaryElement.focus();
+    if (welcomeLoadButton) welcomeLoadButton.addEventListener("click", pickProject);
+    if (reloadButton) reloadButton.addEventListener("click", reloadProject);
+    if (warningBannerShow) warningBannerShow.addEventListener("click", openDiagnostics);
+    for (const button of boardViewButtons) {
+      button.addEventListener("click", () => {
+        boardView = button.dataset.boardView === "kanban" ? "kanban" : "matrix";
+        renderBoard();
+      });
+    }
+    if (drawerClose) drawerClose.addEventListener("click", () => closeDrawer());
+    if (drawerScrim) drawerScrim.addEventListener("click", () => closeDrawer());
+    if (drawer) {
+      // Capture phase: the drawer sits above the help panel, so Esc closes it first.
+      document.addEventListener(
+        "keydown",
+        (event) => {
+          if (event.key === "Escape" && isDrawerOpen()) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            closeDrawer();
+          }
+        },
+        true,
+      );
+      drawer.addEventListener("keydown", (event) => {
+        if (event.key !== "Tab") return;
+        const focusable = Array.from(
+          drawer.querySelectorAll('button, [href], summary, input, select, textarea, [tabindex]:not([tabindex="-1"])'),
+        ).filter((element) => !element.disabled && element.getClientRects().length > 0);
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && (document.activeElement === first || document.activeElement === drawer)) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
       });
     }
     initHelpPanel();
     selectButton.addEventListener("click", pickProject);
     if (scenarioLoadButton) scenarioLoadButton.addEventListener("click", pickProject);
-    viewScenariosButton.addEventListener("click", () =>
-      showScenarios(selectedBcId, scenarioPathFor(selectedBcId)),
-    );
+    if (viewScenariosButton) {
+      viewScenariosButton.addEventListener("click", () => showScenarios(selectedBcId, scenarioPathFor(selectedBcId)));
+    }
+    if (scenarioBcFilter) scenarioBcFilter.addEventListener("input", renderScenarioSources);
+    // Pasted Markdown or a single opened file replaces the BC selection in the picker.
+    document.addEventListener("hgate:scenario-source", () => {
+      activeScenarioId = null;
+      markActivePill();
+    });
     zoomOutButton.addEventListener("click", () => updateZoom(diagramZoom - ZOOM_STEP));
     zoomInButton.addEventListener("click", () => updateZoom(diagramZoom + ZOOM_STEP));
-    fitDiagramButton.addEventListener("click", () => updateZoom(100));
+    fitDiagramButton.addEventListener("click", () => {
+      if (topology) topology.fit();
+    });
     folderInput.addEventListener("change", () =>
       loadSafely(async () => {
         const [first] = Array.from(folderInput.files || []);
         const folderName = first && first.webkitRelativePath ? first.webkitRelativePath.split("/")[0] : "";
+        lastHandle = null;
         await applyProjectFiles(indexFiles(folderInput.files), folderName);
         folderInput.value = "";
       }),
     );
-    activate("scenario");
+    activate(welcomePanel ? "welcome" : "scenario");
   }
 
   if (typeof document !== "undefined") {
@@ -2980,6 +4385,7 @@
     renderGapLedger,
     renderBoardDetails,
     renderBoardLanes,
+    renderSummaryStrip,
     slug,
     parseTable,
     parseDomainMap,
@@ -3004,6 +4410,10 @@
     buildTimelineModel,
     warningBannerText,
     buildBoardModel,
+    buildSummaryStrip,
+    buildLifecycleMatrix,
+    collapseDispositions,
+    baseLifecycleOf,
     gapStateLabel,
     isOpenGap,
     gapPanelModel,
@@ -3018,8 +4428,23 @@
     readProjectDirectory,
     loadProject,
     layoutProject,
+    fittedPanelHeight,
+    estimateLabelWidth,
+    domainLabelRect,
     computeCanvasSize,
     clampZoom,
     abbreviateEdgeLabel,
+    domainBoxes,
+    contentBounds,
+    chooseRowWidth,
+    fitZoom,
+    numberRelationships,
+    assignEdgeBends,
+    edgeGeometry,
+    curveHitsRects,
+    curveHitCost,
+    lifecycleTone,
+    countScenarios,
+    filterScenarioSources,
   };
 });

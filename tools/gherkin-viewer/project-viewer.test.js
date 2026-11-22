@@ -1050,3 +1050,362 @@ test("gapPanelModel works on buildBoardModel gaps and GLOSSARY explains every pa
   }
   assert.ok(viewer.compareGapIds("G2", "G11") < 0);
 });
+
+// --- T14b: summary strip, lifecycle matrix, collapsed dispositions ----------
+
+function boardCard(id, lifecycle, extra = {}) {
+  return {
+    id,
+    name: extra.name || id,
+    classification: extra.classification || "CORE",
+    role: extra.role || "PRIMARY",
+    lifecycle,
+    baseLifecycle: extra.baseLifecycle === undefined ? (viewer.MAIN_LIFECYCLES.includes(lifecycle) ? lifecycle : null) : extra.baseLifecycle,
+    lifecycleDate: extra.date || null,
+    lifecycleFrom: extra.from || null,
+    nextSkill: extra.nextSkill || null,
+    blockers: extra.blockers || [],
+    stats: { openGaps: extra.openGaps === undefined ? 0 : extra.openGaps },
+    gateSummary: extra.gates || { total: 2, satisfied: 2, valid: true, unmetGates: [], transition: null },
+    warningCount: extra.warningCount || 0,
+  };
+}
+
+test("buildSummaryStrip counts BCs by state, valid gates, open gaps, warnings and the last change", () => {
+  const board = {
+    cards: [
+      boardCard("a", "REFINED", { name: "Alpha", date: "2026-10-01", from: "REFINING" }),
+      boardCard("b", "REFINED", { name: "Beta", date: "2026-11-02", from: "REFINING" }),
+      boardCard("c", "BLOCKED", {
+        name: "Gamma",
+        date: "2026-10-20",
+        gates: { total: 3, satisfied: 1, valid: false, unmetGates: ["GATE-X (FAIL)"], transition: null },
+      }),
+    ],
+    gaps: [{ state: "OPEN" }, { state: "PARTIAL" }, { state: "MIXED" }, { state: "DEFERRED" }, { state: "RESOLVED" }],
+    warnings: { count: 2 },
+  };
+  const strip = viewer.buildSummaryStrip(board);
+  assert.equal(strip.total, 3);
+  assert.deepEqual(strip.byState.map((entry) => [entry.state, entry.count]), [["REFINED", 2], ["BLOCKED", 1]]);
+  assert.equal(strip.stateText, "2 Refined · 1 Blocked");
+  assert.equal(strip.gates.text, "2/3");
+  assert.equal(strip.gates.allValid, false);
+  assert.deepEqual(strip.gates.invalidNames, ["Gamma"]);
+  assert.equal(strip.gaps.open, 3, "open + partial + mixed; deferred is reported separately");
+  assert.equal(strip.gaps.tone, "danger");
+  assert.equal(strip.gaps.detail, "1 open · 1 partial · 1 drift · 1 deferred");
+  assert.equal(strip.warnings.count, 2);
+  assert.deepEqual(
+    { date: strip.lastChange.date, bcId: strip.lastChange.bcId, from: strip.lastChange.from, to: strip.lastChange.to },
+    { date: "2026-11-02", bcId: "b", from: "REFINING", to: "REFINED" },
+  );
+});
+
+test("buildSummaryStrip handles an empty board", () => {
+  const strip = viewer.buildSummaryStrip({ cards: [], gaps: [], warnings: { count: 0 } });
+  assert.equal(strip.total, 0);
+  assert.equal(strip.lastChange, null);
+  assert.equal(strip.gaps.detail, "No gaps recorded");
+  assert.equal(strip.gaps.tone, "neutral");
+  assert.equal(strip.warnings.tone, "neutral");
+});
+
+test("buildLifecycleMatrix builds rails, markers, gate progress and hides a duplicate role", () => {
+  const board = {
+    cards: [
+      boardCard("refined", "REFINED", { classification: "SUPPORTING", role: "SUPPORTING", openGaps: 2 }),
+      boardCard("blocked", "BLOCKED", {
+        baseLifecycle: "SPEC_REVIEWED",
+        gates: { total: 3, satisfied: 1, valid: false, unmetGates: ["GATE-B (FAIL)"], transition: "SPEC_REVIEWED -> BLOCKED" },
+      }),
+      boardCard("none", "CHANGING", { baseLifecycle: null, gates: { total: 0, satisfied: 0, valid: false, unmetGates: [] } }),
+    ],
+    columns: [
+      { state: "DISCOVERED", label: "Discovered", optional: false, cards: [] },
+      { state: "REFINED", label: "Refined", optional: false, cards: [] },
+    ],
+  };
+  board.columns[1].cards = [board.cards[0]];
+  const matrix = viewer.buildLifecycleMatrix(board);
+  assert.deepEqual(matrix.states.map((state) => state.state), viewer.MAIN_LIFECYCLES);
+  assert.deepEqual(matrix.rows.map((row) => row.id), ["blocked", "refined", "none"], "most advanced first, unknown last");
+
+  const refined = matrix.rows.find((row) => row.id === "refined");
+  assert.equal(refined.showRole, false);
+  assert.equal(refined.marker, null);
+  assert.deepEqual(refined.steps.slice(0, 4).map((step) => step.status), ["done", "done", "current", "future"]);
+  assert.equal(refined.gates.text, "2/2");
+  assert.equal(refined.gates.tone, "success");
+  assert.equal(refined.openGaps, 2);
+
+  const blocked = matrix.rows.find((row) => row.id === "blocked");
+  assert.equal(blocked.showRole, true);
+  assert.deepEqual(blocked.marker, { state: "BLOCKED", label: "Blocked" });
+  assert.equal(blocked.steps[3].status, "current");
+  assert.equal(blocked.gates.tone, "danger");
+  assert.match(blocked.gates.title, /Unmet: GATE-B \(FAIL\)/);
+
+  const none = matrix.rows.find((row) => row.id === "none");
+  assert.equal(none.position, -1);
+  assert.ok(none.steps.every((step) => step.status === "future"));
+  assert.equal(none.gates.text, "–");
+
+  assert.deepEqual(matrix.columns.map((column) => [column.state, column.collapsed]), [["DISCOVERED", true], ["REFINED", false]]);
+});
+
+test("baseLifecycleOf finds the main state behind CHANGING, BLOCKED and DEPRECATED", () => {
+  assert.equal(viewer.baseLifecycleOf({}, "REFINED"), "REFINED");
+  const bc = {
+    transitions: [
+      { from: "-", to: "DISCOVERED", date: "2026-10-01" },
+      { from: "DISCOVERED", to: "VERIFIED", date: "2026-10-02" },
+      { from: "VERIFIED", to: "CHANGING", date: "2026-10-03" },
+    ],
+  };
+  assert.equal(viewer.baseLifecycleOf(bc, "CHANGING"), "VERIFIED");
+  assert.equal(viewer.baseLifecycleOf({ transitions: [] }, "BLOCKED"), null);
+});
+
+test("buildBoardModel cards carry lifecycleFrom and baseLifecycle", () => {
+  const board = viewer.buildBoardModel(viewer.normalizeProject(exampleV2, "canonical"));
+  for (const card of board.cards) {
+    assert.ok("lifecycleFrom" in card && "baseLifecycle" in card, card.id);
+    if (viewer.MAIN_LIFECYCLES.includes(card.lifecycle)) assert.equal(card.baseLifecycle, card.lifecycle);
+  }
+  const strip = viewer.buildSummaryStrip(board);
+  assert.equal(strip.total, board.cards.length);
+  assert.equal(viewer.buildLifecycleMatrix(board).rows.length, board.cards.length);
+});
+
+test("collapseDispositions shows identical dispositions once with n sources agree", () => {
+  const model = viewer.collapseDispositions([
+    { location: "a.md:1", disposition: "Deferred to ADR", owner: "PO" },
+    { location: "b.md:2", disposition: "  Deferred   to ADR ", owner: "PO" },
+    { location: "c.md:3", disposition: "Deferred to ADR", owner: "PO" },
+  ]);
+  assert.equal(model.agree, true);
+  assert.equal(model.common.disposition, "Deferred to ADR");
+  assert.equal(model.common.text, "3 sources agree");
+  assert.deepEqual(model.common.owners, ["PO"]);
+  assert.deepEqual(model.differing, []);
+  assert.equal(viewer.collapseDispositions([{ disposition: "x" }]).common.text, "1 source agrees");
+});
+
+test("collapseDispositions lists only the sources that differ from the common disposition", () => {
+  const sources = [
+    { location: "a.md:1", disposition: "Resolved for A; B to confirm" },
+    { location: "b.md:2", disposition: "Open" },
+    { location: "c.md:3", disposition: "Resolved for A; B to confirm" },
+  ];
+  const model = viewer.collapseDispositions(sources);
+  assert.equal(model.agree, false);
+  assert.equal(model.groupCount, 2);
+  assert.equal(model.common.text, "2 of 3 sources agree");
+  assert.deepEqual(model.differing.map((item) => item.location), ["b.md:2"]);
+  const empty = viewer.collapseDispositions([]);
+  assert.equal(empty.common, null);
+  assert.equal(empty.count, 0);
+});
+
+// --- Project diagram and Scenarios helpers (T14c) -----------------------------
+
+function diagramProject() {
+  return {
+    domains: [
+      { id: "commerce", name: "Commerce" },
+      { id: "identity", name: "Identity" },
+    ],
+    boundedContexts: [
+      { id: "cart", name: "Cart", domainId: "commerce" },
+      { id: "ordering", name: "Ordering", domainId: "commerce" },
+      { id: "catalog", name: "Catalog", domainId: "commerce" },
+      { id: "auth", name: "Auth", domainId: "identity" },
+    ],
+    relationships: [
+      { id: "r1", from: "cart", to: "ordering" },
+      { id: "r2", from: "ordering", to: "cart" },
+      { id: "r3", from: "auth", to: "ordering" },
+      { id: "r4", from: "auth", to: "ghost" },
+      { id: "r5", from: "cart", to: "cart" },
+    ],
+  };
+}
+
+test("layoutProject places every BC inside its domain box and boxes never overlap", () => {
+  const layout = viewer.layoutProject(diagramProject());
+  assert.deepEqual(layout.domains.map((box) => box.id), ["commerce", "identity"]);
+  for (const [id, position] of layout.positions) {
+    const box = layout.domains.find((item) => item.id === position.domainId);
+    assert.ok(position.x >= box.x && position.x + layout.nodeWidth <= box.x + box.width, `${id} x inside`);
+    assert.ok(position.y >= box.y && position.y + layout.nodeHeight <= box.y + box.height, `${id} y inside`);
+  }
+  const [a, b] = layout.domains;
+  assert.ok(a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y);
+  assert.ok(layout.width >= Math.max(...layout.domains.map((box) => box.x + box.width)));
+});
+
+test("layoutProject wraps domain rows at maxRowWidth and domainBoxes reproduces the boxes", () => {
+  const project = diagramProject();
+  const wide = viewer.layoutProject(project, { maxRowWidth: 100000 });
+  assert.equal(wide.domains[0].y, wide.domains[1].y);
+  const narrow = viewer.layoutProject(project, { maxRowWidth: wide.domains[0].x + wide.domains[0].width + 1 });
+  assert.ok(narrow.domains[1].y > narrow.domains[0].y + narrow.domains[0].height - 1);
+  assert.equal(narrow.domains[1].x, narrow.domains[0].x);
+  assert.deepEqual(viewer.domainBoxes(wide.columns, wide.positions), wide.domains);
+});
+
+test("chooseRowWidth wraps for a tall panel and keeps one row for a wide one", () => {
+  const project = diagramProject();
+  const single = viewer.layoutProject(project, { maxRowWidth: 100000 });
+  assert.equal(viewer.chooseRowWidth(project, 20), single.width);
+  const tall = viewer.layoutProject(project, { maxRowWidth: viewer.chooseRowWidth(project, 0.5) });
+  assert.ok(tall.domains[1].y > tall.domains[0].y);
+});
+
+test("contentBounds and fitZoom size the diagram to the panel within bounds", () => {
+  assert.deepEqual(
+    viewer.contentBounds([
+      { x: 10, y: 20, width: 100, height: 50 },
+      { x: 200, y: 0, width: 10, height: 10 },
+    ]),
+    { x: 10, y: 0, width: 200, height: 70 },
+  );
+  assert.deepEqual(viewer.contentBounds([]), { x: 0, y: 0, width: 0, height: 0 });
+  assert.equal(viewer.fitZoom({ visibleWidth: 1032, visibleHeight: 1000, contentWidth: 1000, contentHeight: 200 }), 100);
+  assert.equal(viewer.fitZoom({ visibleWidth: 4000, visibleHeight: 4000, contentWidth: 100, contentHeight: 100 }), 125);
+  assert.equal(viewer.fitZoom({ visibleWidth: 100, visibleHeight: 100, contentWidth: 5000, contentHeight: 5000 }), 35);
+  assert.equal(viewer.fitZoom({ visibleWidth: 0, visibleHeight: 500, contentWidth: 100, contentHeight: 100 }), 100);
+});
+
+test("numberRelationships numbers only drawable relationships in projection order", () => {
+  const numbered = viewer.numberRelationships(diagramProject());
+  assert.deepEqual(
+    numbered.map((relation) => [relation.id, relation.number]),
+    [
+      ["r1", 1],
+      ["r2", 2],
+      ["r3", 3],
+    ],
+  );
+  assert.deepEqual(viewer.numberRelationships(null), []);
+});
+
+test("assignEdgeBends fans out edges between the same pair and keeps single edges straight", () => {
+  const bends = viewer.assignEdgeBends(viewer.numberRelationships(diagramProject()), 56);
+  assert.equal(bends[2], 0);
+  assert.equal(Math.abs(bends[0]), 28);
+  assert.equal(Math.abs(bends[1]), 28);
+  // cart->ordering and ordering->cart: their normals point opposite ways, so
+  // equal signed bends put the two curves on opposite sides of the line.
+  assert.equal(bends[0], bends[1]);
+});
+
+test("edgeGeometry draws straight between nodes and detours around an obstacle", () => {
+  const from = { x: 0, y: 0, width: 100, height: 50 };
+  const to = { x: 400, y: 0, width: 100, height: 50 };
+  const straight = viewer.edgeGeometry(from, to);
+  assert.equal(straight.offset, 0);
+  assert.equal(straight.mid.y, 25);
+  assert.ok(Math.abs(straight.mid.x - 250) < 1);
+  assert.ok(straight.start.x > 100 && straight.end.x < 400);
+  const obstacle = { x: 200, y: -10, width: 100, height: 70 };
+  const routed = viewer.edgeGeometry(from, to, 0, [obstacle]);
+  assert.notEqual(routed.offset, 0);
+  assert.equal(viewer.curveHitsRects(routed.start, routed.control, routed.end, [obstacle]), false);
+  assert.match(routed.d, /^M [\d.-]+ [\d.-]+ Q [\d.-]+ [\d.-]+ [\d.-]+ [\d.-]+$/);
+});
+
+test("lifecycleTone matches the Board drawer pill tones", () => {
+  assert.equal(viewer.lifecycleTone("VERIFIED"), "pill-success");
+  assert.equal(viewer.lifecycleTone("BLOCKED"), "pill-danger");
+  assert.equal(viewer.lifecycleTone("DEPRECATED"), "pill-neutral");
+  assert.equal(viewer.lifecycleTone("REFINED"), "pill-info");
+});
+
+test("countScenarios counts scenarios and outlines inside gherkin blocks only", () => {
+  const markdown = [
+    "# Scenarios",
+    "Scenario: outside a block is ignored",
+    "```gherkin",
+    "Feature: Ordering",
+    "  @scenario:ORD-SUBMIT-001",
+    "  Scenario: Submit",
+    "  Scenario Outline: Totals",
+    "```",
+    "```text",
+    "Scenario: not gherkin",
+    "```",
+    "\\`\\`\\`gherkin",
+    "Scenario Template: escaped fence",
+    "\\`\\`\\`",
+  ].join("\n");
+  assert.equal(viewer.countScenarios(markdown), 3);
+  assert.equal(viewer.countScenarios(""), 0);
+});
+
+test("filterScenarioSources matches BC names, ids and group labels", () => {
+  const groups = [
+    { label: "Commerce", items: [{ id: "ordering", name: "Ordering" }, { id: "catalog", name: "Catalog" }] },
+    { label: "Identity", items: [{ id: "auth", name: "Auth" }] },
+  ];
+  assert.equal(viewer.filterScenarioSources(groups, ""), groups);
+  assert.deepEqual(viewer.filterScenarioSources(groups, "ORDER"), [
+    { label: "Commerce", items: [{ id: "ordering", name: "Ordering" }] },
+  ]);
+  assert.deepEqual(viewer.filterScenarioSources(groups, "ident"), [groups[1]]);
+  assert.deepEqual(viewer.filterScenarioSources(groups, "zzz"), []);
+});
+
+// T14d: diagram re-wrap, label-aware routing and panel sizing helpers.
+test("chooseRowWidth can wrap a later run of domains onto a shared row", () => {
+  const bc = (id, domainId) => ({ id, name: id, domainId, classification: "CORE", role: "PRIMARY" });
+  const project = {
+    domains: [
+      { id: "a", name: "A" },
+      { id: "b", name: "B" },
+      { id: "c", name: "C" },
+    ],
+    boundedContexts: [bc("a1", "a"), bc("a2", "a"), bc("a3", "a"), bc("a4", "a"), bc("b1", "b"), bc("b2", "b"), bc("c1", "c")],
+    relationships: [],
+  };
+  const layout = viewer.layoutProject(project, { maxRowWidth: viewer.chooseRowWidth(project, 1.43) });
+  const [a, b, c] = layout.domains;
+  assert.ok(b.y > a.y, "second domain wraps below the first");
+  assert.equal(c.y, b.y, "third domain shares the second row");
+});
+
+test("curveHitCost weighs node hits above label hits and edgeGeometry prefers crossing a label", () => {
+  const start = { x: 0, y: 0 };
+  const end = { x: 100, y: 0 };
+  const control = { x: 50, y: 0 };
+  const node = { x: 40, y: -5, width: 20, height: 10 };
+  const label = { ...node, weight: 1 };
+  assert.equal(viewer.curveHitCost(start, control, end, [node]), 10);
+  assert.equal(viewer.curveHitCost(start, control, end, [label]), 1);
+  assert.equal(viewer.curveHitCost(start, control, end, [{ x: 0, y: 50, width: 5, height: 5 }]), 0);
+  // A label blocks the straight line and a node blocks every detour: the curve
+  // stays straight through the label rather than through the node.
+  const from = { x: 0, y: 0, width: 100, height: 50 };
+  const to = { x: 400, y: 0, width: 100, height: 50 };
+  const labelInPath = { x: 230, y: 15, width: 40, height: 20, weight: 1 };
+  const wall = { x: 200, y: -1000, width: 100, height: 1000 + 10 };
+  const floor = { x: 200, y: 40, width: 100, height: 1000 };
+  const geometry = viewer.edgeGeometry(from, to, 0, [labelInPath, wall, floor]);
+  assert.equal(geometry.offset, 0);
+});
+
+test("domainLabelRect covers the label at the box's top-left within the box", () => {
+  const box = { x: 100, y: 50, width: 300, height: 200 };
+  assert.deepEqual(viewer.domainLabelRect(box, 120), { x: 108, y: 58, width: 144, height: 32, weight: 1 });
+  assert.equal(viewer.domainLabelRect(box, 1000).width, 284);
+  assert.equal(viewer.estimateLabelWidth("Commerce 4 bounded contexts"), Math.ceil(27 * 7.4));
+  assert.equal(viewer.estimateLabelWidth(""), 0);
+});
+
+test("fittedPanelHeight sizes the panel to the fitted drawing within limits", () => {
+  assert.equal(viewer.fittedPanelHeight(400, 50, { min: 100, max: 1000 }), 234);
+  assert.equal(viewer.fittedPanelHeight(400, 50, { min: 300, max: 1000 }), 300);
+  assert.equal(viewer.fittedPanelHeight(4000, 100, { min: 300, max: 700 }), 700);
+  assert.equal(viewer.fittedPanelHeight(400, 50, { margin: 34 }), 270);
+});
