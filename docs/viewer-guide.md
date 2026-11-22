@@ -9,7 +9,7 @@ stands. The viewer is a read-only page: it never changes the project.
 visible, shows the project name and counts, the warning count, **Reload**,
 **Load project** and the **?** guide button. Below it are three tabs:
 
-- **Board**: lifecycle swimlanes, gates, the gap ledger and warnings.
+- **Board**: summary strip, lifecycle matrix (or kanban), gates, the gap ledger and warnings.
 - **Project**: the BC topology diagram and per-BC details.
 - **Scenarios**: BDD scenarios per BC, filterable by tag, title or step.
 
@@ -38,14 +38,15 @@ transitions only, with a hint to run `npm run project:status`.
 | Section | What it shows |
 |---|---|
 | Warning count | Amber **n warnings** button in the top bar: projection warnings (gap drift and missing gaps). Shown on every tab while warnings exist, cannot be dismissed. Click it to open the diagnostics list. |
-| Swimlanes | One column per lifecycle state, from Discovered to Verified, plus Changing, Blocked and Deprecated. |
-| Cards | One per BC: classification and role, date of the last transition, next skill, blockers, counts (rules, scenarios, decisions, open gaps), gate count and sign-offs. |
-| Gap ledger | Every shared gap (`G<n>`) with its state and the disposition written in each source file, in a panel whose colour follows its contents (see below). |
-| Diagnostics | Warnings with stable codes, e.g. `HGW001` (gap drift) and `HGW002` (gap missing from the maps). |
-| BC details | Click a card: blockers, warnings, change summaries, timeline, all gate evidence, open items, sign-offs. |
+| Summary strip | Five tiles at the top: **Bounded contexts** (count and a bar by lifecycle state), **Gates met** (BCs whose current-transition gates are valid / all BCs; red names the BCs that are not valid), **Open gaps** (open + partial + drift; deferred listed beside), **Warnings**, **Last change** (latest transition date and BC). Click **Open gaps** to jump to the gap ledger, **Warnings** to open the diagnostics, **Last change** to open that BC. |
+| Lifecycle matrix | Default view. One row per BC, columns Discovered → Verified. The rail fills the states already passed, rings the current state and leaves later states hollow. Changing, Blocked and Deprecated show as a marker next to the name (the rail stays at the last main state); a BC with blockers shows **n blockers**. Each row also shows the classification (and the boundary role only when it differs), warnings, the next skill (hover for the full text), gate progress and open gaps. Most advanced BCs come first. |
+| Kanban | Toggle **Matrix / Kanban** above the list. One column per state with compact cards (same content as a row); empty states collapse into narrow labelled rails. |
+| Gap ledger | Every shared gap (`G<n>`) with its state and dispositions, in a panel whose colour follows its contents (see below). Beside the matrix on wide screens, below it otherwise. |
+| Diagnostics | Warnings with stable codes, e.g. `HGW001` (gap drift) and `HGW002` (gap missing from the maps). Open by default while warnings exist. |
+| BC details | Click a row or card: a panel slides in from the right with the header (lifecycle, classification, rail, next skill, gate progress, unmet gates, counts), blockers, warnings, change summaries, timeline, all gate evidence, open items and sign-offs. Click another BC to switch; close with **Esc**, the **×** button or a click outside the panel. Focus returns to the row. |
 | Change summaries | What changed in the BC spec **since the last transition**, **since the previous commit**, and **uncommitted** in the working tree. |
-| Timeline | Each transition with its commit, gates, signers and evidence; expand a step to see its semantic diff. |
-| All gate evidence | Every row of the BC's `## Gate Evidence` table in `status.md`. |
+| Timeline | Each transition (newest at the bottom, ringed) with its commit, gates, signers and evidence; expand a step to see its semantic diff. |
+| All gate evidence | Every row of the BC's `## Gate Evidence` table in `status.md`: gate, kind, transition and date; result; evidence and signer. |
 
 ## Gate kinds and results
 
@@ -62,15 +63,17 @@ transitions only, with a hint to run `npm run project:status`.
 | `WAIVED` | Skipped on purpose. Needs a Tech lead signer and a reason in Evidence. |
 | `N/A` | Does not apply. Satisfies optional gates only. |
 
-**n/m gates** on a card: n of the m gates required for the BC's current
-transition are satisfied. Unmet gates are listed under the count.
+**Gate progress** (ring and **n/m**) on a row or card: n of the m gates
+required for the BC's current transition are satisfied. Red means the
+transition is not valid; hover for the unmet gates. **–** means no gates are
+required or recorded.
 
 ## Colours and badges
 
 - **Amber badge** (`n warnings`): the card or gap row has drift warnings.
 - **Blue "Partial" badge**: a gap resolved for part of its scope; the rest is still open. Not drift.
 - **Green** `PASS` / `RESOLVED`, **red** `FAIL` / `OPEN`, **amber** `WAIVED` / `MIXED`, **grey** `DEFERRED` / `N/A`.
-- **Red gate count**: at least one required gate is unmet or failed.
+- **Red gate ring**: at least one required gate is unmet or failed.
 
 Gap states: `RESOLVED` (all sources say resolved), `PARTIAL` (resolved for
 part of the scope), `MIXED` (sources disagree: drift), `DEFERRED` (postponed on
@@ -94,12 +97,18 @@ counts are left out; `drift` counts `MIXED` gaps). Unresolved gaps come first,
 most severe first (`MIXED`, `OPEN`, `PARTIAL`, `DEFERRED`), then by gap ID.
 Resolved gaps sit behind **Show resolved (n)**.
 
+Dispositions are collapsed. When every source file says the same thing, the
+text is shown once with **n sources agree**; expand it for the `file:line`
+list. When sources differ, the most common text is shown with **k of n
+sources agree**, and each differing source is listed below it, highlighted in
+amber with its own text.
+
 ## 5-minute review routine
 
 1. **Warning count** in the top bar: any warnings? Click it and read each drift item.
-2. **Red gate counts and blockers** on cards: which BCs claim a state their gates do not support?
-3. **Gap ledger panel**: red means an `OPEN` or `MIXED` gap needs action now; amber means `PARTIAL` or `DEFERRED` gaps need an owner and a date; a collapsed ✓ line means nothing to do.
-4. **Open a BC**: read "since last transition" and "uncommitted". Unreviewed spec changes show up here.
+2. **Summary strip and matrix**: red **Gates met**, red gate rings and Blocked markers show which BCs claim a state their gates do not support.
+3. **Gap ledger panel**: highlighted **Differs** lines show where sources disagree; red means an `OPEN` or `MIXED` gap needs action now; amber means `PARTIAL` or `DEFERRED` gaps need an owner and a date; a collapsed ✓ line means nothing to do.
+4. **Open a BC** (click its row): read "since last transition" and "uncommitted". Unreviewed spec changes show up here.
 5. **Gates and signers** for the latest timeline step: right kind, right person, real evidence?
 
 ## Deterministic vs LLM-written

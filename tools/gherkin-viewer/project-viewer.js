@@ -1014,6 +1014,201 @@
     };
   }
 
+  // --- Board redesign models (T14b) -----------------------------------------
+  // Pure helpers behind the summary strip, the lifecycle matrix / kanban and the
+  // collapsed gap dispositions. DOM renderers below only draw these models.
+
+  // Main lifecycle state a BC sits at. Main states map to themselves; for
+  // CHANGING / BLOCKED / DEPRECATED the latest main state found walking the
+  // transitions backwards (to, then from); -1 position when none is known.
+  function baseLifecycleOf(bc, lifecycle) {
+    if (MAIN_LIFECYCLES.includes(lifecycle)) return lifecycle;
+    const ordered = orderTransitions((bc && bc.transitions) || []);
+    for (let index = ordered.length - 1; index >= 0; index -= 1) {
+      const to = cleanCell(ordered[index].to);
+      const from = cleanCell(ordered[index].from);
+      if (MAIN_LIFECYCLES.includes(to)) return to;
+      if (MAIN_LIFECYCLES.includes(from)) return from;
+    }
+    return null;
+  }
+
+  const plural = (count, word, many) => `${count} ${count === 1 ? word : many || `${word}s`}`;
+
+  // Summary strip: BCs by state, gates met, open gaps, warnings, last change.
+  function buildSummaryStrip(board) {
+    const cards = (board && board.cards) || [];
+    const gaps = (board && board.gaps) || [];
+    const states = MAIN_LIFECYCLES.concat(OPTIONAL_LIFECYCLES);
+    const byState = states
+      .map((state) => ({
+        state,
+        label: lifecycleLabel(state),
+        optional: OPTIONAL_LIFECYCLES.includes(state),
+        count: cards.filter((card) => card.lifecycle === state).length,
+      }))
+      .filter((entry) => entry.count > 0);
+    const gated = cards.filter((card) => card.gateSummary && card.gateSummary.total > 0);
+    const valid = cards.filter((card) => card.gateSummary && card.gateSummary.valid).length;
+    const counts = gapPanelModel(gaps).counts;
+    const openGaps = counts.open + counts.partial + counts.mixed;
+    const gapParts = [
+      counts.open ? `${counts.open} open` : "",
+      counts.partial ? `${counts.partial} partial` : "",
+      counts.mixed ? `${counts.mixed} drift` : "",
+      counts.deferred ? `${counts.deferred} deferred` : "",
+    ].filter(Boolean);
+    const dated = cards
+      .filter((card) => card.lifecycleDate && TRANSITION_DATE.test(card.lifecycleDate))
+      .sort((a, b) => (a.lifecycleDate < b.lifecycleDate ? 1 : a.lifecycleDate > b.lifecycleDate ? -1 : a.name.localeCompare(b.name)));
+    const latest = dated[0] || null;
+    const warningCount = board && board.warnings ? board.warnings.count : 0;
+    return {
+      total: cards.length,
+      byState,
+      stateText: byState.map((entry) => `${entry.count} ${entry.label}`).join(" · ") || "No bounded contexts",
+      gates: {
+        valid,
+        total: cards.length,
+        gated: gated.length,
+        allValid: cards.length > 0 && valid === cards.length,
+        text: `${valid}/${cards.length}`,
+        detail: cards.length ? `${plural(valid, "BC")} with valid gates` : "No bounded contexts",
+        invalidNames: cards.filter((card) => card.gateSummary && !card.gateSummary.valid).map((card) => card.name),
+      },
+      gaps: {
+        open: openGaps,
+        deferred: counts.deferred,
+        resolved: counts.resolved,
+        total: gaps.length,
+        tone: counts.open || counts.mixed ? "danger" : counts.partial || counts.deferred ? "warning" : "neutral",
+        detail: gapParts.length ? gapParts.join(" · ") : gaps.length ? `All ${gaps.length} resolved` : "No gaps recorded",
+      },
+      warnings: {
+        count: warningCount,
+        tone: warningCount ? "warning" : "neutral",
+        detail: warningCount ? "Projection drift; see diagnostics" : "No projection warnings",
+      },
+      lastChange: latest
+        ? {
+            date: latest.lifecycleDate,
+            bcId: latest.id,
+            bcName: latest.name,
+            from: latest.lifecycleFrom,
+            to: latest.lifecycle,
+            text: `${latest.name} → ${lifecycleLabel(latest.lifecycle)}`,
+          }
+        : null,
+    };
+  }
+
+  // One matrix row per BC; also the content of a kanban card.
+  function matrixRow(card) {
+    const base = card.baseLifecycle || (MAIN_LIFECYCLES.includes(card.lifecycle) ? card.lifecycle : null);
+    const position = base ? MAIN_LIFECYCLES.indexOf(base) : -1;
+    const optional = OPTIONAL_LIFECYCLES.includes(card.lifecycle);
+    const gate = card.gateSummary || { satisfied: 0, total: 0, valid: false, unmetGates: [], transition: null };
+    const gateTitle = [
+      gate.total ? `${gate.satisfied} of ${gate.total} required gates satisfied` : "No gates required or recorded",
+      gate.transition ? `Current transition: ${gate.transition}` : "",
+      gate.unmetGates && gate.unmetGates.length ? `Unmet: ${gate.unmetGates.join(", ")}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    return {
+      id: card.id,
+      name: card.name,
+      classification: card.classification,
+      role: card.role,
+      showRole: Boolean(card.role) && card.role !== card.classification && card.role !== "UNCONFIRMED",
+      inferred: Boolean(card.inferred),
+      lifecycle: card.lifecycle,
+      lifecycleLabel: lifecycleLabel(card.lifecycle),
+      lifecycleDate: card.lifecycleDate,
+      position,
+      marker: optional ? { state: card.lifecycle, label: lifecycleLabel(card.lifecycle) } : null,
+      steps: MAIN_LIFECYCLES.map((state, index) => ({
+        state,
+        label: lifecycleLabel(state),
+        status: position < 0 || index > position ? "future" : index === position ? "current" : "done",
+      })),
+      gates: {
+        satisfied: gate.satisfied,
+        total: gate.total,
+        valid: Boolean(gate.valid),
+        ratio: gate.total ? Math.min(1, gate.satisfied / gate.total) : 0,
+        text: gate.total ? `${gate.satisfied}/${gate.total}` : "–",
+        tone: !gate.total ? "neutral" : gate.valid ? "success" : "danger",
+        title: gateTitle,
+        unmet: gate.unmetGates || [],
+      },
+      openGaps: card.stats ? card.stats.openGaps : null,
+      warningCount: card.warningCount || 0,
+      blockers: card.blockers || [],
+      nextSkill: card.nextSkill || null,
+    };
+  }
+
+  // Matrix rows (main-state order, then name) plus kanban columns; empty
+  // kanban columns collapse into narrow rails.
+  function buildLifecycleMatrix(board) {
+    const cards = (board && board.cards) || [];
+    // Most advanced first; BCs without a known main state (position -1) last.
+    const rows = cards.map(matrixRow).sort((a, b) => b.position - a.position || a.name.localeCompare(b.name));
+    const columns = ((board && board.columns) || []).map((column) => ({
+      state: column.state,
+      label: column.label,
+      optional: column.optional,
+      collapsed: column.cards.length === 0,
+      count: column.cards.length,
+      rows: column.cards.map(matrixRow),
+    }));
+    return {
+      states: MAIN_LIFECYCLES.map((state) => ({ state, label: lifecycleLabel(state) })),
+      rows,
+      columns,
+    };
+  }
+
+  // Collapses identical dispositions across a gap's sources. Text is compared
+  // after trimming and whitespace folding. The largest group (first on a tie)
+  // is the common disposition; other sources are listed as differing.
+  function collapseDispositions(sources) {
+    const list = Array.isArray(sources) ? sources.filter(Boolean) : [];
+    const norm = (value) => String(value || "").replace(/\s+/g, " ").trim();
+    const groups = [];
+    for (const item of list) {
+      const key = norm(item.disposition);
+      let group = groups.find((entry) => entry.key === key);
+      if (!group) {
+        group = { key, disposition: key, sources: [] };
+        groups.push(group);
+      }
+      group.sources.push(item);
+    }
+    let common = null;
+    for (const group of groups) if (!common || group.sources.length > common.sources.length) common = group;
+    const ownersOf = (items) => Array.from(new Set(items.map((item) => norm(item.owner)).filter(Boolean)));
+    const differing = common ? list.filter((item) => !common.sources.includes(item)) : [];
+    return {
+      count: list.length,
+      agree: groups.length <= 1,
+      common: common
+        ? {
+            disposition: common.disposition,
+            owners: ownersOf(common.sources),
+            sources: common.sources,
+            count: common.sources.length,
+            text: groups.length <= 1
+              ? `${plural(common.sources.length, "source")} agree${common.sources.length === 1 ? "s" : ""}`
+              : `${common.sources.length} of ${list.length} sources agree`,
+          }
+        : null,
+      differing,
+      groupCount: groups.length,
+    };
+  }
+
   // Plain-language definitions shared by tooltips, legends and the guide (T12).
   // Each entry: `label` (short, used in legends) and `text` (full tooltip).
   const GLOSSARY = {
@@ -1348,6 +1543,8 @@
         role: bc.role || "UNCONFIRMED",
         lifecycle,
         lifecycleDate: transition && transition.date ? transition.date : null,
+        lifecycleFrom: transition ? cleanCell(transition.from) || null : null,
+        baseLifecycle: baseLifecycleOf(bc, lifecycle),
         nextSkill: bc.nextSkill || null,
         blockers,
         blocked: blockers.length > 0,
@@ -2212,86 +2409,284 @@
     if (textElement) textElement.textContent = count ? `${count} warning${count === 1 ? "" : "s"}` : "";
   }
 
-  function renderBoardCard(card, selected, onSelect) {
-    const button = createElement("button", "board-card");
-    button.type = "button";
-    button.dataset.bcId = card.id;
-    button.setAttribute("aria-pressed", String(selected));
-    if (card.blocked) button.classList.add("has-blockers");
-    if (card.warningCount) button.classList.add("has-warnings");
+  // --- Board rendering (T14b): summary strip, lifecycle matrix, kanban -------
 
-    const header = createElement("span", "board-card-header");
-    header.append(createElement("span", "board-card-title", card.name));
-    if (card.warningCount) header.append(warningBadge(card.warningCount, { hidden: false }));
-    button.append(header);
-    button.append(
-      createElement("span", "board-card-meta", `${card.classification} · ${card.role}${card.inferred ? " · inferred" : ""}`),
-    );
-    const facts = createElement("span", "board-card-facts");
-    facts.append(createElement("span", "", card.lifecycleDate ? `Since ${card.lifecycleDate}` : "No transition date"));
-    facts.append(createElement("span", "", `Next: ${card.nextSkill || "–"}`));
-    button.append(facts);
-    if (card.blocked) {
-      button.append(
-        createElement(
-          "span",
-          "board-card-blockers",
-          `${card.blockers.length} blocker${card.blockers.length === 1 ? "" : "s"}: ${card.blockers.join("; ")}`,
-        ),
+  function pill(text, className, title) {
+    const element = createElement("span", `pill ${className || ""}`.trim(), text);
+    if (title) {
+      element.title = title;
+      element.classList.add("has-tooltip");
+    }
+    return element;
+  }
+
+  // Classification pill; role only when it adds information (never "SUPPORTING · SUPPORTING").
+  function classificationPills(row) {
+    const wrap = createElement("span", "bc-pills");
+    wrap.append(pill(row.classification, `pill-class pill-class-${slug(row.classification)}`, `Classification: ${row.classification}`));
+    if (row.showRole) wrap.append(pill(row.role, "pill-role", `Boundary role: ${row.role}`));
+    if (row.inferred) wrap.append(pill("Inferred", "pill-warning", "Inferred from legacy Markdown, not confirmed in the domain map"));
+    return wrap;
+  }
+
+  function markerPill(row) {
+    if (row.marker) {
+      const tone = row.marker.state === "BLOCKED" ? "pill-danger" : row.marker.state === "CHANGING" ? "pill-info" : "pill-neutral";
+      return pill(row.marker.label, `${tone} pill-marker`, glossaryText("lifecycle", row.marker.state));
+    }
+    if (row.blockers.length) {
+      return pill(plural(row.blockers.length, "blocker"), "pill-danger pill-marker", row.blockers.join("\n"));
+    }
+    return null;
+  }
+
+  // Ring + "n/m"; red when the current transition's gates are not valid, unmet list on hover.
+  function gateProgress(gates) {
+    const wrap = createElement("span", `gate-progress gate-progress-${gates.tone}`);
+    wrap.title = gates.title;
+    wrap.classList.add("has-tooltip");
+    const radius = 7;
+    const circumference = 2 * Math.PI * radius;
+    const svg = svgElement("svg", { viewBox: "0 0 18 18", class: "gate-ring", "aria-hidden": "true", focusable: "false" });
+    svg.append(svgElement("circle", { cx: 9, cy: 9, r: radius, class: "gate-ring-track" }));
+    if (gates.total) {
+      svg.append(
+        svgElement("circle", {
+          cx: 9,
+          cy: 9,
+          r: radius,
+          class: "gate-ring-value",
+          "stroke-dasharray": `${(circumference * gates.ratio).toFixed(2)} ${circumference.toFixed(2)}`,
+          transform: "rotate(-90 9 9)",
+        }),
       );
     }
-    const show = (value) => (value === null || value === undefined ? "–" : String(value));
-    const stats = createElement("span", "board-card-stats");
-    stats.append(
-      createElement("span", "", `${show(card.stats.rules)} rules`),
-      createElement("span", "", `${show(card.stats.scenarios)} scenarios`),
-      createElement("span", "", `${show(card.stats.decisions)} decisions`),
-      createElement("span", card.stats.openGaps ? "stat-attention" : "", `${show(card.stats.openGaps)} open gaps`),
-    );
-    button.append(stats);
-    const footer = createElement("span", "board-card-footer");
-    const gates = createElement(
-      "span",
-      `gate-summary${card.gateSummary.invalid ? " has-fail" : ""}`,
-      card.gateSummary.label,
-    );
-    gates.title = `${glossaryText("badge", "gates")}${card.gateSummary.transition ? ` (current transition: ${card.gateSummary.transition})` : ""}`;
-    gates.classList.add("has-tooltip");
-    footer.append(gates);
-    if (card.gateSummary.unmetGates.length) {
-      footer.append(createElement("span", "gate-fail", `Unmet: ${card.gateSummary.unmetGates.join(", ")}`));
-    }
-    footer.append(
-      createElement("span", "", `${card.signoffCount} sign-off${card.signoffCount === 1 ? "" : "s"}`),
-    );
-    button.append(footer);
-    button.addEventListener("click", () => onSelect(card.id));
+    wrap.append(svg, createElement("span", "gate-progress-text tnum", gates.text));
+    wrap.append(createElement("span", "visually-hidden", ` gates. ${gates.title.replace(/\n/g, ". ")}`));
+    return wrap;
+  }
+
+  function gapCount(value) {
+    if (value === null || value === undefined) return createElement("span", "gap-count muted", "–");
+    const element = createElement("span", `gap-count tnum${value ? " gap-count-open" : ""}`, String(value));
+    element.title = `${plural(value, "open gap")} (open, partial, drift or deferred) involving this BC`;
+    element.append(createElement("span", "visually-hidden", ` open gap${value === 1 ? "" : "s"}`));
+    return element;
+  }
+
+  // Progress rail: passed states filled, current emphasised, future hollow.
+  function lifecycleRail(row, className) {
+    const rail = createElement("span", `rail ${className || ""}`.trim());
+    rail.setAttribute("aria-hidden", "true");
+    rail.style.setProperty("--progress", String(row.position > 0 ? row.position / (row.steps.length - 1) : 0));
+    if (row.marker) rail.classList.add(`rail-marker-${slug(row.marker.state)}`);
+    row.steps.forEach((step) => {
+      const cell = createElement("span", `rail-step rail-${step.status}`);
+      cell.title = `${step.label}${step.status === "current" ? (row.marker ? ` (now ${row.marker.label})` : " (current)") : ""}`;
+      cell.append(createElement("span", "rail-dot"));
+      rail.append(cell);
+    });
+    return rail;
+  }
+
+  function railText(row) {
+    if (row.position < 0) return `Lifecycle: ${row.lifecycleLabel}`;
+    return `Lifecycle: ${row.lifecycleLabel}${row.marker ? `, from ${row.steps[row.position].label}` : ""}, step ${row.position + 1} of ${row.steps.length}`;
+  }
+
+  function nextSkillLine(row) {
+    const line = createElement("span", "next-skill truncate");
+    line.append(createElement("span", "next-skill-label", "Next "));
+    line.append(document.createTextNode(row.nextSkill || "–"));
+    if (row.nextSkill) line.title = `Next skill: ${row.nextSkill}`;
+    return line;
+  }
+
+  function bcTitleLine(row) {
+    const line = createElement("span", "bc-title-line");
+    line.append(createElement("span", "bc-name truncate", row.name));
+    const marker = markerPill(row);
+    if (marker) line.append(marker);
+    if (row.warningCount) line.append(warningBadge(row.warningCount, { hidden: false }));
+    return line;
+  }
+
+  function renderMatrixRow(row, selected, onSelect) {
+    const button = createElement("button", "matrix-row");
+    button.type = "button";
+    button.dataset.bcId = row.id;
+    button.setAttribute("aria-pressed", String(selected));
+    if (!row.gates.valid && row.gates.total) button.classList.add("is-gate-invalid");
+    const main = createElement("span", "matrix-cell matrix-bc");
+    main.append(bcTitleLine(row));
+    const meta = createElement("span", "bc-meta");
+    meta.append(classificationPills(row), nextSkillLine(row));
+    main.append(meta);
+    const railCell = createElement("span", "matrix-cell matrix-rail");
+    railCell.append(lifecycleRail(row), createElement("span", "visually-hidden", railText(row)));
+    const mobileState = createElement("span", "matrix-state-label", row.lifecycleLabel);
+    railCell.append(mobileState);
+    const gates = createElement("span", "matrix-cell matrix-gates");
+    gates.append(gateProgress(row.gates));
+    const gaps = createElement("span", "matrix-cell matrix-gaps");
+    gaps.append(gapCount(row.openGaps));
+    button.append(main, railCell, gates, gaps);
+    button.addEventListener("click", () => onSelect(row.id, button));
     return button;
   }
 
-  function renderBoardLanes(board, container, selectedBcId, onSelect) {
-    container.replaceChildren();
-    for (const column of board.columns) {
-      const columnElement = createElement("section", `board-column${column.optional ? " optional" : ""}`);
+  function renderMatrix(matrix, container, selectedBcId, onSelect) {
+    const wrap = createElement("div", "matrix");
+    const head = createElement("div", "matrix-head");
+    head.setAttribute("aria-hidden", "true");
+    head.append(createElement("span", "matrix-cell matrix-bc", "Bounded context"));
+    const states = createElement("span", "matrix-cell matrix-rail matrix-states");
+    for (const state of matrix.states) {
+      // Soft hyphens let long state names wrap in narrow columns.
+      const label = createElement("span", "matrix-state", state.label.replace(/^Implement/, "Imple\u00adment"));
+      const text = glossaryText("lifecycle", state.state);
+      if (text) {
+        label.title = text;
+        label.classList.add("has-tooltip");
+      }
+      states.append(label);
+    }
+    head.append(states);
+    const gatesHead = createElement("span", "matrix-cell matrix-gates", "Gates");
+    gatesHead.title = glossaryText("badge", "gates") || "";
+    head.append(gatesHead, createElement("span", "matrix-cell matrix-gaps", "Gaps"));
+    wrap.append(head);
+    const list = createElement("div", "matrix-body");
+    list.setAttribute("role", "list");
+    list.setAttribute("aria-label", "Bounded contexts by lifecycle");
+    if (!matrix.rows.length) list.append(createElement("p", "muted board-empty", "No bounded contexts in the projection."));
+    for (const row of matrix.rows) {
+      const item = createElement("div", "matrix-item");
+      item.setAttribute("role", "listitem");
+      item.append(renderMatrixRow(row, row.id === selectedBcId, onSelect));
+      list.append(item);
+    }
+    wrap.append(list);
+    container.append(wrap);
+  }
+
+  function renderKanbanCard(row, selected, onSelect) {
+    const button = createElement("button", "kanban-card");
+    button.type = "button";
+    button.dataset.bcId = row.id;
+    button.setAttribute("aria-pressed", String(selected));
+    if (!row.gates.valid && row.gates.total) button.classList.add("is-gate-invalid");
+    button.append(bcTitleLine(row), classificationPills(row));
+    const footer = createElement("span", "kanban-card-footer");
+    footer.append(gateProgress(row.gates));
+    const gaps = createElement("span", "kanban-gaps");
+    gaps.append(gapCount(row.openGaps), createElement("span", "muted", " gaps"));
+    footer.append(gaps);
+    button.append(footer, nextSkillLine(row));
+    button.addEventListener("click", () => onSelect(row.id, button));
+    return button;
+  }
+
+  function renderKanban(matrix, container, selectedBcId, onSelect) {
+    const wrap = createElement("div", "kanban");
+    for (const column of matrix.columns) {
+      const columnElement = createElement("section", `kanban-col${column.collapsed ? " is-collapsed" : ""}${column.optional ? " is-optional" : ""}`);
       const headingId = `board-column-${slug(column.state)}`;
       columnElement.setAttribute("aria-labelledby", headingId);
-      const heading = createElement("h3", "board-column-title");
+      const heading = createElement("h3", "kanban-col-title");
       heading.id = headingId;
-      if (glossaryText("lifecycle", column.state)) {
-        heading.title = glossaryText("lifecycle", column.state);
-        heading.classList.add("has-tooltip");
-      }
-      heading.append(
-        createElement("span", "", column.label),
-        createElement("span", "board-column-count", String(column.cards.length)),
-      );
+      const text = glossaryText("lifecycle", column.state);
+      heading.title = `${column.label}: ${column.count} BC${column.count === 1 ? "" : "s"}${text ? ` — ${text}` : ""}`;
+      heading.append(createElement("span", "kanban-col-label", column.label), createElement("span", "kanban-col-count tnum", String(column.count)));
       columnElement.append(heading);
-      if (column.cards.length === 0) columnElement.append(createElement("p", "muted board-empty", "No BCs"));
-      for (const card of column.cards) {
-        columnElement.append(renderBoardCard(card, card.id === selectedBcId, onSelect));
-      }
-      container.append(columnElement);
+      for (const row of column.rows) columnElement.append(renderKanbanCard(row, row.id === selectedBcId, onSelect));
+      wrap.append(columnElement);
     }
+    container.append(wrap);
+  }
+
+  // Matrix (default) or kanban view of the board. onSelect(bcId, triggerElement).
+  function renderBoardLanes(board, container, selectedBcId, onSelect, view = "matrix") {
+    container.replaceChildren();
+    container.dataset.view = view;
+    const matrix = buildLifecycleMatrix(board);
+    if (view === "kanban") renderKanban(matrix, container, selectedBcId, onSelect);
+    else renderMatrix(matrix, container, selectedBcId, onSelect);
+  }
+
+  function summaryTile({ key, label, value, detail, tone, title, onClick, extra }) {
+    const tile = createElement(onClick ? "button" : "div", `stat-tile stat-tile-${key} stat-${tone || "neutral"}`);
+    if (onClick) {
+      tile.type = "button";
+      tile.addEventListener("click", onClick);
+    }
+    if (title) tile.title = title;
+    tile.append(createElement("span", "stat-label", label));
+    tile.append(createElement("span", "stat-value tnum", value));
+    if (extra) tile.append(extra);
+    tile.append(createElement("span", "stat-detail truncate", detail));
+    return tile;
+  }
+
+  // Summary strip: BCs by state, gates met, open gaps, warnings, last change.
+  function renderSummaryStrip(board, container, handlers = {}) {
+    container.replaceChildren();
+    const model = buildSummaryStrip(board);
+    const bar = createElement("span", "state-bar");
+    bar.setAttribute("aria-hidden", "true");
+    for (const entry of model.byState) {
+      const segment = createElement("span", `state-bar-seg state-seg-${slug(entry.state)}`);
+      segment.style.flexGrow = String(entry.count);
+      segment.title = `${entry.count} ${entry.label}`;
+      bar.append(segment);
+    }
+    container.append(
+      summaryTile({
+        key: "states",
+        label: "Bounded contexts",
+        value: String(model.total),
+        detail: model.stateText,
+        title: model.stateText,
+        extra: bar,
+      }),
+      summaryTile({
+        key: "gates",
+        label: "Gates met",
+        value: model.gates.text,
+        detail: model.gates.invalidNames.length ? `Not valid: ${model.gates.invalidNames.join(", ")}` : model.gates.detail,
+        tone: model.total === 0 ? "neutral" : model.gates.allValid ? "success" : "danger",
+        title: `${model.gates.detail} for their current transition`,
+      }),
+      summaryTile({
+        key: "gaps",
+        label: "Open gaps",
+        value: String(model.gaps.open),
+        detail: model.gaps.detail,
+        tone: model.gaps.tone,
+        title: "Open + partial + drift gaps. Click to go to the gap ledger.",
+        onClick: handlers.onGaps,
+      }),
+      summaryTile({
+        key: "warnings",
+        label: "Warnings",
+        value: String(model.warnings.count),
+        detail: model.warnings.detail,
+        tone: model.warnings.tone,
+        title: "Projection warnings. Click to open the diagnostics.",
+        onClick: handlers.onWarnings,
+      }),
+      summaryTile({
+        key: "last",
+        label: "Last change",
+        value: model.lastChange ? model.lastChange.date : "–",
+        detail: model.lastChange ? model.lastChange.text : "No dated transitions",
+        title: model.lastChange
+          ? `${model.lastChange.bcName}: ${model.lastChange.from || "–"} → ${model.lastChange.to}. Click for details.`
+          : "",
+        onClick: model.lastChange && handlers.onBc ? (event) => handlers.onBc(model.lastChange.bcId, event.currentTarget) : null,
+      }),
+    );
+    return model;
   }
 
   const GAP_PANEL_ICONS = {
@@ -2300,30 +2695,6 @@
     clear: { icon: "\u2713", text: "All clear:" },
     empty: { icon: "\u2013", text: "Empty:" },
   };
-
-  function gapLedgerRows(gaps) {
-    return gaps.map((gap) => {
-      const stateValue = gap.state || "OPEN";
-      const state = withTooltip(
-        createElement("span", `gap-state gap-state-${slug(stateValue)}`, gap.stateLabel || gapStateLabel(stateValue)),
-        "gapState",
-        stateValue,
-      );
-      const sources = createElement("ul", "gap-sources");
-      for (const item of gap.sources || []) {
-        const li = createElement("li");
-        li.append(createElement("code", "", item.location || "–"));
-        li.append(document.createTextNode(` — ${item.disposition || "–"}${item.owner ? ` (${item.owner})` : ""}`));
-        sources.append(li);
-      }
-      return {
-        className: stateValue === "MIXED" ? "gap-mixed" : stateValue === "PARTIAL" ? "gap-partial" : "",
-        cells: [gap.id, gap.gap, state, sources, gap.warningCount ? warningBadge(gap.warningCount) : ""],
-      };
-    });
-  }
-
-  const GAP_LEDGER_HEADERS = ["ID", "Gap", "State", "Dispositions by source", "Warnings"];
 
   // Header line: icon (aria-hidden, with screen-reader text), title, count chips.
   function gapPanelHeader(model, tag) {
@@ -2349,36 +2720,107 @@
     return header;
   }
 
+  // One gap: ID, state, title and dispositions. Identical dispositions collapse
+  // to one line with "n sources agree" (expand for the file:line list); sources
+  // that differ are listed one by one and highlighted (T14b).
+  function renderGapItem(gap) {
+    const stateValue = gap.state || "OPEN";
+    const item = createElement("li", `gap-item gap-item-${slug(stateValue)}`);
+    item.dataset.gapId = gap.id;
+    const head = createElement("div", "gap-item-head");
+    head.append(createElement("code", "gap-id", gap.id));
+    head.append(
+      withTooltip(
+        createElement("span", `gap-state gap-state-${slug(stateValue)}`, gap.stateLabel || gapStateLabel(stateValue)),
+        "gapState",
+        stateValue,
+      ),
+    );
+    if (gap.warningCount) head.append(warningBadge(gap.warningCount));
+    item.append(head);
+    if (gap.gap) item.append(createElement("p", "gap-item-title", gap.gap));
+    const model = collapseDispositions(gap.sources);
+    if (!model.common) {
+      item.append(createElement("p", "muted gap-disp-text", "No sources recorded."));
+      return item;
+    }
+    const common = createElement("div", "gap-disp");
+    const text = createElement("p", "gap-disp-text");
+    appendRichText(text, model.common.disposition || "–");
+    if (model.common.owners.length) text.append(createElement("span", "gap-owner", ` — ${model.common.owners.join(", ")}`));
+    common.append(text);
+    const details = createElement("details", "gap-agree");
+    const summary = createElement("summary", model.agree ? "" : "gap-agree-partial", model.common.text);
+    details.append(summary);
+    const list = createElement("ul", "gap-source-list");
+    for (const source of model.common.sources) {
+      const li = createElement("li");
+      const code = createElement("code", "cell-path", source.location || "–");
+      code.title = source.location || "";
+      li.append(code);
+      list.append(li);
+    }
+    details.append(list);
+    common.append(details);
+    item.append(common);
+    if (model.differing.length) {
+      const differ = createElement("ul", "gap-differ");
+      differ.setAttribute("aria-label", "Sources with a different disposition");
+      for (const source of model.differing) {
+        const li = createElement("li", "gap-differ-item");
+        const code = createElement("code", "cell-path", source.location || "–");
+        code.title = source.location || "";
+        li.append(createElement("span", "gap-differ-flag", "Differs"), code);
+        const body = createElement("p", "gap-disp-text");
+        appendRichText(body, source.disposition || "–");
+        if (source.owner) body.append(createElement("span", "gap-owner", ` — ${source.owner}`));
+        li.append(body);
+        differ.append(li);
+      }
+      item.append(differ);
+    }
+    return item;
+  }
+
+  function renderGapList(gaps, parent, empty) {
+    if (!gaps.length) {
+      parent.append(createElement("p", "muted", empty || "None recorded."));
+      return;
+    }
+    const list = createElement("ul", "gap-list");
+    for (const gap of gaps) list.append(renderGapItem(gap));
+    parent.append(list);
+  }
+
   function renderGapLedger(board, container) {
     const model = gapPanelModel(board ? board.gaps : []);
     container.replaceChildren();
     container.className = `gap-panel gap-panel-${model.level}`;
     container.dataset.level = model.level;
+    if (!container.hasAttribute("tabindex")) container.tabIndex = -1;
 
     if (model.level === "clear" || model.level === "empty") {
       const details = createElement("details", "gap-panel-collapsed");
       const summary = createElement("summary");
       summary.append(gapPanelHeader(model, "span"));
       details.append(summary);
-      appendTable(details, "", GAP_LEDGER_HEADERS, gapLedgerRows(model.resolved), {
-        empty: "No gaps in the projection (schema v1 and legacy projects carry none).",
-      });
+      renderGapList(model.resolved, details, "No gaps in the projection (schema v1 and legacy projects carry none).");
       if (model.level === "clear") details.append(renderLegend("gaps"));
       container.append(details);
       return;
     }
 
     container.append(gapPanelHeader(model, "h2"));
-    appendTable(container, "", GAP_LEDGER_HEADERS, gapLedgerRows(model.unresolved));
+    renderGapList(model.unresolved, container);
     if (model.resolved.length) {
-      const toggle = createElement("button", "gap-panel-toggle", `Show resolved (${model.resolved.length})`);
+      const toggle = createElement("button", "btn btn-sm btn-ghost gap-panel-toggle", `Show resolved (${model.resolved.length})`);
       toggle.type = "button";
       toggle.setAttribute("aria-expanded", "false");
       const resolvedWrap = createElement("div", "gap-panel-resolved");
       resolvedWrap.id = "gapLedgerResolved";
       resolvedWrap.hidden = true;
       toggle.setAttribute("aria-controls", resolvedWrap.id);
-      appendTable(resolvedWrap, "", GAP_LEDGER_HEADERS, gapLedgerRows(model.resolved));
+      renderGapList(model.resolved, resolvedWrap);
       toggle.addEventListener("click", () => {
         const expanded = toggle.getAttribute("aria-expanded") === "true";
         toggle.setAttribute("aria-expanded", String(!expanded));
@@ -2498,7 +2940,6 @@
   function renderTimeline(model, slot) {
     slot.replaceChildren();
     slot.hidden = false;
-    slot.append(createElement("h3", "", "Timeline and changes"));
     if (model.hint) {
       const hint = createElement("p", "timeline-hint muted");
       appendRichText(hint, model.hint);
@@ -2510,29 +2951,40 @@
       slot.append(p);
     }
     if (model.baselines.length) {
+      const changes = createElement("section", "drawer-section");
+      changes.append(createElement("h3", "", "Changes"));
       const summaries = createElement("div", "change-summaries");
       for (const baseline of model.baselines) {
         summaries.append(
           renderChangeSummary(baseline.title, baseline.summary, { id: baseline.id, base: baseline.base, files: baseline.files }),
         );
       }
-      slot.append(summaries);
+      changes.append(summaries);
+      slot.append(changes);
     }
+    const timelineSection = createElement("section", "drawer-section");
+    timelineSection.append(createElement("h3", "", "Timeline"));
+    slot.append(timelineSection);
     if (model.steps.length === 0) {
-      slot.append(createElement("p", "muted", "No transitions recorded."));
+      timelineSection.append(createElement("p", "muted", "No transitions recorded."));
     } else {
       const list = createElement("ol", "timeline");
-      for (const step of model.steps) {
-        const item = createElement("li", "timeline-step");
+      model.steps.forEach((step, index) => {
+        const item = createElement("li", `timeline-step${index === model.steps.length - 1 ? " is-current" : ""}`);
         const head = createElement("div", "timeline-step-head");
-        head.append(createElement("strong", "", `${step.from} → ${step.to}`));
-        head.append(createElement("span", "muted", ` · ${step.date || "no date"}${step.actor ? ` · ${step.actor}` : ""}`));
+        const to = createElement("span", "pill pill-lifecycle pill-info", lifecycleLabel(step.to));
+        withTooltip(to, "lifecycle", step.to, { hidden: false });
+        head.append(to);
+        head.append(createElement("span", "timeline-from muted", `from ${step.from && step.from !== "-" ? lifecycleLabel(step.from) : "start"}`));
+        head.append(createElement("span", "timeline-date cell-date", step.date || "no date"));
         item.append(head);
+        if (step.actor) item.append(createElement("p", "timeline-actor muted", step.actor));
         if (step.commit) {
           const commit = createElement("div", `timeline-commit commit-${step.commit.kind}`);
           if (step.commit.kind === "commit") {
-            commit.append(createElement("code", "", step.commit.shortSha || ""));
-            if (step.commit.subject) commit.append(document.createTextNode(` ${step.commit.subject}`));
+            commit.append(createElement("code", "commit-chip", step.commit.shortSha || ""));
+            if (step.commit.subject) commit.append(createElement("span", "commit-subject truncate", step.commit.subject));
+            if (step.commit.subject) commit.title = step.commit.subject;
           } else {
             commit.textContent = step.commit.text;
             withTooltip(commit, "commit", step.commit.kind);
@@ -2549,84 +3001,147 @@
           item.append(renderChangeSummary(title, step.changes));
         }
         list.append(item);
-      }
-      slot.append(list);
+      });
+      timelineSection.append(list);
     }
     if (model.unmatchedGates.length) {
-      slot.append(createElement("h4", "", "Gates for transitions not recorded yet"));
-      slot.append(renderGateList(model.unmatchedGates));
+      timelineSection.append(createElement("h4", "", "Gates for transitions not recorded yet"));
+      timelineSection.append(renderGateList(model.unmatchedGates));
     }
   }
 
-  // Detail panel for one BC on the Board. Sections are appended in order; the
-  // timeline slot shows transitions, gates and the optional git-derived status
-  // report (T7b).
+  function callout(tone, title, items, formatter) {
+    const box = createElement("section", `callout callout-${tone}`);
+    box.append(createElement("h3", "", title));
+    const list = createElement("ul");
+    for (const item of items) list.append(createElement("li", "", formatter(item)));
+    box.append(list);
+    return box;
+  }
+
+  // BC details for the Board slide-over (T14b). Sections in order: header,
+  // blockers/warnings, changes, timeline (slot), gate evidence, open items, sign-offs.
   function renderBoardDetails(project, board, bcId, container, statusReport = null) {
     container.replaceChildren();
     const bc = project && project.boundedContexts.find((item) => item.id === bcId);
     const card = board && board.cards.find((item) => item.id === bcId);
     if (!bc || !card) {
-      container.append(createElement("p", "muted", "Select a bounded context card to see its lifecycle evidence."));
+      container.append(createElement("p", "muted", "Select a bounded context to see its lifecycle evidence."));
       return;
     }
-    const heading = createElement("div", "project-detail-heading");
-    heading.append(createElement("h2", "", bc.name));
-    if (card.warningCount) heading.append(warningBadge(card.warningCount));
-    container.append(heading);
-    const meta = createElement("p", "project-meta", `${card.classification} · ${card.role} · `);
-    meta.append(withTooltip(createElement("span", "", card.lifecycle), "lifecycle", card.lifecycle));
-    container.append(meta);
-    container.append(
-      createElement(
-        "p",
-        "",
-        `Next skill: ${card.nextSkill || "–"} · ${card.gateSummary.label}` +
-          `${card.gateSummary.transition ? ` (${card.gateSummary.transition})` : ""}`,
-      ),
-    );
-    const timeline = buildTimelineModel(project, statusReport, bc.id);
-    if (timeline && timeline.coverage) container.append(createElement("p", "project-meta timeline-coverage", timeline.coverage));
-    if (card.blocked) appendList(container, "Blockers", card.blockers, String);
-    if (card.warningCount) {
-      appendList(container, "Warnings", card.warnings, (item) => `${item.code ? `${item.code}: ` : ""}${item.message}`);
+    const row = matrixRow(card);
+    const header = createElement("header", "drawer-header");
+    header.append(createElement("p", "eyebrow", "Bounded context"));
+    const title = createElement("h2", "drawer-title", bc.name);
+    title.id = "bcDrawerTitle";
+    header.append(title);
+    const pills = createElement("div", "drawer-pills");
+    const lifecycleTone = { VERIFIED: "pill-success", BLOCKED: "pill-danger", DEPRECATED: "pill-neutral" }[card.lifecycle] || "pill-info";
+    const lifecycle = pill(row.lifecycleLabel, `pill-lifecycle ${lifecycleTone}`);
+    withTooltip(lifecycle, "lifecycle", card.lifecycle, { hidden: false });
+    pills.append(lifecycle, classificationPills(row));
+    const marker = markerPill(row);
+    if (marker && !row.marker) pills.append(marker);
+    if (card.warningCount) pills.append(warningBadge(card.warningCount));
+    header.append(pills);
+    const railWrap = createElement("div", "drawer-rail");
+    railWrap.append(lifecycleRail(row, "rail-labelled"), createElement("span", "visually-hidden", railText(row)));
+    const labels = createElement("div", "drawer-rail-labels");
+    labels.setAttribute("aria-hidden", "true");
+    row.steps.forEach((step) => labels.append(createElement("span", `rail-label rail-label-${step.status}`, step.label)));
+    railWrap.append(labels);
+    header.append(railWrap);
+    const facts = createElement("dl", "drawer-facts");
+    const fact = (label, value) => {
+      const item = createElement("div", "drawer-fact");
+      item.append(createElement("dt", "", label));
+      const dd = createElement("dd");
+      if (value instanceof Node) dd.append(value);
+      else dd.textContent = value;
+      item.append(dd);
+      facts.append(item);
+    };
+    const next = createElement("span", "", card.nextSkill || "–");
+    fact("Next skill", next);
+    const gateWrap = createElement("span", "drawer-gates");
+    gateWrap.append(gateProgress(row.gates));
+    if (card.gateSummary.transition) gateWrap.append(createElement("span", "muted", transitionKey(card.gateSummary.transition).replace("->", "→")));
+    fact("Gates", gateWrap);
+    fact("Since", createElement("span", "cell-date", card.lifecycleDate || "–"));
+    header.append(facts);
+    if (row.gates.unmet.length) {
+      header.append(createElement("p", "drawer-unmet", `Unmet: ${row.gates.unmet.join(", ")}`));
     }
-    const timelineSlot = createElement("section", "project-detail-section board-timeline-slot");
+    const show = (value) => (value === null || value === undefined ? "–" : String(value));
+    const stats = createElement("div", "drawer-stats");
+    [
+      [card.stats.rules, "rules"],
+      [card.stats.scenarios, "scenarios"],
+      [card.stats.decisions, "decisions"],
+      [card.stats.openGaps, "open gaps"],
+      [card.signoffCount, "sign-offs"],
+    ].forEach(([value, word]) => {
+      const chip = createElement("span", "chip");
+      chip.append(createElement("strong", "tnum", show(value)), document.createTextNode(` ${word}`));
+      stats.append(chip);
+    });
+    header.append(stats);
+    container.append(header);
+
+    const body = createElement("div", "drawer-content");
+    container.append(body);
+    if (card.blocked) body.append(callout("danger", "Blockers", card.blockers, String));
+    if (card.warningCount) {
+      body.append(callout("warning", "Warnings", card.warnings, (item) => `${item.code ? `${item.code}: ` : ""}${item.message}`));
+    }
+    const timeline = buildTimelineModel(project, statusReport, bc.id);
+    if (timeline && timeline.coverage) body.append(createElement("p", "project-meta timeline-coverage", timeline.coverage));
+    const timelineSlot = createElement("div", "board-timeline-slot");
     timelineSlot.dataset.slot = "timeline";
     timelineSlot.dataset.bcId = bc.id;
     timelineSlot.hidden = true;
-    container.append(timelineSlot);
+    body.append(timelineSlot);
     if (timeline) renderTimeline(timeline, timelineSlot);
     const gateEvidence = appendTable(
-      container,
+      body,
       "All gate evidence",
-      ["Transition", "Gate", "Kind", "Result", "Evidence", "Signed by", "Date"],
-      (bc.gates || []).map((item) => ({
-        className: item.result === "FAIL" ? "gate-row-fail" : "",
-        cells: [
-          transitionKey(item.transition),
-          item.gate,
-          kindAbbr(item.kind),
-          resultBadge(item.result),
-          item.evidence,
-          item.signedBy,
-          item.date,
-        ],
-      })),
+      ["Gate", "Result", "Evidence and signer"],
+      (bc.gates || []).map((item) => {
+        const gateCell = createElement("div", "gate-cell");
+        const name = createElement("span", "gate-name");
+        name.append(createElement("strong", "", item.gate || "–"));
+        if (item.kind) name.append(document.createTextNode(" "), kindAbbr(item.kind));
+        gateCell.append(name);
+        if (item.transition) gateCell.append(createElement("span", "gate-transition muted", transitionKey(item.transition).replace("->", "→")));
+        gateCell.append(createElement("span", "gate-date cell-date", item.date || "no date"));
+        const evidence = createElement("div", "gate-evidence");
+        appendRichText(evidence, item.evidence || "–");
+        evidence.append(createElement("span", "gate-signer", item.signedBy ? `Signed by ${item.signedBy}` : "Unsigned"));
+        return {
+          className: item.result === "FAIL" ? "gate-row-fail" : "",
+          cells: [gateCell, resultBadge(item.result), evidence],
+        };
+      }),
+      { className: "drawer-section" },
     );
     gateEvidence.append(renderLegend("gates"));
     appendTable(
-      container,
+      body,
       "Open items",
       ["ID", "Item", "Owner", "Disposition"],
       (bc.openItems || []).map((item) => ({ cells: [item.id, item.item, item.owner, item.disposition] })),
+      { className: "drawer-section table-ids" },
     );
     appendTable(
-      container,
+      body,
       "Sign-offs",
       ["Kind", "File", "Date", "Outcome"],
-      (bc.signoffs || []).map((item) => ({
-        cells: [item.kind, createElement("code", "", item.file || "–"), item.date, item.outcome || item.status],
-      })),
+      (bc.signoffs || []).map((item) => {
+        const file = createElement("code", "cell-path", item.file || "–");
+        file.title = item.file || "";
+        return { cells: [item.kind, file, item.date, item.outcome || item.status] };
+      }),
+      { className: "drawer-section" },
     );
   }
 
@@ -2764,6 +3279,11 @@
     const welcomeStatus = document.getElementById("welcomeStatus");
     const reloadButton = document.getElementById("reloadProjectBtn");
     const appProject = document.getElementById("appProject");
+    const boardSummary = document.getElementById("boardSummary");
+    const boardViewButtons = Array.from(document.querySelectorAll("[data-board-view]"));
+    const drawer = document.getElementById("bcDrawer");
+    const drawerScrim = document.getElementById("bcDrawerScrim");
+    const drawerClose = document.getElementById("bcDrawerClose");
     const projectName = document.getElementById("projectName");
     if (!scenarioTab || !projectTab || !folderInput) return;
     let diagramZoom = 100;
@@ -2777,6 +3297,9 @@
     let activeScenarioId = null;
     // Directory handle of the last showDirectoryPicker load, reused by Reload.
     let lastHandle = null;
+    // Board view (T14b): "matrix" (default) or "kanban". Drawer focus return target.
+    let boardView = "matrix";
+    let drawerReturnFocus = null;
 
     const updateZoom = (nextZoom) => {
       diagramZoom = clampZoom(nextZoom);
@@ -2835,9 +3358,65 @@
       activate("scenario");
     };
 
+    const openDiagnostics = () => {
+      closeDrawer(false);
+      activate("board");
+      if (!boardDiagnostics) return;
+      boardDiagnostics.open = true;
+      boardDiagnostics.scrollIntoView({ block: "center" });
+      const summaryElement = boardDiagnostics.querySelector("summary");
+      if (summaryElement) summaryElement.focus();
+    };
+
+    const focusGaps = () => {
+      if (!gapLedger) return;
+      gapLedger.scrollIntoView({ block: "start" });
+      gapLedger.focus({ preventScroll: true });
+    };
+
+    // BC slide-over (T14b): modal, Esc / close button / scrim close it, Tab is
+    // trapped inside and focus returns to the row that opened it. URL-free.
+    const shellParts = () => Array.from(document.querySelectorAll(".app-bar, .app-main"));
+    const isDrawerOpen = () => Boolean(drawer) && !drawer.hidden;
+    const openDrawer = (bcId, trigger) => {
+      if (!drawer) return;
+      selectBc(bcId);
+      if (trigger) drawerReturnFocus = trigger;
+      if (!isDrawerOpen()) {
+        drawer.hidden = false;
+        if (drawerScrim) drawerScrim.hidden = false;
+        document.body.classList.add("has-drawer");
+        for (const part of shellParts()) part.inert = true;
+      }
+      if (boardDetails) boardDetails.scrollTop = 0;
+      (drawerClose || drawer).focus();
+    };
+    function closeDrawer(restoreFocus = true) {
+      if (!isDrawerOpen()) return;
+      drawer.hidden = true;
+      if (drawerScrim) drawerScrim.hidden = true;
+      document.body.classList.remove("has-drawer");
+      for (const part of shellParts()) part.inert = false;
+      if (restoreFocus) {
+        const target =
+          (drawerReturnFocus && drawerReturnFocus.isConnected && drawerReturnFocus) ||
+          (boardLanes && selectedBcId && boardLanes.querySelector(`[data-bc-id="${CSS.escape(selectedBcId)}"]`));
+        if (target) target.focus();
+      }
+      drawerReturnFocus = null;
+    }
+
+    const onBoardSelect = (bcId, trigger) => openDrawer(bcId, trigger);
+
     const renderBoard = () => {
       if (!boardLanes || !loadedBoard) return;
-      renderBoardLanes(loadedBoard, boardLanes, selectedBcId, selectBc);
+      if (boardSummary) {
+        renderSummaryStrip(loadedBoard, boardSummary, { onGaps: focusGaps, onWarnings: openDiagnostics, onBc: onBoardSelect });
+      }
+      renderBoardLanes(loadedBoard, boardLanes, selectedBcId, onBoardSelect, boardView);
+      for (const button of boardViewButtons) {
+        button.setAttribute("aria-pressed", String(button.dataset.boardView === boardView));
+      }
       renderBoardDetails(loadedProject, loadedBoard, selectedBcId, boardDetails, statusReport);
     };
 
@@ -2845,7 +3424,7 @@
       selectedBcId = bcId;
       if (loadedProject) renderDetails(loadedProject, bcId, details);
       if (boardLanes && loadedBoard) {
-        for (const card of boardLanes.querySelectorAll(".board-card")) {
+        for (const card of boardLanes.querySelectorAll("[data-bc-id]")) {
           card.setAttribute("aria-pressed", String(card.dataset.bcId === bcId));
         }
         renderBoardDetails(loadedProject, loadedBoard, bcId, boardDetails, statusReport);
@@ -2886,6 +3465,7 @@
         return;
       }
       details.replaceChildren(createElement("p", "muted", "Loading project artifacts..."));
+      closeDrawer(false);
       projectFiles = fileMap;
       activeScenarioId = null;
       const loaded = await loadProject(fileMap);
@@ -2983,14 +3563,43 @@
     if (boardLoadButton) boardLoadButton.addEventListener("click", pickProject);
     if (welcomeLoadButton) welcomeLoadButton.addEventListener("click", pickProject);
     if (reloadButton) reloadButton.addEventListener("click", reloadProject);
-    if (warningBannerShow) {
-      warningBannerShow.addEventListener("click", () => {
-        activate("board");
-        if (!boardDiagnostics) return;
-        boardDiagnostics.open = true;
-        boardDiagnostics.scrollIntoView({ block: "center" });
-        const summaryElement = boardDiagnostics.querySelector("summary");
-        if (summaryElement) summaryElement.focus();
+    if (warningBannerShow) warningBannerShow.addEventListener("click", openDiagnostics);
+    for (const button of boardViewButtons) {
+      button.addEventListener("click", () => {
+        boardView = button.dataset.boardView === "kanban" ? "kanban" : "matrix";
+        renderBoard();
+      });
+    }
+    if (drawerClose) drawerClose.addEventListener("click", () => closeDrawer());
+    if (drawerScrim) drawerScrim.addEventListener("click", () => closeDrawer());
+    if (drawer) {
+      // Capture phase: the drawer sits above the help panel, so Esc closes it first.
+      document.addEventListener(
+        "keydown",
+        (event) => {
+          if (event.key === "Escape" && isDrawerOpen()) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            closeDrawer();
+          }
+        },
+        true,
+      );
+      drawer.addEventListener("keydown", (event) => {
+        if (event.key !== "Tab") return;
+        const focusable = Array.from(
+          drawer.querySelectorAll('button, [href], summary, input, select, textarea, [tabindex]:not([tabindex="-1"])'),
+        ).filter((element) => !element.disabled && element.getClientRects().length > 0);
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && (document.activeElement === first || document.activeElement === drawer)) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
       });
     }
     initHelpPanel();
@@ -3037,6 +3646,7 @@
     renderGapLedger,
     renderBoardDetails,
     renderBoardLanes,
+    renderSummaryStrip,
     slug,
     parseTable,
     parseDomainMap,
@@ -3061,6 +3671,10 @@
     buildTimelineModel,
     warningBannerText,
     buildBoardModel,
+    buildSummaryStrip,
+    buildLifecycleMatrix,
+    collapseDispositions,
+    baseLifecycleOf,
     gapStateLabel,
     isOpenGap,
     gapPanelModel,

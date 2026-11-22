@@ -1050,3 +1050,160 @@ test("gapPanelModel works on buildBoardModel gaps and GLOSSARY explains every pa
   }
   assert.ok(viewer.compareGapIds("G2", "G11") < 0);
 });
+
+// --- T14b: summary strip, lifecycle matrix, collapsed dispositions ----------
+
+function boardCard(id, lifecycle, extra = {}) {
+  return {
+    id,
+    name: extra.name || id,
+    classification: extra.classification || "CORE",
+    role: extra.role || "PRIMARY",
+    lifecycle,
+    baseLifecycle: extra.baseLifecycle === undefined ? (viewer.MAIN_LIFECYCLES.includes(lifecycle) ? lifecycle : null) : extra.baseLifecycle,
+    lifecycleDate: extra.date || null,
+    lifecycleFrom: extra.from || null,
+    nextSkill: extra.nextSkill || null,
+    blockers: extra.blockers || [],
+    stats: { openGaps: extra.openGaps === undefined ? 0 : extra.openGaps },
+    gateSummary: extra.gates || { total: 2, satisfied: 2, valid: true, unmetGates: [], transition: null },
+    warningCount: extra.warningCount || 0,
+  };
+}
+
+test("buildSummaryStrip counts BCs by state, valid gates, open gaps, warnings and the last change", () => {
+  const board = {
+    cards: [
+      boardCard("a", "REFINED", { name: "Alpha", date: "2026-10-01", from: "REFINING" }),
+      boardCard("b", "REFINED", { name: "Beta", date: "2026-11-02", from: "REFINING" }),
+      boardCard("c", "BLOCKED", {
+        name: "Gamma",
+        date: "2026-10-20",
+        gates: { total: 3, satisfied: 1, valid: false, unmetGates: ["GATE-X (FAIL)"], transition: null },
+      }),
+    ],
+    gaps: [{ state: "OPEN" }, { state: "PARTIAL" }, { state: "MIXED" }, { state: "DEFERRED" }, { state: "RESOLVED" }],
+    warnings: { count: 2 },
+  };
+  const strip = viewer.buildSummaryStrip(board);
+  assert.equal(strip.total, 3);
+  assert.deepEqual(strip.byState.map((entry) => [entry.state, entry.count]), [["REFINED", 2], ["BLOCKED", 1]]);
+  assert.equal(strip.stateText, "2 Refined · 1 Blocked");
+  assert.equal(strip.gates.text, "2/3");
+  assert.equal(strip.gates.allValid, false);
+  assert.deepEqual(strip.gates.invalidNames, ["Gamma"]);
+  assert.equal(strip.gaps.open, 3, "open + partial + mixed; deferred is reported separately");
+  assert.equal(strip.gaps.tone, "danger");
+  assert.equal(strip.gaps.detail, "1 open · 1 partial · 1 drift · 1 deferred");
+  assert.equal(strip.warnings.count, 2);
+  assert.deepEqual(
+    { date: strip.lastChange.date, bcId: strip.lastChange.bcId, from: strip.lastChange.from, to: strip.lastChange.to },
+    { date: "2026-11-02", bcId: "b", from: "REFINING", to: "REFINED" },
+  );
+});
+
+test("buildSummaryStrip handles an empty board", () => {
+  const strip = viewer.buildSummaryStrip({ cards: [], gaps: [], warnings: { count: 0 } });
+  assert.equal(strip.total, 0);
+  assert.equal(strip.lastChange, null);
+  assert.equal(strip.gaps.detail, "No gaps recorded");
+  assert.equal(strip.gaps.tone, "neutral");
+  assert.equal(strip.warnings.tone, "neutral");
+});
+
+test("buildLifecycleMatrix builds rails, markers, gate progress and hides a duplicate role", () => {
+  const board = {
+    cards: [
+      boardCard("refined", "REFINED", { classification: "SUPPORTING", role: "SUPPORTING", openGaps: 2 }),
+      boardCard("blocked", "BLOCKED", {
+        baseLifecycle: "SPEC_REVIEWED",
+        gates: { total: 3, satisfied: 1, valid: false, unmetGates: ["GATE-B (FAIL)"], transition: "SPEC_REVIEWED -> BLOCKED" },
+      }),
+      boardCard("none", "CHANGING", { baseLifecycle: null, gates: { total: 0, satisfied: 0, valid: false, unmetGates: [] } }),
+    ],
+    columns: [
+      { state: "DISCOVERED", label: "Discovered", optional: false, cards: [] },
+      { state: "REFINED", label: "Refined", optional: false, cards: [] },
+    ],
+  };
+  board.columns[1].cards = [board.cards[0]];
+  const matrix = viewer.buildLifecycleMatrix(board);
+  assert.deepEqual(matrix.states.map((state) => state.state), viewer.MAIN_LIFECYCLES);
+  assert.deepEqual(matrix.rows.map((row) => row.id), ["blocked", "refined", "none"], "most advanced first, unknown last");
+
+  const refined = matrix.rows.find((row) => row.id === "refined");
+  assert.equal(refined.showRole, false);
+  assert.equal(refined.marker, null);
+  assert.deepEqual(refined.steps.slice(0, 4).map((step) => step.status), ["done", "done", "current", "future"]);
+  assert.equal(refined.gates.text, "2/2");
+  assert.equal(refined.gates.tone, "success");
+  assert.equal(refined.openGaps, 2);
+
+  const blocked = matrix.rows.find((row) => row.id === "blocked");
+  assert.equal(blocked.showRole, true);
+  assert.deepEqual(blocked.marker, { state: "BLOCKED", label: "Blocked" });
+  assert.equal(blocked.steps[3].status, "current");
+  assert.equal(blocked.gates.tone, "danger");
+  assert.match(blocked.gates.title, /Unmet: GATE-B \(FAIL\)/);
+
+  const none = matrix.rows.find((row) => row.id === "none");
+  assert.equal(none.position, -1);
+  assert.ok(none.steps.every((step) => step.status === "future"));
+  assert.equal(none.gates.text, "–");
+
+  assert.deepEqual(matrix.columns.map((column) => [column.state, column.collapsed]), [["DISCOVERED", true], ["REFINED", false]]);
+});
+
+test("baseLifecycleOf finds the main state behind CHANGING, BLOCKED and DEPRECATED", () => {
+  assert.equal(viewer.baseLifecycleOf({}, "REFINED"), "REFINED");
+  const bc = {
+    transitions: [
+      { from: "-", to: "DISCOVERED", date: "2026-10-01" },
+      { from: "DISCOVERED", to: "VERIFIED", date: "2026-10-02" },
+      { from: "VERIFIED", to: "CHANGING", date: "2026-10-03" },
+    ],
+  };
+  assert.equal(viewer.baseLifecycleOf(bc, "CHANGING"), "VERIFIED");
+  assert.equal(viewer.baseLifecycleOf({ transitions: [] }, "BLOCKED"), null);
+});
+
+test("buildBoardModel cards carry lifecycleFrom and baseLifecycle", () => {
+  const board = viewer.buildBoardModel(viewer.normalizeProject(exampleV2, "canonical"));
+  for (const card of board.cards) {
+    assert.ok("lifecycleFrom" in card && "baseLifecycle" in card, card.id);
+    if (viewer.MAIN_LIFECYCLES.includes(card.lifecycle)) assert.equal(card.baseLifecycle, card.lifecycle);
+  }
+  const strip = viewer.buildSummaryStrip(board);
+  assert.equal(strip.total, board.cards.length);
+  assert.equal(viewer.buildLifecycleMatrix(board).rows.length, board.cards.length);
+});
+
+test("collapseDispositions shows identical dispositions once with n sources agree", () => {
+  const model = viewer.collapseDispositions([
+    { location: "a.md:1", disposition: "Deferred to ADR", owner: "PO" },
+    { location: "b.md:2", disposition: "  Deferred   to ADR ", owner: "PO" },
+    { location: "c.md:3", disposition: "Deferred to ADR", owner: "PO" },
+  ]);
+  assert.equal(model.agree, true);
+  assert.equal(model.common.disposition, "Deferred to ADR");
+  assert.equal(model.common.text, "3 sources agree");
+  assert.deepEqual(model.common.owners, ["PO"]);
+  assert.deepEqual(model.differing, []);
+  assert.equal(viewer.collapseDispositions([{ disposition: "x" }]).common.text, "1 source agrees");
+});
+
+test("collapseDispositions lists only the sources that differ from the common disposition", () => {
+  const sources = [
+    { location: "a.md:1", disposition: "Resolved for A; B to confirm" },
+    { location: "b.md:2", disposition: "Open" },
+    { location: "c.md:3", disposition: "Resolved for A; B to confirm" },
+  ];
+  const model = viewer.collapseDispositions(sources);
+  assert.equal(model.agree, false);
+  assert.equal(model.groupCount, 2);
+  assert.equal(model.common.text, "2 of 3 sources agree");
+  assert.deepEqual(model.differing.map((item) => item.location), ["b.md:2"]);
+  const empty = viewer.collapseDispositions([]);
+  assert.equal(empty.common, null);
+  assert.equal(empty.count, 0);
+});
