@@ -5,11 +5,16 @@ stands. The viewer is a read-only page: it never changes the project.
 
 ## What the viewer is
 
-`tools/gherkin-viewer/index.html` is a standalone page with three tabs:
+`tools/gherkin-viewer/index.html` is a standalone page. A top bar, always
+visible, shows the project name and counts, the warning count, **Reload**,
+**Load project** and the **?** guide button. Below it are three tabs:
 
-- **Scenarios**: BDD scenarios per BC, filterable by tag, title or step.
-- **Project**: the BC topology diagram and per-BC details.
 - **Board**: lifecycle swimlanes, gates, the gap ledger and warnings.
+- **Project**: the BC topology diagram and per-BC details.
+- **Scenarios**: BDD scenarios per BC, filterable by tag, title or step.
+
+Before a project is loaded, a welcome screen shows the commands to run first
+and a **Load project folder** button. The tabs stay reachable.
 
 Everything runs in your browser. Nothing is uploaded.
 
@@ -19,7 +24,11 @@ Everything runs in your browser. Nothing is uploaded.
    - `npm run project:sync` regenerates `docs/hgate-project.json`.
    - `npm run project:status` writes `.hgate/status.json` (timeline and change summaries).
 2. Open `tools/gherkin-viewer/index.html` in a browser (a `file://` page is fine).
-3. Click **Load project** and pick the project root folder.
+3. Click **Load project** in the top bar (or **Load project folder** on the
+   welcome screen) and pick the project root folder.
+4. After editing files or re-running the commands, click **Reload**. In
+   Chrome and Edge it re-reads the same folder; other browsers ask you to pick
+   the folder again.
 
 Without `.hgate/status.json` the Board still works; BC details then show
 transitions only, with a hint to run `npm run project:status`.
@@ -28,7 +37,7 @@ transitions only, with a hint to run `npm run project:status`.
 
 | Section | What it shows |
 |---|---|
-| Warning banner | Count of projection warnings (gap drift and missing gaps). Shown on every tab, cannot be dismissed. **Show** opens the diagnostics list. |
+| Warning count | Amber **n warnings** button in the top bar: projection warnings (gap drift and missing gaps). Shown on every tab while warnings exist, cannot be dismissed. Click it to open the diagnostics list. |
 | Swimlanes | One column per lifecycle state, from Discovered to Verified, plus Changing, Blocked and Deprecated. |
 | Cards | One per BC: classification and role, date of the last transition, next skill, blockers, counts (rules, scenarios, decisions, open gaps), gate count and sign-offs. |
 | Gap ledger | Every shared gap (`G<n>`) with its state and the disposition written in each source file, in a panel whose colour follows its contents (see below). |
@@ -87,7 +96,7 @@ Resolved gaps sit behind **Show resolved (n)**.
 
 ## 5-minute review routine
 
-1. **Banner**: any warnings? Click **Show** and read each drift item.
+1. **Warning count** in the top bar: any warnings? Click it and read each drift item.
 2. **Red gate counts and blockers** on cards: which BCs claim a state their gates do not support?
 3. **Gap ledger panel**: red means an `OPEN` or `MIXED` gap needs action now; amber means `PARTIAL` or `DEFERRED` gaps need an owner and a date; a collapsed ✓ line means nothing to do.
 4. **Open a BC**: read "since last transition" and "uncommitted". Unreviewed spec changes show up here.

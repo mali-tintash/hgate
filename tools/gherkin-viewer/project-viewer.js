@@ -2116,7 +2116,7 @@
       return sectionElement;
     }
     const wrapper = createElement("div", "board-table-wrap");
-    const table = createElement("table", "board-table");
+    const table = createElement("table", "board-table table");
     if (title) table.append(createElement("caption", "visually-hidden", title));
     const head = createElement("thead");
     const headRow = createElement("tr");
@@ -2132,7 +2132,14 @@
       for (const value of row.cells) {
         const cell = createElement("td");
         if (value instanceof Node) cell.append(value);
-        else cell.textContent = value === null || value === undefined || value === "" ? "–" : String(value);
+        else if (typeof value === "string" && /^[\w.@-]*(\/[\w.@-]+)+\.\w+(:\d+)?$/.test(value)) {
+          // Bare repository paths: monospace, truncated, full path on hover (T14a .cell-path).
+          const pathElement = createElement("span", "cell-path", value);
+          pathElement.title = value;
+          cell.append(pathElement);
+        } else cell.textContent = value === null || value === undefined || value === "" ? "–" : String(value);
+        // ISO dates never wrap (T14a .cell-date).
+        if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) cell.className = "cell-date";
         tr.append(cell);
       }
       body.append(tr);
@@ -2196,10 +2203,13 @@
     return withTooltip(createElement("span", "warning-badge", `${count} warning${count === 1 ? "" : "s"}`), "badge", "drift", options);
   }
 
+  // App-bar warning count (T14a): persistent and not dismissible (plan §3.1).
+  // Shows "n warnings"; the full message is the hover text of the indicator.
   function renderWarningBanner(board, banner, textElement) {
     const count = board ? board.warnings.count : 0;
     banner.hidden = count === 0;
-    if (textElement) textElement.textContent = board ? board.warnings.message : "";
+    banner.title = board && count ? `${board.warnings.message}. Click to open the diagnostics.` : "";
+    if (textElement) textElement.textContent = count ? `${count} warning${count === 1 ? "" : "s"}` : "";
   }
 
   function renderBoardCard(card, selected, onSelect) {
@@ -2749,6 +2759,12 @@
     const warningBanner = document.getElementById("warningBanner");
     const warningBannerText = document.getElementById("warningBannerText");
     const warningBannerShow = document.getElementById("warningBannerShow");
+    const welcomePanel = document.getElementById("welcomePanel");
+    const welcomeLoadButton = document.getElementById("welcomeLoadBtn");
+    const welcomeStatus = document.getElementById("welcomeStatus");
+    const reloadButton = document.getElementById("reloadProjectBtn");
+    const appProject = document.getElementById("appProject");
+    const projectName = document.getElementById("projectName");
     if (!scenarioTab || !projectTab || !folderInput) return;
     let diagramZoom = 100;
     let topology = null;
@@ -2759,6 +2775,8 @@
     let statusReport = null;
     let selectedBcId = null;
     let activeScenarioId = null;
+    // Directory handle of the last showDirectoryPicker load, reused by Reload.
+    let lastHandle = null;
 
     const updateZoom = (nextZoom) => {
       diagramZoom = clampZoom(nextZoom);
@@ -2843,7 +2861,9 @@
       ["board", boardTab, boardPanel],
     ].filter(([, tab, panel]) => tab && panel);
 
+    // "welcome" is the first-run screen: no tab selected, tabs stay reachable.
     const activate = (name) => {
+      if (welcomePanel) welcomePanel.hidden = name !== "welcome";
       for (const [tabName, tab, panel] of tabs) {
         panel.hidden = tabName !== name;
         tab.setAttribute("aria-selected", String(tabName === name));
@@ -2853,6 +2873,7 @@
     const showLoadError = (message) => {
       renderDiagnostics([{ severity: "error", message }], diagnostics);
       if (scenarioStatus) scenarioStatus.textContent = message;
+      if (welcomeStatus) welcomeStatus.textContent = message;
     };
 
     const applyProjectFiles = async (fileMap, folderName) => {
@@ -2872,6 +2893,7 @@
       statusReport = loaded.statusReport;
       loadedBoard = buildBoardModel(loaded.project);
       if (warningBanner) renderWarningBanner(loadedBoard, warningBanner, warningBannerText);
+      renderProjectIdentity(folderName);
       if (boardDiagnostics) {
         renderBoardDiagnostics(loadedBoard, boardDiagnostics, boardDiagnosticsList, boardDiagnosticsCount);
       }
@@ -2901,6 +2923,25 @@
       }
     };
 
+    // App bar: project name, reload state and the first-run screen.
+    const renderProjectIdentity = (folderName) => {
+      const name = (loadedProject && loadedProject.project && loadedProject.project.name) || folderName || "hGATE project";
+      if (projectName) {
+        projectName.textContent = name;
+        projectName.title = folderName && folderName !== name ? `${name} (folder: ${folderName})` : name;
+      }
+      if (appProject) appProject.classList.remove("is-empty");
+      if (typeof document !== "undefined") document.title = `${name} · hGATE viewer`;
+      if (welcomeStatus) welcomeStatus.textContent = "";
+      if (reloadButton) {
+        reloadButton.disabled = false;
+        reloadButton.title = lastHandle
+          ? `Re-read ${lastHandle.name} from disk`
+          : "Pick the project folder again to re-read it (this browser cannot re-open a folder by itself)";
+      }
+      if (welcomePanel && !welcomePanel.hidden) activate("board");
+    };
+
     const loadSafely = async (load) => {
       try {
         await load();
@@ -2916,6 +2957,7 @@
       if (typeof window.showDirectoryPicker === "function") {
         loadSafely(async () => {
           const handle = await window.showDirectoryPicker({ id: "hgate-project", mode: "read" });
+          lastHandle = handle;
           await applyProjectFiles(await readProjectDirectory(handle), handle.name);
         });
       } else {
@@ -2923,16 +2965,30 @@
       }
     };
 
+    // Reload re-reads the same directory handle; without one (webkitdirectory
+    // fallback) the browser has to ask for the folder again.
+    const reloadProject = () => {
+      if (!lastHandle) {
+        pickProject();
+        return;
+      }
+      loadSafely(async () => {
+        await applyProjectFiles(await readProjectDirectory(lastHandle), lastHandle.name);
+      });
+    };
+
     scenarioTab.addEventListener("click", () => activate("scenario"));
     projectTab.addEventListener("click", () => activate("project"));
     if (boardTab) boardTab.addEventListener("click", () => activate("board"));
     if (boardLoadButton) boardLoadButton.addEventListener("click", pickProject);
+    if (welcomeLoadButton) welcomeLoadButton.addEventListener("click", pickProject);
+    if (reloadButton) reloadButton.addEventListener("click", reloadProject);
     if (warningBannerShow) {
       warningBannerShow.addEventListener("click", () => {
         activate("board");
         if (!boardDiagnostics) return;
         boardDiagnostics.open = true;
-        boardDiagnostics.scrollIntoView({ block: "start" });
+        boardDiagnostics.scrollIntoView({ block: "center" });
         const summaryElement = boardDiagnostics.querySelector("summary");
         if (summaryElement) summaryElement.focus();
       });
@@ -2950,11 +3006,12 @@
       loadSafely(async () => {
         const [first] = Array.from(folderInput.files || []);
         const folderName = first && first.webkitRelativePath ? first.webkitRelativePath.split("/")[0] : "";
+        lastHandle = null;
         await applyProjectFiles(indexFiles(folderInput.files), folderName);
         folderInput.value = "";
       }),
     );
-    activate("scenario");
+    activate(welcomePanel ? "welcome" : "scenario");
   }
 
   if (typeof document !== "undefined") {
