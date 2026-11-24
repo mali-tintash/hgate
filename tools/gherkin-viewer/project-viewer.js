@@ -1134,6 +1134,62 @@
     };
   }
 
+  const PURPOSE_MAX_LENGTH = 140;
+
+  // Markdown stripped, whitespace folded onto one line.
+  function oneLine(value) {
+    return stripMarkdown(value).replace(/\s+/g, " ").trim();
+  }
+
+  // First sentence, then cut to `max` characters (ellipsis included) at the
+  // last top-level clause (", " or "; " outside parentheses) in the second
+  // half, else at the last word.
+  function shortenPurpose(value, max = PURPOSE_MAX_LENGTH) {
+    const text = oneLine(value).split(/(?<=[.!?])\s+(?=[A-Z])/)[0];
+    if (text.length <= max) return text;
+    let depth = 0;
+    let clause = -1;
+    for (let index = 0; index < max - 1; index += 1) {
+      const char = text[index];
+      if (char === "(") depth += 1;
+      else if (char === ")") depth = Math.max(0, depth - 1);
+      else if ((char === "," || char === ";") && depth === 0 && text[index + 1] === " ") clause = index;
+    }
+    let cut = clause >= max / 2 ? clause : text.lastIndexOf(" ", max - 1);
+    if (cut <= 0) cut = max - 1;
+    return `${text.slice(0, cut).replace(/[\s,;:(\u2013\u2014-]+$/, "")}\u2026`;
+  }
+
+  // Text for the BC's ⓘ button. Purpose comes from the BC's `purpose` (the
+  // first paragraph of SKILL.md "Purpose", via the projection or legacy
+  // extraction, as on the Project tab), else a short form of Owns. The domain
+  // line uses the domain's purpose from the Domain Inventory.
+  function bcPurpose(bc, domains) {
+    const source = bc || {};
+    let purpose = shortenPurpose(source.purpose);
+    let from = purpose ? "purpose" : "none";
+    if (!purpose) {
+      const owns = (Array.isArray(source.owns) ? source.owns : []).map(oneLine).filter(Boolean).join("; ");
+      purpose = owns ? shortenPurpose(owns) : "";
+      if (purpose) from = "owns";
+    }
+    const domain = (Array.isArray(domains) ? domains : []).find((item) => item && item.id === source.domainId);
+    const domainName = oneLine(domain && domain.name) || oneLine(source.domainId);
+    const domainPurpose = shortenPurpose(domain && domain.purpose);
+    const name = oneLine(source.name) || oneLine(source.id) || "this bounded context";
+    const lines = [
+      {
+        label: "Purpose",
+        text: purpose || "Not recorded",
+        note: from === "owns" ? "from Owns" : "",
+      },
+    ];
+    if (domainName) {
+      lines.push({ label: "Domain", text: domainPurpose ? `${domainName} \u2014 ${domainPurpose}` : domainName, note: "" });
+    }
+    return { label: `Purpose of ${name}`, purpose, from, domainName, domainPurpose, lines };
+  }
+
   // One matrix row per BC; also the content of a kanban card.
   function matrixRow(card) {
     const base = card.baseLifecycle || (MAIN_LIFECYCLES.includes(card.lifecycle) ? card.lifecycle : null);
@@ -1178,6 +1234,7 @@
       warningCount: card.warningCount || 0,
       blockers: card.blockers || [],
       nextSkill: card.nextSkill || null,
+      purpose: card.purpose && Array.isArray(card.purpose.lines) ? card.purpose : bcPurpose(card, []),
     };
   }
 
@@ -1591,6 +1648,7 @@
         warnings,
         warningCount: warnings.length,
         inferred: Boolean(bc.inferred),
+        purpose: bcPurpose(bc, source.domains),
       };
     });
 
@@ -3133,6 +3191,91 @@
     return line;
   }
 
+  // Esc hides any purpose tooltip that is open by hover, focus or click
+  // (WCAG 1.4.13); it stays hidden until the pointer or focus leaves.
+  let purposeTipCount = 0;
+  let purposeEscapeInstalled = false;
+  function dismissPurposeTips() {
+    let dismissed = false;
+    for (const info of document.querySelectorAll(".bc-purpose")) {
+      if (info.matches(":hover, :focus-within, .is-open") && !info.classList.contains("is-dismissed")) {
+        info.classList.add("is-dismissed");
+        info.classList.remove("is-open");
+        dismissed = true;
+      }
+    }
+    return dismissed;
+  }
+
+  // Keeps the tooltip inside the viewport: shifts it left near the right
+  // edge and flips it above the button near the bottom.
+  function placePurposeTip(info, tip) {
+    tip.style.removeProperty("--tip-shift");
+    info.classList.remove("is-above");
+    const rect = tip.getBoundingClientRect();
+    if (!rect.width) return;
+    const overflow = rect.right - (document.documentElement.clientWidth - 8);
+    if (overflow > 0) tip.style.setProperty("--tip-shift", `${-Math.min(overflow, Math.max(0, rect.left - 8))}px`);
+    if (rect.bottom > window.innerHeight - 8 && rect.top - rect.height > 8) info.classList.add("is-above");
+  }
+
+  // ⓘ beside a BC name. Rendered as a sibling of the row or card button
+  // (buttons cannot nest), so hovering or clicking it never selects the BC.
+  function purposeInfo(row) {
+    const model = row.purpose || bcPurpose(row, []);
+    const info = createElement("span", "bc-purpose");
+    const button = createElement("button", "bc-purpose-btn");
+    button.type = "button";
+    button.setAttribute("aria-label", model.label);
+    const glyph = createElement("span", "bc-purpose-glyph", "i");
+    glyph.setAttribute("aria-hidden", "true");
+    button.append(glyph);
+    purposeTipCount += 1;
+    const tip = createElement("span", "bc-purpose-tip");
+    tip.id = `bc-purpose-tip-${purposeTipCount}`;
+    tip.setAttribute("role", "tooltip");
+    button.setAttribute("aria-describedby", tip.id);
+    for (const line of model.lines) {
+      const element = createElement("span", "bc-purpose-line");
+      element.append(createElement("span", "bc-purpose-label", `${line.label}: `), document.createTextNode(line.text));
+      if (line.note) element.append(createElement("span", "bc-purpose-note", ` (${line.note})`));
+      tip.append(element);
+    }
+    info.append(button, tip);
+
+    const place = () => window.requestAnimationFrame(() => placePurposeTip(info, tip));
+    const reset = () => {
+      if (info.matches(":hover") || button.matches(":focus")) return;
+      info.classList.remove("is-open", "is-dismissed");
+    };
+    info.addEventListener("mouseenter", place);
+    info.addEventListener("mouseleave", () => {
+      if (!button.matches(":focus")) info.classList.remove("is-open", "is-dismissed");
+    });
+    button.addEventListener("focus", place);
+    button.addEventListener("blur", () => window.setTimeout(reset, 0));
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const open = !info.classList.contains("is-open") || info.classList.contains("is-dismissed");
+      info.classList.remove("is-dismissed");
+      info.classList.toggle("is-open", open);
+      place();
+    });
+    button.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && dismissPurposeTips()) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    });
+    if (!purposeEscapeInstalled) {
+      purposeEscapeInstalled = true;
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") dismissPurposeTips();
+      });
+    }
+    return info;
+  }
+
   function renderMatrixRow(row, selected, onSelect) {
     const button = createElement("button", "matrix-row");
     button.type = "button";
@@ -3185,7 +3328,8 @@
     for (const row of matrix.rows) {
       const item = createElement("div", "matrix-item");
       item.setAttribute("role", "listitem");
-      item.append(renderMatrixRow(row, row.id === selectedBcId, onSelect));
+      item.classList.add("has-bc-purpose");
+      item.append(renderMatrixRow(row, row.id === selectedBcId, onSelect), purposeInfo(row));
       list.append(item);
     }
     wrap.append(list);
@@ -3221,7 +3365,11 @@
       heading.title = `${column.label}: ${column.count} BC${column.count === 1 ? "" : "s"}${text ? ` — ${text}` : ""}`;
       heading.append(createElement("span", "kanban-col-label", column.label), createElement("span", "kanban-col-count tnum", String(column.count)));
       columnElement.append(heading);
-      for (const row of column.rows) columnElement.append(renderKanbanCard(row, row.id === selectedBcId, onSelect));
+      for (const row of column.rows) {
+        const item = createElement("div", "kanban-item has-bc-purpose");
+        item.append(renderKanbanCard(row, row.id === selectedBcId, onSelect), purposeInfo(row));
+        columnElement.append(item);
+      }
       wrap.append(columnElement);
     }
     container.append(wrap);
@@ -4412,6 +4560,8 @@
     buildBoardModel,
     buildSummaryStrip,
     buildLifecycleMatrix,
+    bcPurpose,
+    shortenPurpose,
     collapseDispositions,
     baseLifecycleOf,
     gapStateLabel,
