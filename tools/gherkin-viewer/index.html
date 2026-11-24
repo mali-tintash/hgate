@@ -3297,6 +3297,129 @@
         font-size: var(--text-xs);
       }
 
+      /* Purpose ⓘ beside the BC name on matrix rows and kanban cards. It is a
+         sibling of the row button, placed over the space the title line
+         leaves for it (top = margin + border + padding of the row). */
+      .has-bc-purpose {
+        --purpose-top: calc(2px + 1px + var(--space-3));
+        --purpose-left: calc(1px + var(--space-3));
+        position: relative;
+      }
+
+      .kanban-item.has-bc-purpose {
+        --purpose-top: calc(1px + var(--space-3));
+      }
+
+      .has-bc-purpose .bc-title-line {
+        padding-left: 24px;
+      }
+
+      .bc-purpose {
+        position: absolute;
+        z-index: 3;
+        top: var(--purpose-top);
+        left: var(--purpose-left);
+        display: inline-flex;
+      }
+
+      .bc-purpose:hover,
+      .bc-purpose:focus-within,
+      .bc-purpose.is-open {
+        z-index: 5;
+      }
+
+      .bc-purpose-btn {
+        width: 18px;
+        min-width: 18px;
+        height: 18px;
+        min-height: 18px;
+        padding: 0;
+        border: 1px solid var(--color-border-strong);
+        border-radius: var(--radius-pill);
+        background: var(--color-surface);
+        box-shadow: none;
+        color: var(--color-text-muted);
+        font: 700 11px / 1 var(--font-ui);
+        cursor: help;
+      }
+
+      .bc-purpose-btn:hover,
+      .bc-purpose.is-open .bc-purpose-btn {
+        border-color: var(--color-accent-text);
+        background: var(--color-surface-hover);
+        color: var(--color-accent-text);
+      }
+
+      .bc-purpose-btn:active {
+        transform: none;
+      }
+
+      .bc-purpose-glyph {
+        font-style: italic;
+        font-family: Georgia, "Times New Roman", serif;
+      }
+
+      .bc-purpose-tip {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        display: none;
+        width: max-content;
+        max-width: min(340px, calc(100vw - 32px));
+        padding: var(--space-2) var(--space-3);
+        border: 1px solid var(--color-border-strong);
+        border-radius: var(--radius-md);
+        background: var(--color-surface-raised);
+        box-shadow: var(--shadow-lg);
+        color: var(--color-text);
+        font: 400 var(--text-sm) / 1.4 var(--font-ui);
+        white-space: normal;
+        overflow-wrap: anywhere;
+        transform: translateX(var(--tip-shift, 0px));
+      }
+
+      .bc-purpose.is-above .bc-purpose-tip {
+        top: auto;
+        bottom: calc(100% + 6px);
+      }
+
+      /* Bridges the gap so the pointer can move onto the tooltip. */
+      .bc-purpose-tip::before {
+        position: absolute;
+        right: 0;
+        bottom: 100%;
+        left: 0;
+        height: 8px;
+        content: "";
+      }
+
+      .bc-purpose.is-above .bc-purpose-tip::before {
+        top: 100%;
+        bottom: auto;
+      }
+
+      .bc-purpose:hover .bc-purpose-tip,
+      .bc-purpose.is-open .bc-purpose-tip,
+      .bc-purpose-btn:focus-visible + .bc-purpose-tip {
+        display: grid;
+        gap: 2px;
+      }
+
+      /* After the rules above so Esc wins over hover and focus. */
+      .bc-purpose.is-dismissed .bc-purpose-tip {
+        display: none;
+      }
+
+      .bc-purpose-label {
+        color: var(--color-heading);
+        font-weight: 700;
+      }
+
+      .bc-purpose-note {
+        color: var(--color-text-muted);
+        font-size: var(--text-xs);
+      }
+
       /* Gap attention panel (T13 levels) as a list; collapsed dispositions. */
       .gap-panel {
         min-width: 0;

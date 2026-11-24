@@ -1409,3 +1409,79 @@ test("fittedPanelHeight sizes the panel to the fitted drawing within limits", ()
   assert.equal(viewer.fittedPanelHeight(4000, 100, { min: 300, max: 700 }), 700);
   assert.equal(viewer.fittedPanelHeight(400, 50, { margin: 34 }), 270);
 });
+
+const purposeDomains = [
+  { id: "tokenization", name: "Tokenization", classification: "CORE", purpose: "Issue and move campaign tokens under ERC-3643 compliance" },
+  { id: "bare", name: "Bare domain", classification: "GENERIC", purpose: "" },
+];
+const lineText = (model) => model.lines.map((line) => `${line.label}: ${line.text}${line.note ? ` (${line.note})` : ""}`);
+
+test("bcPurpose uses the BC purpose and adds the domain's purpose", () => {
+  const model = viewer.bcPurpose(
+    {
+      id: "campaigns",
+      name: "Campaigns",
+      domainId: "tokenization",
+      purpose: "Deploy and control each campaign's `token` suite. Later sentences stay in the details panel.",
+      owns: ["Campaign token suite"],
+    },
+    purposeDomains,
+  );
+  assert.equal(model.label, "Purpose of Campaigns");
+  assert.equal(model.from, "purpose");
+  assert.deepEqual(lineText(model), [
+    "Purpose: Deploy and control each campaign's token suite.",
+    "Domain: Tokenization — Issue and move campaign tokens under ERC-3643 compliance",
+  ]);
+});
+
+test("bcPurpose falls back to a short form of Owns, cut at a clause", () => {
+  const owns = [
+    "Campaign token suite (token, identity registry bound to the shared storage, compliance, `AgentManager` and its role grants), campaign limits (DAS-062), open, pause and unpause",
+  ];
+  const model = viewer.bcPurpose({ id: "campaigns", name: "Campaigns", domainId: "tokenization", purpose: "", owns }, purposeDomains);
+  assert.equal(model.from, "owns");
+  assert.equal(model.lines[0].note, "from Owns");
+  assert.equal(
+    model.purpose,
+    "Campaign token suite (token, identity registry bound to the shared storage, compliance, AgentManager and its role grants)…",
+  );
+  assert.ok(model.purpose.length <= 140);
+  assert.match(model.lines[1].text, /^Tokenization — Issue and move/);
+
+  const short = viewer.bcPurpose({ id: "ops", name: "Ops", owns: ["Mint, burn", "allocation idempotency"] }, []);
+  assert.equal(short.purpose, "Mint, burn; allocation idempotency");
+});
+
+test("shortenPurpose cuts at a word when no clause fits", () => {
+  const text = `${"word ".repeat(40)}end`;
+  const short = viewer.shortenPurpose(text);
+  assert.ok(short.length <= 140);
+  assert.match(short, /word…$/);
+  assert.equal(viewer.shortenPurpose("Short enough."), "Short enough.");
+});
+
+test("bcPurpose handles a missing purpose, owns and domain without undefined", () => {
+  const none = viewer.bcPurpose({ id: "ghost", domainId: "missing" }, purposeDomains);
+  assert.equal(none.label, "Purpose of ghost");
+  assert.equal(none.from, "none");
+  assert.deepEqual(lineText(none), ["Purpose: Not recorded", "Domain: missing"]);
+
+  const bareDomain = viewer.bcPurpose({ id: "b", name: "B", domainId: "bare", owns: [] }, purposeDomains);
+  assert.deepEqual(lineText(bareDomain), ["Purpose: Not recorded", "Domain: Bare domain"]);
+
+  for (const model of [none, bareDomain, viewer.bcPurpose(null, null), viewer.bcPurpose({}, undefined)]) {
+    assert.doesNotMatch(JSON.stringify(model), /undefined|null/);
+  }
+  assert.deepEqual(lineText(viewer.bcPurpose({}, undefined)), ["Purpose: Not recorded"]);
+});
+
+test("matrix rows carry the BC purpose from the example projection", () => {
+  const board = viewer.buildBoardModel(viewer.normalizeProject(exampleV2, "canonical"));
+  const row = viewer.buildLifecycleMatrix(board).rows.find((item) => item.id === "catalog");
+  assert.equal(row.purpose.label, "Purpose of Catalog");
+  assert.deepEqual(lineText(row.purpose), [
+    "Purpose: Expose purchasable products.",
+    "Domain: Commerce — Turn an approved customer selection into a fulfilled order.",
+  ]);
+});

@@ -259,7 +259,9 @@ project root folder. Besides the Scenarios and Project tabs:
 
 - **Board tab:** lifecycle swimlanes with one card per BC (classification,
   next skill, blockers, stats, and an `n/m gates` count that turns red and
-  lists the unmet gates when the current state is not backed by its gates),
+  lists the unmet gates when the current state is not backed by its gates;
+  an **i** button beside the name shows the BC's purpose and its domain's
+  purpose on hover or focus),
   the gap ledger, and the diagnostics panel. Legends and hover tooltips
   explain every badge, state and abbreviation.
 - **Gap ledger:** a panel styled by its most severe gap: red "Gaps need
